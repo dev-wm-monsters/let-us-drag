@@ -79,7 +79,7 @@ export const OPTIONS: Record<OptionId, ConversionOption> = {
   'to-avif': O('to-avif', 'AVIF', 'Convert to AVIF'),
   'to-pdf': O('to-pdf', 'PDF', 'Make a PDF', 'merge'),
   'to-ico': O('to-ico', 'ICO', 'Make an icon (.ico)'),
-  'remove-bg': O('remove-bg', 'Remove BG', 'Remove the background (PNG)'),
+  'remove-bg': O('remove-bg', 'Remove BG', 'Remove the background (first use downloads a 179 MB AI model, once)'),
   compress: O('compress', 'Compress', 'Make it smaller'),
   'to-mp4': O('to-mp4', 'MP4', 'Convert to MP4'),
   'to-mov': O('to-mov', 'MOV', 'Convert to MOV'),
