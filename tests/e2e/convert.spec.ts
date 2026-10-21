@@ -115,8 +115,8 @@ test.describe('conversion flows', () => {
     const { event, overlay } = await convertViaDrop(app, testInfo, 'corrupt', [input], 'to-jpg')
     expect(event.type, JSON.stringify(event)).toBe('error')
     if (event.type === 'error') {
-      // ASSUMPTION: undecodable input maps to INPUT_INVALID (TOOL_FAILED tolerated until the TPM decides).
-      expect(['INPUT_INVALID', 'TOOL_FAILED']).toContain(event.error.code)
+      // TPM D6: undecodable input → INPUT_INVALID (TOOL_FAILED only for unexpected tool failures).
+      expect(event.error.code).toBe('INPUT_INVALID')
       expectFriendlyMessage(event.error.message)
     }
     await expectUncleState(overlay, 'choke')
@@ -173,9 +173,8 @@ test.describe('conversion flows', () => {
     expect(event.type, JSON.stringify(event)).toBe('done')
     const out = outputsOf(event)
     expect(out).toHaveLength(1)
-    // Output NAME for merged batches is not specified in PLAN (open issue); only location + content are asserted.
-    expect(dirname(out[0]!)).toBe(lud.workDir)
-    expect(out[0]!.toLowerCase().endsWith('.pdf')).toBe(true)
+    // Merged outputs are named after the first input: "<first> (merged).pdf" (src/engine/output.ts mergedName).
+    expect(out).toEqual([join(lud.workDir, 'p1 (merged).pdf')])
     expect(magic.pdf(out[0]!)).toBe(true)
     expect(await pdfPageCount(out[0]!)).toBe(3)
   })
