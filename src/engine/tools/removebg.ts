@@ -6,7 +6,7 @@
 //   3. take output[0][:, 0], min-max normalise to 0..1, ×255 → uint8 mask,
 //   4. resize the mask back to the original size (LANCZOS) and use it as the alpha channel (PNG).
 // Runtime: onnxruntime-node where its prebuilt binary exists, otherwise onnxruntime-web (wasm).
-// Both are loaded lazily on first use so the engine starts fast.
+// Both are loaded lazily on first use so the engine starts fast. One session per run (D24).
 import { cpus } from 'node:os'
 import { dirname, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -69,6 +69,8 @@ interface OrtSession {
   inputNames: readonly string[]
   outputNames: readonly string[]
   run(feeds: Record<string, unknown>, fetches?: readonly string[]): Promise<Record<string, OrtTensor>>
+  /** onnxruntime-common 1.30 `InferenceSession.release(): Promise<void>` (both backends). */
+  release?(): Promise<void>
 }
 interface OrtModule {
   Tensor: new (type: 'float32', data: Float32Array, dims: readonly number[]) => unknown
@@ -76,7 +78,7 @@ interface OrtModule {
   env: { wasm: { numThreads?: number; wasmPaths?: string } }
 }
 
-async function loadOrt(prefer: OrtBackend): Promise<{ ort: OrtModule; backend: OrtBackend }> {
+async function importOrt(prefer: OrtBackend): Promise<{ ort: OrtModule; backend: OrtBackend }> {
   if (prefer === 'node') {
     try {
       return { ort: (await import('onnxruntime-node')) as unknown as OrtModule, backend: 'node' }
@@ -95,51 +97,92 @@ async function loadOrt(prefer: OrtBackend): Promise<{ ort: OrtModule; backend: O
   return { ort, backend: 'web' }
 }
 
-interface LoadedModel {
-  ort: OrtModule
-  session: OrtSession
-  backend: OrtBackend
+/** The runtime module (not a session) is loaded once per backend; its env is configured only then. */
+const runtimes = new Map<OrtBackend, Promise<{ ort: OrtModule; backend: OrtBackend }>>()
+
+function loadOrt(prefer: OrtBackend): Promise<{ ort: OrtModule; backend: OrtBackend }> {
+  let p = runtimes.get(prefer)
+  if (!p) {
+    p = importOrt(prefer)
+    runtimes.set(prefer, p)
+    p.catch(() => runtimes.delete(prefer))
+  }
+  return p
 }
 
-/** One loaded session is kept (the model is ~170 MB); a different path/backend replaces it. */
-let cached: { key: string; promise: Promise<LoadedModel> } | undefined
+/**
+ * Inference runs one at a time: every run gets its own session (~170 MB model + working memory),
+ * so two parallel Remove-BG jobs would otherwise hold two of them.
+ */
+let inferenceQueue: Promise<unknown> = Promise.resolve()
 
-async function loadModel(modelPath: string, prefer: OrtBackend): Promise<LoadedModel> {
-  const key = `${prefer}:${modelPath}`
-  if (cached?.key === key) return cached.promise
-  const promise = (async () => {
-    const { ort, backend } = await loadOrt(prefer)
+function serialised<T>(fn: () => Promise<T>): Promise<T> {
+  const run = inferenceQueue.then(fn, fn)
+  inferenceQueue = run.catch(() => undefined)
+  return run
+}
+
+/** Sessions created and not yet released (test hook: must be 0 after every job). */
+let openSessions = 0
+export function openModelSessions(): number {
+  return openSessions
+}
+
+async function releaseSession(session: OrtSession): Promise<void> {
+  try {
+    await session.release?.()
+  } catch {
+    // nothing more we can do; the session object is dropped either way
+  } finally {
+    openSessions--
+  }
+}
+
+/**
+ * Run the model on a 1024×1024 RGB buffer, returning a 1024×1024 uint8 mask.
+ *
+ * TPM decision D24 (B-046 / QA3-01): a fresh InferenceSession for every run, released afterwards
+ * on success, failure and cancel, on both backends. Reusing one onnxruntime-node session makes the
+ * second `session.run()` kill the Electron utilityProcess (exit code 5, Linux verified; same
+ * backend on Apple-silicon macOS and Windows x64/arm64). A fresh session costs ~1 s.
+ */
+export async function predictMask(
+  modelPath: string,
+  rgb1024: Uint8Array,
+  prefer: OrtBackend = chooseOrtBackend(),
+  signal?: AbortSignal
+): Promise<Uint8Array> {
+  const { ort, backend } = await loadOrt(prefer)
+  return serialised(async () => {
+    if (signal) throwIfAborted(signal)
+    let session: OrtSession
     try {
-      const session = await ort.InferenceSession.create(modelPath, backend === 'web' ? { executionProviders: ['wasm'] } : {})
-      return { ort, session, backend }
+      session = await ort.InferenceSession.create(modelPath, backend === 'web' ? { executionProviders: ['wasm'] } : {})
     } catch (err) {
       throw new EngineError('TOOL_FAILED', "I couldn't load the background-removal model.", errMessage(err))
     }
-  })()
-  cached = { key, promise }
-  promise.catch(() => {
-    if (cached?.promise === promise) cached = undefined
+    openSessions++
+    try {
+      if (signal) throwIfAborted(signal)
+      const size = MODEL_INPUT_SIZE
+      const input = new ort.Tensor('float32', preprocess(rgb1024, size), [1, 3, size, size])
+      const outName = session.outputNames[0]!
+      let result
+      try {
+        result = await session.run({ [session.inputNames[0]!]: input }, [outName])
+      } catch (err) {
+        throw new EngineError('TOOL_FAILED', 'The background remover stumbled on this image.', errMessage(err))
+      }
+      const out = result[outName]
+      if (!out || !(out.data instanceof Float32Array) || out.data.length < size * size) {
+        throw new EngineError('TOOL_FAILED', 'The background remover gave an unexpected answer.', `dims=${String(out?.dims)}`)
+      }
+      // postprocess copies into a new Uint8Array: nothing refers to the session's output after release.
+      return postprocess(out.data, size * size)
+    } finally {
+      await releaseSession(session)
+    }
   })
-  return promise
-}
-
-/** Run the model on a 1024×1024 RGB buffer, returning a 1024×1024 uint8 mask. */
-export async function predictMask(modelPath: string, rgb1024: Uint8Array, prefer: OrtBackend = chooseOrtBackend()): Promise<Uint8Array> {
-  const { ort, session } = await loadModel(modelPath, prefer)
-  const size = MODEL_INPUT_SIZE
-  const input = new ort.Tensor('float32', preprocess(rgb1024, size), [1, 3, size, size])
-  const outName = session.outputNames[0]!
-  let result
-  try {
-    result = await session.run({ [session.inputNames[0]!]: input }, [outName])
-  } catch (err) {
-    throw new EngineError('TOOL_FAILED', 'The background remover stumbled on this image.', errMessage(err))
-  }
-  const out = result[outName]
-  if (!out || !(out.data instanceof Float32Array) || out.data.length < size * size) {
-    throw new EngineError('TOOL_FAILED', 'The background remover gave an unexpected answer.', `dims=${String(out?.dims)}`)
-  }
-  return postprocess(out.data, size * size)
 }
 
 /** Remove the background from an (already auto-oriented) image. Returns PNG bytes. */
@@ -161,7 +204,7 @@ export async function removeBackground(img: Sharp, modelPath: string, signal: Ab
   const small = await sharp(rgb, raw).resize(MODEL_INPUT_SIZE, MODEL_INPUT_SIZE, { fit: 'fill', kernel: 'lanczos3' }).raw().toBuffer()
   throwIfAborted(signal)
   onStage(0.2, 'Finding the subject')
-  const mask1024 = await predictMask(modelPath, small)
+  const mask1024 = await predictMask(modelPath, small, chooseOrtBackend(), signal)
   throwIfAborted(signal)
   onStage(0.9, 'Cutting it out')
   const mask = await sharp(mask1024, { raw: { width: MODEL_INPUT_SIZE, height: MODEL_INPUT_SIZE, channels: 1 }, limitInputPixels: MAX_INPUT_PIXELS })
@@ -171,9 +214,4 @@ export async function removeBackground(img: Sharp, modelPath: string, signal: Ab
     .toBuffer()
   if (mask.length !== width * height) throw new EngineError('INTERNAL', undefined, `mask size ${mask.length} != ${width * height}`)
   return sharp(rgb, raw).joinChannel(mask, { raw: { width, height, channels: 1 } }).png().toBuffer()
-}
-
-/** Test helper: drop the cached session. */
-export function resetModelSession(): void {
-  cached = undefined
 }
