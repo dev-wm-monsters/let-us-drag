@@ -1,0 +1,66 @@
+appId: com.letusdrag.app
+productName: Let us drag!
+copyright: Copyright © 2026 Let us drag! contributors
+artifactName: LetUsDrag-${version}-${os}-${arch}.${ext}
+directories:
+  output: release
+  buildResources: resources
+files:
+  - out/**
+  - package.json
+  - '!**/*.map'
+  # onnxruntime-node ships every platform; keep only the one being packaged.
+  - '!node_modules/onnxruntime-node/bin/**'
+  - node_modules/onnxruntime-node/bin/napi-v6/${platform}/${arch}/**
+  - '!node_modules/uiohook-napi/prebuilds/**'
+  - node_modules/uiohook-napi/prebuilds/${platform}-${arch}/**
+  - '!node_modules/uiohook-napi/libuiohook/**'
+  - '!node_modules/uiohook-napi/src/**'
+asar: true
+# All native deps are N-API prebuilds (ABI-stable); never rebuild them from source.
+npmRebuild: false
+asarUnpack:
+  - node_modules/sharp/**
+  - node_modules/@img/**
+  - node_modules/uiohook-napi/**
+  - node_modules/onnxruntime-node/**
+  - node_modules/onnxruntime-web/dist/*.wasm
+  - node_modules/@napi-rs/**
+extraResources:
+  - from: resources/bin/${platform}-${arch}
+    to: bin
+  - from: THIRD_PARTY_NOTICES.md
+    to: THIRD_PARTY_NOTICES.md
+mac:
+  target: dmg
+  category: public.app-category.utilities
+  icon: resources/icon.png
+  identity: '-'
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  extendInfo:
+    LSUIElement: true
+dmg:
+  title: Let us drag!
+win:
+  target:
+    - nsis
+    - portable
+  icon: resources/icon.png
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: LetUsDrag-${version}-win-${arch}-setup.${ext}
+portable:
+  artifactName: LetUsDrag-${version}-win-${arch}-portable.${ext}
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Utility
+  executableName: let-us-drag
+  icon: resources/icon.png
+  maintainer: Let us drag! contributors <343486206+dev-wm-monsters@users.noreply.github.com>
+  synopsis: Drag a file, hold Shift, feed it to the Uncle.
+publish: null
