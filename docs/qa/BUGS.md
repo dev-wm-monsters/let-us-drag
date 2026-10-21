@@ -45,3 +45,23 @@
 | B-041 | Low | Engine | Fixed | Windows folder commit could overwrite / fail transiently under antivirus | Engine Windows scan | f01ab94 |
 | B-042 | Medium | Engine | Fixed | MD/DOCX → HTML outputs unsanitized, no CSP (F-17/D17) | Security review | f01ab94 |
 | B-043 | Medium | TPM/QA | Fixed | Packaging checks failed on macOS: no FFMPEG-LICENSE.txt for bare-binary source; Intel Mac has no onnxruntime-node binary (wasm fallback expected) | Package CI | e9b692e |
+| B-044 | Medium | Platform | Fixed | IPC accepted drive-less rooted Windows paths ('\\b'); two platform tests assumed POSIX paths | Windows CI | a3012ec |
+| B-045 | High | Engine | Fixed | Windows: libvips operation cache kept converted originals open/locked (EBUSY on delete/rename) | Windows CI (security.test cleanup) | 5afa281 |
+| B-046 | High | Engine | Open | QA3-01: Remove BG fails every second time in an app session (onnxruntime-node session reused in utilityProcess → exit 5) | QA exploratory, tests/qa/probes/ort-utility | D24 |
+| B-047 | Medium | Frontend | Open | QA3-02: model-download stage text never shown (D15 second half) | QA exploratory | — |
+| B-048 | Medium | Frontend | Open | QA3-03: option hints clipped at overlay edges (Remove BG hint loses its first words) | QA visual review | — |
+| B-049 | Medium | Frontend | Open | QA3-04: long error messages run off the bottom of the overlay | QA exploratory | — |
+| B-050 | Medium | Frontend/Platform | Decided | QA3-05: Esc cannot cancel during chew (overlay not focusable) | QA exploratory | D19 (button only) |
+| B-051 | Medium | Platform/Frontend | Open | QA3-06: overlay catches clicks for the whole duration of long jobs | QA code review | D20 |
+| B-052 | Low | Platform | Open | QA3-07: overlay takes keyboard focus for ~2.5 s after every conversion | QA code review | D20 |
+| B-053 | Low | Engine | Open | QA3-08: output names over 255 bytes fail with a misleading "folder doesn't let me write" | QA exploratory | D23 |
+| B-054 | Low | Engine | Open | QA3-09: DOCX→Markdown loses the space between bold and italic runs | QA exploratory | — |
+| B-055 | Low | Platform | Open | QA3-10: test hook dropFilesOnFeed never resolves when it must open the Feed Window | QA exploratory | — |
+| B-056 | Low | Platform/Frontend | Open | QA3-11: a new gesture is ignored while a result card is shown | QA exploratory | D21 |
+| B-057 | Low | Frontend | Open | QA3-12: capture script overwrites docs/art GIFs even with LUD_SCREENS_DIR set | QA | — |
+| B-058 | Medium | Platform | Open | F-23: packaged app honours --remote-debugging-port | Security probe | D22 |
+| B-059 | Medium | Platform | Open | F-24: spell-check dictionary download at every launch (network request) | Security netlog probe | D22 |
+| B-060 | Low | Engine | Open | F-25: sanitizer passes `<svg><style>` mutation-XSS payloads (CSP still blocks) | Security review | — |
+| B-061 | Low | TPM | Open | F-26/F-27: ffmpeg licence gate fails open; LICENSE/README extras not hashed | Security review | — |
+| B-062 | Medium | TPM | Open | F-08/SEC-146: ESLint gate misses node:child_process exec, shell:true | Security review | — |
+| B-063 | Low | Engine | Deferred (public release) | SEC-105: unzip does not propagate Mark-of-the-Web / quarantine | Security review | public-release list |
