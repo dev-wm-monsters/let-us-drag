@@ -147,7 +147,11 @@ function main() {
     const unpacked = join(res, 'app.asar.unpacked', 'node_modules')
     check('PKG-05', existsSync(join(unpacked, 'sharp')), 'sharp unpacked from asar')
     const ortBin = join(unpacked, 'onnxruntime-node', 'bin', 'napi-v6')
-    if (existsSync(ortBin)) {
+    if (platform === 'darwin' && arch === 'x64') {
+      // onnxruntime-node has no macOS Intel binary; Remove BG uses the onnxruntime-web (wasm) fallback there.
+      const wasm = join(unpacked, 'onnxruntime-web', 'dist', 'ort-wasm-simd-threaded.wasm')
+      check('PKG-09', existsSync(wasm), 'onnxruntime-web wasm fallback unpacked (macOS Intel)', wasm)
+    } else if (existsSync(ortBin)) {
       const plats = readdirSync(ortBin)
       check('PKG-09', plats.length === 1 && plats[0] === platform, 'onnxruntime-node ships only this platform', plats.join(', '))
     } else {

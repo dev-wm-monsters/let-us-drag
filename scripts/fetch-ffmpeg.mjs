@@ -85,6 +85,14 @@ writeFileSync(
 if (platform === process.platform && arch === process.arch) {
   const bin = join(outDir, exe)
   const lic = spawnSync(bin, ['-hide_banner', '-L'], { encoding: 'utf8' })
+  if (!src.extras?.['FFMPEG-LICENSE.txt']) {
+    // Providers that ship a bare binary: record the licence statement the binary itself reports.
+    writeFileSync(
+      join(outDir, 'FFMPEG-LICENSE.txt'),
+      `Licence statement reported by this FFmpeg binary (ffmpeg -L):\n\n${lic.stdout}\n` +
+        `Full licence texts: see THIRD_PARTY_NOTICES.md and the licenses/ folder shipped with the app.\n`
+    )
+  }
   const conf = spawnSync(bin, ['-hide_banner', '-buildconf'], { encoding: 'utf8' })
   const text = `${lic.stdout}${lic.stderr}${conf.stdout}${conf.stderr}`
   if (/not legally redistributable|--enable-nonfree/i.test(text)) throw new Error(`${key}: ffmpeg is a nonfree build; refusing to ship it`)
