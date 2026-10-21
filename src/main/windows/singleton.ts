@@ -27,7 +27,7 @@ export class SingletonWindow {
       return Promise.resolve(existing)
     }
     if (this.opening) return this.opening
-    const win = createAppWindow(this.ctx, { ...this.options, show: false })
+    const win = createAppWindow(this.ctx, this.page, { ...this.options, show: false })
     this.win = win
     win.on('closed', () => {
       if (this.win === win) this.win = null

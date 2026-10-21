@@ -17,15 +17,17 @@ const input = join(work, 'input.txt')
 await writeFile(input, 'hello')
 const crashInput = join(work, 'crash.txt')
 await writeFile(crashInput, 'x')
+const hangInput = join(work, 'hang.txt')
+await writeFile(hangInput, 'x')
 
 const stderr = []
 const app = await electron.launch({
-  args: [repo, '--no-sandbox', '--disable-gpu'],
+  // userData isolation through the Chromium switch (main never calls app.setPath, TPM D5).
+  args: [repo, '--no-sandbox', '--disable-gpu', `--user-data-dir=${join(work, 'userData')}`],
   cwd: repo,
   env: {
     ...process.env,
     LUD_E2E: '1',
-    LUD_E2E_USER_DATA: join(work, 'userData'),
     LUD_E2E_ENGINE_WORKER: join(here, 'fake-engine-worker.cjs')
   }
 })
@@ -57,8 +59,11 @@ try {
   assert.equal(windows[0].visible, false)
   step('overlay exists and is hidden')
 
-  await waitFor(async () => stderr.join('').includes('tray created'), 'tray log')
-  step('tray created')
+  // stderr is attached after launch() resolves, so very early lines can be missed; the tray is
+  // created before the hooks are installed, so wait for that line and require no tray failure.
+  await waitFor(async () => stderr.join('').includes('tray created') || stderr.join('').includes('e2e hooks installed'), 'startup log')
+  assert.ok(!stderr.join('').includes('tray creation failed'), 'tray creation failed')
+  step('tray created (no tray failure logged)')
   await waitFor(async () => stderr.join('').includes('engine ready'), 'engine ready')
   step('engine worker started and answered ready')
 
@@ -110,9 +115,11 @@ try {
   assert.match(denied, /not made by Let us drag/)
   const badJob = await overlay.evaluate(() => window.lud.startJob({ id: '../x', optionId: 'to-png', inputPaths: ['relative'] }).then(() => 'ok', (e) => String(e)))
   assert.match(badJob, /Invalid job request/)
-  const badSettings = await overlay.evaluate(() => window.lud.setSettings({ triggerKey: 'capslock' }).then(() => 'ok', (e) => String(e)))
-  assert.match(badSettings, /Invalid settings/)
-  step('IPC validation rejects bad input / unrevealable paths')
+  const notAllowed = await overlay.evaluate(() => window.lud.setSettings({ triggerKey: 'alt' }).then(() => 'ok', (e) => String(e)))
+  assert.match(notAllowed, /Request rejected/, 'the overlay may not change settings (SEC-12 allowlist)')
+  const notAllowed2 = await overlay.evaluate(() => window.lud.requestAccessibility().then(() => 'ok', (e) => String(e)))
+  assert.match(notAllowed2, /Request rejected/)
+  step('IPC validation rejects bad input / unrevealable paths; per-page allowlist enforced')
 
   await overlay.evaluate((p) => window.lud.startJob({ id: 'smoke-pdf', optionId: 'to-pdf', inputPaths: [p] }), input)
   await waitFor(() => app.evaluate(() => globalThis.__ludTest.jobEvents().some((e) => e.jobId === 'smoke-pdf' && (e.type === 'done' || e.type === 'error'))), 'pdf job', 40_000)
@@ -137,6 +144,21 @@ try {
   await waitFor(() => app.evaluate(() => globalThis.__ludTest.jobEvents().some((e) => e.jobId === 'after-crash' && e.type === 'done')), 'job after restart')
   step('worker crash → INTERNAL error; worker restarted and serves the next job')
 
+  // P2 watchdog: a job stuck in synchronous code ignores the cancel → killed + CANCELLED after ~5 s.
+  await overlay.evaluate((p) => window.lud.startJob({ id: 'smoke-hang', optionId: 'zip', inputPaths: [p] }), hangInput)
+  await waitFor(() => app.evaluate(() => globalThis.__ludTest.jobEvents().some((e) => e.jobId === 'smoke-hang' && e.type === 'progress')), 'hang job started')
+  await new Promise((r) => setTimeout(r, 300))
+  const tCancel = Date.now()
+  await overlay.evaluate(() => window.lud.cancelJob('smoke-hang'))
+  await waitFor(() => app.evaluate(() => globalThis.__ludTest.jobEvents().some((e) => e.jobId === 'smoke-hang' && e.type === 'error')), 'watchdog', 15_000)
+  const waited = Date.now() - tCancel
+  const hangEv = await app.evaluate(() => globalThis.__ludTest.jobEvents().find((e) => e.jobId === 'smoke-hang' && e.type === 'error'))
+  assert.equal(hangEv.error.code, 'CANCELLED')
+  assert.ok(waited >= 4_500 && waited < 10_000, `watchdog fired after ${waited} ms`)
+  await overlay.evaluate((p) => window.lud.startJob({ id: 'after-hang', optionId: 'to-png', inputPaths: [p] }), input)
+  await waitFor(() => app.evaluate(() => globalThis.__ludTest.jobEvents().some((e) => e.jobId === 'after-hang' && e.type === 'done')), 'job after watchdog restart')
+  step(`watchdog: stuck job killed after ${waited} ms → CANCELLED; new worker serves the next job`)
+
   await app.evaluate(() => globalThis.__ludTest.openFeedWindow())
   await app.evaluate(() => globalThis.__ludTest.openSettingsWindow())
   const urls = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => w.isVisible()).map((w) => w.webContents.getURL()))
@@ -144,6 +166,45 @@ try {
   assert.ok(urls.some((u) => u.includes('/feed/')))
   assert.ok(urls.some((u) => u.includes('/settings/')))
   step('feed + settings windows open')
+
+  const settingsPage = await waitFor(async () => app.windows().find((p) => p.url().includes('/settings/')), 'settings page')
+  const badSettings = await settingsPage.evaluate(() => window.lud.setSettings({ triggerKey: 'capslock' }).then(() => 'ok', (e) => String(e)))
+  assert.match(badSettings, /Invalid settings/)
+  const extraKey = await settingsPage.evaluate(() => window.lud.setSettings({ sounds: false, evil: 1 }).then(() => 'ok', (e) => String(e)))
+  assert.match(extraKey, /Invalid settings/, 'strict schema rejects unknown keys')
+  step('settings window: strict settings validation')
+
+  // SEC-01/02/19: every window (incl. hidden helper windows) has the hardened webPreferences.
+  const prefs = await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows().map((w) => {
+      const p = w.webContents.getLastWebPreferences()
+      return { url: w.webContents.getURL(), contextIsolation: p.contextIsolation, sandbox: p.sandbox, nodeIntegration: p.nodeIntegration, webviewTag: p.webviewTag, webSecurity: p.webSecurity }
+    })
+  )
+  for (const p of prefs) {
+    assert.deepEqual({ ...p, url: undefined }, { url: undefined, contextIsolation: true, sandbox: true, nodeIntegration: false, webviewTag: false, webSecurity: true }, p.url)
+  }
+  step(`webPreferences hardened on all ${prefs.length} windows`)
+
+  // SEC-150: renderers cannot reach the network.
+  const fetched = await settingsPage.evaluate(() => fetch('https://example.com/').then(() => 'ok', (e) => String(e)))
+  assert.notEqual(fetched, 'ok')
+  step('remote fetch from a renderer is blocked')
+
+  // E2E hooks added in phase 2 (TPM D2/D3): delivered to the renderers.
+  const feedPage = await waitFor(async () => app.windows().find((p) => p.url().includes('/feed/')), 'feed page')
+  await feedPage.evaluate(() => {
+    window.__feedDrops = []
+    window.__cancels = 0
+    window.lud.onTestFeedDrop((p) => window.__feedDrops.push(p))
+    window.lud.onTestCancel(() => window.__cancels++)
+  })
+  await app.evaluate((_e, p) => globalThis.__ludTest.dropFilesOnFeed([p], 'zip'), input)
+  const feedDrop = await waitFor(() => feedPage.evaluate(() => window.__feedDrops[0]), 'feed test drop')
+  assert.deepEqual(feedDrop, { paths: [input], optionId: 'zip' })
+  await app.evaluate(() => globalThis.__ludTest.cancelActive())
+  await waitFor(() => feedPage.evaluate(() => window.__cancels === 1), 'test cancel')
+  step('dropFilesOnFeed / cancelActive delivered to the feed renderer')
 
   const status = await overlay.evaluate(() => window.lud.getPlatformStatus())
   console.log('  platform status:', JSON.stringify(status))

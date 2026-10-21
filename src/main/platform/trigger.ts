@@ -1,17 +1,29 @@
 // uiohook-napi adapter → trigger-logic (pure). The native module is loaded lazily, only when the
-// hook is actually started (never under LUD_E2E=1, never on macOS without Accessibility, never
+// hook is actually started (never in E2E mode, never on macOS without Accessibility, never
 // on Wayland — the caller decides via gesture-env.ts).
 //
-// uiohook-napi API verified in node_modules/uiohook-napi/dist/index.d.ts (v1.5.5):
+// uiohook-napi API verified in node_modules/uiohook-napi/dist/index.d.ts / index.js (v1.5.5):
 //   uIOhook.on('mousedown'|'mouseup'|'mousemove'|'keydown'|'keyup', cb); uIOhook.start(); uIOhook.stop()
-//   mouse events: { button, x, y, shiftKey, altKey, ctrlKey, metaKey }; key events: { keycode }
+//   mouse events: { button, x, y, shiftKey, altKey, ctrlKey, metaKey }; key events: { keycode, … }
 //   Dragging is reported as 'mousemove' (src/lib/addon.c maps EVENT_MOUSE_DRAGGED → MOVED).
 //   start() throws a JS Error (e.g. UIOHOOK_ERROR_AXAPI_DISABLED / X_OPEN_DISPLAY) on failure.
-// Coordinates from uiohook are physical pixels; they are only used for the movement threshold.
-// The overlay is positioned with screen.getCursorScreenPoint() (PLAN §3 decision 4).
+//   The native hook delivers every event to JS (uIOhook.handler) whether or not we listen.
+//
+// Privacy (docs/security/CHECKLIST.md SEC-30..35):
+// - The trigger is derived from the modifier flags that uiohook puts on MOUSE events, plus the
+//   left-button state and the movement distance. Nothing else.
+// - The key listener exists only so pressing the trigger key while the pointer is still (mid
+//   drag) arms at once. It maps the 8 modifier key codes to an abstract { key, held } event and
+//   returns immediately for every other key: no key code, character or timestamp is kept,
+//   logged, sent over IPC or written anywhere.
+// - Coordinates are only compared against the press point (movement threshold), never stored
+//   beyond the current gesture, logged or sent. The overlay is positioned with
+//   screen.getCursorScreenPoint() (PLAN §3 decision 4).
+// - This file does no I/O and no logging of events; arm/disarm side effects are deferred out of
+//   the hook callback (SEC-35).
 
 import type { TriggerKey } from '../../shared/types'
-import { initialTriggerState, triggerReducer, type ModifierFlags, type TriggerInput, type TriggerState } from './trigger-logic'
+import { initialTriggerState, triggerReducer, type ModifierFlags, type MouseButton, type TriggerInput, type TriggerState } from './trigger-logic'
 
 interface HookMouseEvent {
   button: unknown
@@ -32,12 +44,37 @@ interface HookLike {
   stop(): void
 }
 
+/** libuiohook mouse buttons: 1 = left, 2 = right, 3 = middle, 4/5 = extra. */
+export const LEFT_BUTTON = 1
+
+/**
+ * libuiohook virtual keycodes of the modifier keys (left and right variants).
+ * Values verified against node_modules/uiohook-napi/dist/index.d.ts (UiohookKey).
+ */
+export const MODIFIER_KEYCODES: Readonly<Record<TriggerKey, readonly number[]>> = {
+  shift: [42, 54], // Shift, ShiftRight
+  alt: [56, 3640], // Alt, AltRight
+  ctrl: [29, 3613], // Ctrl, CtrlRight
+  meta: [3675, 3676] // Meta, MetaRight
+}
+
+const KEYCODE_TO_MODIFIER: ReadonlyMap<number, TriggerKey> = new Map(
+  (Object.entries(MODIFIER_KEYCODES) as [TriggerKey, readonly number[]][]).flatMap(([key, codes]) => codes.map((c) => [c, key] as const))
+)
+
+/** The modifier a key code belongs to, or null (every other key is ignored). */
+export function modifierForKeycode(keycode: unknown): TriggerKey | null {
+  return typeof keycode === 'number' ? (KEYCODE_TO_MODIFIER.get(keycode) ?? null) : null
+}
+
 export interface GestureTriggerDeps {
   onArm(): void
   onDisarm(): void
   triggerKey: TriggerKey
   /** Loads the hook (default: require uiohook-napi). Injected in tests. */
   loadHook?: () => Promise<HookLike>
+  /** Runs arm/disarm side effects outside the hook callback (default: setImmediate). */
+  schedule?: (fn: () => void) => void
   log?: (message: string) => void
 }
 
@@ -50,6 +87,10 @@ async function defaultLoadHook(): Promise<HookLike> {
 
 function modifiers(e: HookMouseEvent): ModifierFlags {
   return { shift: Boolean(e.shiftKey), alt: Boolean(e.altKey), ctrl: Boolean(e.ctrlKey), meta: Boolean(e.metaKey) }
+}
+
+function button(e: HookMouseEvent): MouseButton {
+  return Number(e.button) === LEFT_BUTTON ? 'left' : 'other'
 }
 
 export class GestureTrigger {
@@ -66,16 +107,25 @@ export class GestureTrigger {
     return this.running
   }
 
-  /** Feed one input (exposed for tests). */
+  /** Feed one abstract input (exposed for tests). */
   feed(input: TriggerInput): void {
     const r = triggerReducer(this.state, input)
     this.state = r.state
-    if (r.action === 'arm') this.deps.onArm()
-    else if (r.action === 'disarm') this.deps.onDisarm()
+    if (r.action === null) return
+    const fn = r.action === 'arm' ? this.deps.onArm : this.deps.onDisarm
+    const schedule = this.deps.schedule ?? ((f: () => void) => void setImmediate(f))
+    schedule(() => fn())
   }
 
   setTriggerKey(key: TriggerKey): void {
     this.feed({ type: 'setTriggerKey', key })
+  }
+
+  private onKey(e: HookKeyEvent, held: boolean): void {
+    if (!this.running) return
+    const key = modifierForKeycode(e?.keycode)
+    if (key === null) return // not a modifier: dropped, nothing kept
+    this.feed({ type: 'modifier', key, held })
   }
 
   /** Start the global hook. Resolves to an error message on failure (never throws). */
@@ -86,11 +136,17 @@ export class GestureTrigger {
       this.hook = hook
       if (!this.listening) {
         this.listening = true
-        hook.on('mousedown', (e) => this.feed({ type: 'mouseDown', button: Number(e.button), x: e.x, y: e.y, modifiers: modifiers(e) }))
-        hook.on('mouseup', (e) => this.feed({ type: 'mouseUp', button: Number(e.button), x: e.x, y: e.y, modifiers: modifiers(e) }))
-        hook.on('mousemove', (e) => this.feed({ type: 'mouseMove', x: e.x, y: e.y, modifiers: modifiers(e) }))
-        hook.on('keydown', (e) => this.feed({ type: 'keyDown', keycode: e.keycode }))
-        hook.on('keyup', (e) => this.feed({ type: 'keyUp', keycode: e.keycode }))
+        hook.on('mousedown', (e) => {
+          if (this.running) this.feed({ type: 'down', button: button(e), x: e.x, y: e.y, modifiers: modifiers(e) })
+        })
+        hook.on('mouseup', (e) => {
+          if (this.running) this.feed({ type: 'up', button: button(e), x: e.x, y: e.y, modifiers: modifiers(e) })
+        })
+        hook.on('mousemove', (e) => {
+          if (this.running) this.feed({ type: 'move', x: e.x, y: e.y, modifiers: modifiers(e) })
+        })
+        hook.on('keydown', (e) => this.onKey(e, true))
+        hook.on('keyup', (e) => this.onKey(e, false))
       }
       hook.start()
       this.running = true
@@ -104,12 +160,12 @@ export class GestureTrigger {
 
   stop(): void {
     if (!this.running || !this.hook) return
+    this.running = false
     try {
       this.hook.stop()
     } catch (err) {
       this.deps.log?.(`input hook failed to stop: ${String(err)}`)
     }
-    this.running = false
     // Forget held keys/buttons; disarm if a gesture was in progress.
     this.feed({ type: 'reset' })
   }

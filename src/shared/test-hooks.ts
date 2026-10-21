@@ -23,6 +23,19 @@ export interface LudTestHooks {
   jobEvents(): JobEvent[]
   openFeedWindow(): Promise<void>
   openSettingsWindow(): Promise<void>
+  /**
+   * ADDITIVE (Platform, TPM D2): simulate files dropped on the Feed Window's drop zone.
+   * Opens the Feed Window if needed, then delivers TEST_FEED_DROP_CHANNEL to the feed renderer.
+   * optionId = option to pick, or null to just "hold" the files (feedMe flow), like dropFiles.
+   */
+  dropFilesOnFeed(paths: string[], optionId: OptionId | null): Promise<void>
+  /**
+   * ADDITIVE (Platform, TPM D3): press the visible cancel button ("Spit it out").
+   * Delivers TEST_CANCEL_CHANNEL to the overlay and Feed Window renderers; a renderer with a
+   * running job cancels it through the same code path as its cancel button. Renderers without a
+   * running job ignore it. Resolves when delivered (watch jobEvents() for the CANCELLED event).
+   */
+  cancelActive(): Promise<void>
 }
 
 /** IPC channel used by main to deliver a simulated drop to the overlay renderer (E2E only). */
@@ -31,6 +44,11 @@ export interface TestDropPayload {
   paths: string[]
   optionId: OptionId | null
 }
+
+/** ADDITIVE (TPM D2): main → feed renderer, payload TestDropPayload (E2E only, like TEST_DROP_CHANNEL). */
+export const TEST_FEED_DROP_CHANNEL = 'lud:test-feed-drop' as const
+/** ADDITIVE (TPM D3): main → overlay/feed renderers, no payload (E2E only). */
+export const TEST_CANCEL_CHANNEL = 'lud:test-cancel' as const
 
 /**
  * DOM contract for E2E/visual tests (renderer must honour):

@@ -63,4 +63,18 @@ export interface LudApi {
   onTestDrop(cb: (p: TestDropPayload) => void): () => void
 }
 
+/**
+ * ADDITIVE (Platform, TPM D2/D3) — E2E-only subscriptions, exposed by the preload on window.lud
+ * next to LudApi (the preload's object is `LudApi & LudTestApi`). They are a separate interface so
+ * every existing LudApi implementation (e.g. the renderer dev mock) stays valid; the TPM may fold
+ * them into LudApi once the Frontend implements them. Outside E2E both are no-ops that return a
+ * no-op unsubscribe (same rules as onTestDrop).
+ */
+export interface LudTestApi {
+  /** Simulated drop on the Feed Window (TEST_FEED_DROP_CHANNEL, from __ludTest.dropFilesOnFeed). */
+  onTestFeedDrop(cb: (p: TestDropPayload) => void): () => void
+  /** "Press the cancel button" (TEST_CANCEL_CHANNEL, from __ludTest.cancelActive). */
+  onTestCancel(cb: () => void): () => void
+}
+
 export type { OptionId }

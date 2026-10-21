@@ -15,13 +15,25 @@ export const jobIdSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/, 'Invalid jo
 const optionIds = Object.keys(OPTIONS) as [OptionId, ...OptionId[]]
 export const optionIdSchema = z.enum(optionIds)
 
+/**
+ * Windows device / extended-length namespaces (`\\.\`, `\\?\`, also written with forward
+ * slashes) are refused (SEC-14): they address devices and bypass normal path parsing.
+ * Plain UNC paths (`\\server\share\file`) ARE accepted, as a documented decision: files on
+ * network shares are ordinary user files, and Explorer drops them with UNC paths.
+ */
+export function isDeviceNamespacePath(p: string): boolean {
+  return /^[\\/]{2}[.?][\\/]/.test(p)
+}
+
 export const absolutePathSchema = z
   .string()
   .min(1)
   .max(MAX_PATH_LENGTH)
   .refine((p) => !p.includes('\0'), 'Invalid path')
+  .refine((p) => !isDeviceNamespacePath(p), 'Invalid path')
   .refine((p) => isAbsolute(p), 'Path must be absolute')
   .transform((p) => normalize(p))
+  .refine((p) => !isDeviceNamespacePath(p), 'Invalid path')
 
 export const pathListSchema = z.array(absolutePathSchema).min(1).max(MAX_INPUTS)
 

@@ -1,5 +1,7 @@
-// All ipcMain.handle handlers (src/shared/api.ts). Every payload is validated with zod and every
-// call must come from one of our own windows showing one of our renderer pages.
+// All ipcMain.handle handlers (src/shared/api.ts). Every payload is validated with zod (strict
+// schemas, SEC-13), and every call must come from the main frame of one of our own windows that
+// still shows the page main loaded into it, and that page must be allowed on the channel
+// (SEC-11/12, ipc-policy.ts).
 
 import { ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
 import { IPC } from '../shared/api'
@@ -13,17 +15,17 @@ import {
   parseOrThrow,
   validateJobRequest
 } from './ipc-validation'
+import { isTrustedSender } from './ipc-policy'
 import type { JobRegistry } from './job-registry'
-import { isTrustedRendererUrl, type RuntimeLayout } from './paths'
+import type { RendererPage, RuntimeLayout } from './paths'
 
 export interface IpcDeps {
   layout: RuntimeLayout
-  /** webContents ids of our windows (overlay, feed, settings). */
-  isOwnWebContents(id: number): boolean
-  overlayWebContentsId(): number
+  /** The page main loaded into this webContents (overlay, feed, settings), or null if not ours. */
+  pageOfWebContents(id: number): RendererPage | null
   getSettings(): Settings
   updateSettings(patch: unknown): Promise<Settings>
-  startJob(req: JobRequest, fromOverlay: boolean): void
+  startJob(req: JobRequest, from: { page: RendererPage; webContentsId: number }): void
   cancelJob(jobId: string): void
   registry: JobRegistry
   platformStatus(): PlatformStatus
@@ -49,20 +51,27 @@ type Handler = (event: IpcMainInvokeEvent, arg: unknown) => unknown
 export function registerIpc(deps: IpcDeps): () => void {
   const channels: string[] = []
 
-  const isTrusted = (event: IpcMainInvokeEvent, overlayOnly: boolean): boolean => {
-    if (!deps.isOwnWebContents(event.sender.id)) return false
-    if (overlayOnly && event.sender.id !== deps.overlayWebContentsId()) return false
+  const isTrusted = (channel: string, event: IpcMainInvokeEvent): boolean => {
     const frame = event.senderFrame
-    if (!frame || frame.parent !== null) return false // main frame only
-    return isTrustedRendererUrl(frame.url, deps.layout)
+    return isTrustedSender(
+      channel,
+      {
+        registeredPage: deps.pageOfWebContents(event.sender.id),
+        isMainFrame: frame !== null && frame === event.sender.mainFrame,
+        frameUrl: frame?.url ?? ''
+      },
+      deps.layout
+    )
   }
 
-  const handle = (channel: string, fn: Handler, opts: { overlayOnly?: boolean } = {}): void => {
+  const handle = (channel: string, fn: Handler): void => {
     channels.push(channel)
-    ipcMain.handle(channel, async (event, arg: unknown) => {
-      if (!isTrusted(event, opts.overlayOnly === true)) throw new UntrustedSenderError()
+    ipcMain.handle(channel, async (event, ...args: unknown[]) => {
+      if (!isTrusted(channel, event)) throw new UntrustedSenderError()
+      // Every channel takes at most one argument; extra arguments are a malformed request.
+      if (args.length > 1) throw new IpcInputError('Invalid request.')
       try {
-        return await fn(event, arg)
+        return await fn(event, args[0])
       } catch (err) {
         if (err instanceof IpcInputError) throw err
         // Do not leak internals; keep a friendly message.
@@ -75,7 +84,9 @@ export function registerIpc(deps: IpcDeps): () => void {
 
   handle(IPC.startJob, async (e, raw) => {
     const req = await validateJobRequest(raw)
-    deps.startJob(req, e.sender.id === deps.overlayWebContentsId())
+    const page = deps.pageOfWebContents(e.sender.id)
+    if (!page) throw new UntrustedSenderError()
+    deps.startJob(req, { page, webContentsId: e.sender.id })
   })
 
   handle(IPC.cancelJob, (_e, raw) => {
@@ -93,15 +104,11 @@ export function registerIpc(deps: IpcDeps): () => void {
   handle(IPC.getPlatformStatus, () => deps.platformStatus())
   handle(IPC.requestAccessibility, () => deps.requestAccessibility())
 
-  handle(
-    IPC.overlayInteractive,
-    (_e, raw) => {
-      deps.overlay.setInteractive(parseOrThrow(booleanSchema, raw, 'flag'))
-    },
-    { overlayOnly: true }
-  )
-  handle(IPC.overlayDone, () => deps.overlay.done(), { overlayOnly: true })
-  handle(IPC.overlayEngaged, () => deps.overlay.engaged(), { overlayOnly: true })
+  handle(IPC.overlayInteractive, (_e, raw) => {
+    deps.overlay.setInteractive(parseOrThrow(booleanSchema, raw, 'flag'))
+  })
+  handle(IPC.overlayDone, () => deps.overlay.done())
+  handle(IPC.overlayEngaged, () => deps.overlay.engaged())
 
   handle(IPC.openFeedWindow, async () => {
     await deps.openFeedWindow()

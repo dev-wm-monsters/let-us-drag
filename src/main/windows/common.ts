@@ -10,28 +10,30 @@ export const E2E_RENDERER_ARG = '--lud-e2e'
 export interface WindowContext {
   layout: RuntimeLayout
   e2e: boolean
-  /** Called for every created window so IPC can trust its webContents. */
-  register(win: BrowserWindow): void
+  /** Called for every created window so IPC can trust its webContents (and only for `page`). */
+  register(win: BrowserWindow, page: RendererPage): void
 }
 
 export function createAppWindow(
   ctx: WindowContext,
+  page: RendererPage,
   options: BrowserWindowConstructorOptions,
   extraPrefs: { backgroundThrottling?: boolean; transparent?: boolean } = {}
 ): BrowserWindow {
   const win = new BrowserWindow({
     ...options,
     webPreferences: secureWebPreferences({
+      ...extraPrefs,
       preload: preloadPath(ctx.layout),
-      additionalArguments: ctx.e2e ? [E2E_RENDERER_ARG] : [],
-      devTools: !ctx.layout.isPackaged,
-      ...extraPrefs
+      // ctx.e2e is false in packaged builds (e2e-mode.ts), so this flag never reaches production.
+      additionalArguments: ctx.e2e && !ctx.layout.isPackaged ? [E2E_RENDERER_ARG] : [],
+      devTools: !ctx.layout.isPackaged
     })
   })
   hardenWebContents(win.webContents)
   // Our windows never need an application menu bar (Windows/Linux).
   win.removeMenu()
-  ctx.register(win)
+  ctx.register(win, page)
   return win
 }
 
