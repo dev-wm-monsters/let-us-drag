@@ -31,7 +31,10 @@ export async function describePaths(paths: readonly string[]): Promise<DroppedIt
         throw err
       }
       const isDirectory = st.isDirectory()
-      if (!isDirectory && !st.isFile()) throw new EngineError('UNSUPPORTED', "That's not a regular file.", p)
+      // SEC-43: FIFOs, sockets and devices are never opened (reading a FIFO would block forever).
+      // stat() follows symlinks, so a link to a regular file is fine (QA ERR-11) and a link to a
+      // FIFO is refused like the FIFO itself.
+      if (!isDirectory && !st.isFile()) throw new EngineError('INPUT_INVALID', "That's not a regular file, so I won't touch it.", p)
       return { path: p, name: basename(p), ext: extOf(p, isDirectory), isDirectory, sizeBytes: isDirectory ? 0 : st.size }
     })
   )

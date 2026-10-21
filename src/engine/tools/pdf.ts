@@ -9,9 +9,11 @@
 //    (process.type === 'utility'), then expects a DOM. We import it while presenting Node mode
 //    and with @napi-rs/canvas blocked, which is enough for text extraction.
 import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import type { EngineAdapters, PdfRenderOptions } from '../api'
-import { EngineError, errMessage, invalidInput, throwIfAborted } from '../errors'
+import { EngineError, aboutFile, errMessage, invalidInput, throwIfAborted } from '../errors'
+import { MAX_PDF_IMAGE_PIXELS, MAX_PDF_PAGES } from '../limits'
+import { isPdfHead } from '../sniff'
 import { packageDir } from '../resolve'
 import { isPng } from './ico'
 
@@ -92,9 +94,27 @@ export function fitScale(width: number, height: number, scale = RENDER_SCALE): n
   return s
 }
 
+const NOT_A_PDF = "This doesn't look like a PDF. It may be damaged, or it isn't what its name says."
+
+/** Read a PDF fully (pdf.js and pdf-lib need the bytes) after checking its signature (SEC-40). */
+export async function readPdfBytes(path: string): Promise<Uint8Array> {
+  const data = new Uint8Array(await readFile(path))
+  if (!isPdfHead(data.subarray(0, 1024))) throw invalidInput(NOT_A_PDF)
+  return data
+}
+
+function tooManyPages(n: number): EngineError {
+  return invalidInput(`This PDF has ${n.toLocaleString('en-US')} pages. I can turn at most ${MAX_PDF_PAGES.toLocaleString('en-US')} pages into pictures at once.`)
+}
+
+/**
+ * pdf.js options (SEC-71): local-only font/cmap/wasm data, no system fonts, no XFA, no font-face
+ * injection, a cap on embedded image size, no OffscreenCanvas/ImageDecoder. (`isEvalSupported`
+ * no longer exists in pdfjs-dist 6.4.299 and the worker has no eval/new Function code: verified by grep.)
+ */
 async function openPdf(path: string): Promise<PdfDoc> {
   const pdfjs = await loadPdfjs()
-  const data = new Uint8Array(await readFile(path))
+  const data = await readPdfBytes(path)
   const task = pdfjs.getDocument({
     data,
     standardFontDataUrl: assetDir('standard_fonts'),
@@ -103,6 +123,11 @@ async function openPdf(path: string): Promise<PdfDoc> {
     wasmUrl: assetDir('wasm'),
     iccUrl: assetDir('iccs'),
     useSystemFonts: false,
+    enableXfa: false,
+    disableFontFace: true,
+    maxImageSize: MAX_PDF_IMAGE_PIXELS,
+    isOffscreenCanvasSupported: false,
+    isImageDecoderSupported: false,
     verbosity: 0
   })
   try {
@@ -135,6 +160,7 @@ export async function renderPdfPages(
   const doc = await openPdf(path)
   try {
     const total = doc.numPages
+    if (total > MAX_PDF_PAGES) throw tooManyPages(total)
     for (let i = 1; i <= total; i++) {
       throwIfAborted(signal)
       const page = await doc.getPage(i)
@@ -151,7 +177,8 @@ export async function renderPdfPages(
           viewport
         }).promise
       } catch (err) {
-        throw new EngineError('TOOL_FAILED', `I couldn't draw page ${i} of this PDF.`, errMessage(err))
+        // pdf.js render failures come from broken page content (TPM decision D6: INPUT_INVALID).
+        throw invalidInput(`I couldn't draw page ${i} of this PDF. It may be damaged.`, err)
       }
       const png = await canvas.encode('png')
       page.cleanup()
@@ -169,10 +196,13 @@ async function renderWithHost(
   onPage: (page: RenderedPage, total: number) => Promise<void>,
   hostRender: NonNullable<EngineAdapters['renderPdfPages']>
 ): Promise<number> {
-  const bytes = new Uint8Array(await readFile(path))
-  if (!/^%PDF-/.test(Buffer.from(bytes.subarray(0, 1024)).toString('latin1').trimStart())) {
-    throw invalidInput("I couldn't open this PDF. It may be damaged.")
-  }
+  // Count pages in the engine first (pdf.js parsing works inside Electron), so the host is never
+  // asked to rasterise a 100 000-page PDF.
+  const doc = await openPdf(path)
+  const count = doc.numPages
+  await doc.loadingTask.destroy().catch(() => undefined)
+  if (count > MAX_PDF_PAGES) throw tooManyPages(count)
+  const bytes = await readPdfBytes(path)
   const pages = await hostRender(bytes, PDF_RENDER_OPTIONS)
   throwIfAborted(signal)
   if (!Array.isArray(pages) || pages.length === 0 || !pages.every((p) => p instanceof Uint8Array && isPng(p))) {
@@ -193,8 +223,14 @@ export async function pdfToText(path: string, signal: AbortSignal, onProgress?: 
     const pages: string[] = []
     for (let i = 1; i <= doc.numPages; i++) {
       throwIfAborted(signal)
-      const page = await doc.getPage(i)
-      const content = await page.getTextContent()
+      let content
+      let page
+      try {
+        page = await doc.getPage(i)
+        content = await page.getTextContent()
+      } catch (err) {
+        throw invalidInput(`I couldn't read page ${i} of this PDF. It may be damaged.`, err)
+      }
       let text = ''
       for (const item of content.items) {
         if ('str' in item) {
@@ -222,15 +258,22 @@ export async function mergePdfs(paths: readonly string[], signal: AbortSignal, o
     onEach?.(i)
     let src
     try {
-      src = await PDFDocument.load(await readFile(paths[i]!), { updateMetadata: false })
-    } catch (err) {
-      if ((err as { name?: string }).name === 'EncryptedPDFError' || /encrypted/i.test(errMessage(err))) {
-        throw invalidInput('One of these PDFs is password-protected, so I cannot merge it.', err)
+      const bytes = await readPdfBytes(paths[i]!)
+      try {
+        src = await PDFDocument.load(bytes, { updateMetadata: false })
+      } catch (err) {
+        if ((err as { name?: string }).name === 'EncryptedPDFError' || /encrypted/i.test(errMessage(err))) {
+          throw invalidInput('This PDF is password-protected, so I cannot merge it.', err)
+        }
+        throw invalidInput("I couldn't open this PDF. It may be damaged.", err)
       }
-      throw invalidInput("I couldn't open one of these PDFs. It may be damaged.", err)
+      const pages = await out.copyPages(src, src.getPageIndices()).catch((err: unknown) => {
+        throw invalidInput("I couldn't copy the pages of this PDF. It may be damaged.", err)
+      })
+      pages.forEach((p) => out.addPage(p))
+    } catch (err) {
+      throw aboutFile(err, basename(paths[i]!))
     }
-    const pages = await out.copyPages(src, src.getPageIndices())
-    pages.forEach((p) => out.addPage(p))
   }
   return out.save()
 }

@@ -111,8 +111,16 @@ const hasRealModel = !!realModel && existsSync(realModel)
 describe.skipIf(!hasRealModel)('real isnet-general-use model (set LUD_MODEL_PATH to run)', () => {
   it('cuts a bright subject out of a dark background', async () => {
     const src = join(dir, 'subject.png')
-    const circle = Buffer.from('<svg width="400" height="300"><rect width="400" height="300" fill="#202830"/><circle cx="200" cy="150" r="90" fill="#f0c020"/></svg>')
-    await sharp(circle).png().toFile(src)
+    // Raw pixels, not SVG: the engine blocks libvips' SVG loader process-wide (SEC-50).
+    const [w, h] = [400, 300]
+    const px = Buffer.alloc(w * h * 3)
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const inside = (x - 200) ** 2 + (y - 150) ** 2 <= 90 ** 2
+        px.set(inside ? [0xf0, 0xc0, 0x20] : [0x20, 0x28, 0x30], (y * w + x) * 3)
+      }
+    }
+    await sharp(px, { raw: { width: w, height: h, channels: 3 } }).png().toFile(src)
     const [out] = await convertOk('remove-bg', [src], { options: { env: { LUD_MODEL_PATH: realModel } } })
     const { data, info } = await sharp(out!).raw().toBuffer({ resolveWithObject: true })
     expect(info.channels).toBe(4)

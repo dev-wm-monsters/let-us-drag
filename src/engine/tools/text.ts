@@ -4,8 +4,10 @@
 import { readFile } from 'node:fs/promises'
 import type { OptionId } from '../../shared/types'
 import { EngineError, invalidInput } from '../errors'
+import { MAX_HTML_BYTES, formatBytes } from '../limits'
 import { htmlToDocx, plainTextToDocxHtml } from './docx-writer'
 import { htmlToMarkdown, htmlToText, plainTextToHtml, sanitizeHtml, wrapHtmlDocument } from './html'
+import { scanZipContainer } from './zipscan'
 
 export interface TextOutput {
   data: Uint8Array | string
@@ -29,6 +31,9 @@ export async function readText(path: string): Promise<string> {
 /** Render an HTML fragment/document to PDF bytes through the adapter, sanitized. */
 export async function renderPdf(html: string, title: string, htmlToPdf: HtmlToPdf): Promise<Uint8Array> {
   const doc = wrapHtmlDocument(sanitizeHtml(html), title, { csp: true })
+  if (Buffer.byteLength(doc, 'utf8') > MAX_HTML_BYTES) {
+    throw invalidInput(`This document is too big to print (more than ${formatBytes(MAX_HTML_BYTES)} of text and pictures).`)
+  }
   let pdf: Uint8Array
   try {
     pdf = await htmlToPdf(doc)
@@ -84,26 +89,42 @@ async function loadMammoth(): Promise<Mammoth> {
   return mod.default ?? mod
 }
 
-async function docxHtml(path: string): Promise<string> {
+const NOT_DOCX = "I couldn't read this Word document. It may be damaged, or it isn't a .docx file."
+
+/** SEC-40/91: a real DOCX (ZIP signature, word/document.xml) whose unpacked size is within the caps. */
+async function assertDocx(path: string, signal: AbortSignal): Promise<void> {
+  const { names } = await scanZipContainer(path, 'Word document', signal)
+  if (!names.has('word/document.xml')) throw invalidInput(NOT_DOCX)
+}
+
+async function docxHtml(path: string, signal: AbortSignal): Promise<string> {
+  await assertDocx(path, signal)
   const mammoth = await loadMammoth()
   try {
     // externalFileAccess stays false: a DOCX must not make us read other files on disk.
     return (await mammoth.convertToHtml({ path }, { externalFileAccess: false })).value
   } catch (err) {
-    throw invalidInput("I couldn't read this Word document. It may be damaged, or it isn't a .docx file.", err)
+    throw invalidInput(NOT_DOCX, err)
   }
 }
 
 /** docx → pdf | html | md | txt */
-export async function convertDocx(optionId: OptionId, path: string, title: string, htmlToPdf: HtmlToPdf): Promise<TextOutput> {
+export async function convertDocx(
+  optionId: OptionId,
+  path: string,
+  title: string,
+  htmlToPdf: HtmlToPdf,
+  signal: AbortSignal = new AbortController().signal
+): Promise<TextOutput> {
   switch (optionId) {
     case 'to-pdf':
-      return { data: await renderPdf(await docxHtml(path), title, htmlToPdf), ext: 'pdf' }
+      return { data: await renderPdf(await docxHtml(path, signal), title, htmlToPdf), ext: 'pdf' }
     case 'to-html':
-      return { data: wrapHtmlDocument(await docxHtml(path), title), ext: 'html' }
+      return { data: wrapHtmlDocument(await docxHtml(path, signal), title), ext: 'html' }
     case 'to-md':
-      return { data: htmlToMarkdown(await docxHtml(path)), ext: 'md' }
+      return { data: htmlToMarkdown(await docxHtml(path, signal)), ext: 'md' }
     case 'to-txt': {
+      await assertDocx(path, signal)
       const mammoth = await loadMammoth()
       try {
         const text = (await mammoth.extractRawText({ path })).value

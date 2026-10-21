@@ -4,7 +4,9 @@
 // booleans and dates (as ISO strings).
 import type { OptionId } from '../../shared/types'
 import { EngineError, invalidInput } from '../errors'
+import { MAX_EXPANDED_NODES, YAML_MAX_ALIASES, YAML_MAX_DEPTH } from '../limits'
 import { readText } from './text'
+import { scanZipContainer } from './zipscan'
 
 export type Row = (string | number | boolean | null)[]
 export interface Table {
@@ -13,11 +15,10 @@ export interface Table {
 }
 export type Data = { kind: 'table'; table: Table } | { kind: 'value'; value: unknown }
 
-/** Limits that keep YAML alias bombs and huge nesting from exhausting memory. */
-const YAML_MAX_ALIASES = 1000
-const YAML_MAX_DEPTH = 200
-/** Max nodes after expanding YAML aliases (shared references are counted every time they appear). */
-export const MAX_EXPANDED_NODES = 2_000_000
+// YAML alias bombs and huge nesting are stopped by YAML_MAX_ALIASES / YAML_MAX_DEPTH (js-yaml
+// options, verified in node_modules/js-yaml/dist/js-yaml.d.ts 5.5.0) and MAX_EXPANDED_NODES
+// (shared references are counted every time they appear), all in ../limits.
+export { MAX_EXPANDED_NODES }
 
 // ---------------------------------------------------------------------------------------------
 // Pure helpers (unit tested)
@@ -112,7 +113,10 @@ export function excelCell(v: unknown): string | number | boolean | null {
 // ---------------------------------------------------------------------------------------------
 // Reading
 
-async function readXlsx(path: string): Promise<Table> {
+async function readXlsx(path: string, signal: AbortSignal): Promise<Table> {
+  // SEC-91: entry count and real uncompressed size are checked before exceljs (JSZip) loads it all.
+  const { names } = await scanZipContainer(path, 'Excel file', signal)
+  if (!names.has('xl/workbook.xml')) throw invalidInput("This isn't a real Excel (.xlsx) file, so I can't read it.")
   const ExcelJS = await loadExcel()
   const wb = new ExcelJS.Workbook()
   try {
@@ -161,6 +165,9 @@ function parseYaml(text: string, yaml: typeof import('js-yaml')): unknown {
   try {
     docs = yaml.loadAll(text, { schema: yaml.CORE_SCHEMA, maxAliases: YAML_MAX_ALIASES, maxDepth: YAML_MAX_DEPTH })
   } catch (err) {
+    if (/maxAliases|maxDepth|maxTotalMergeKeys/.test(String(err))) {
+      throw invalidInput('This YAML file reuses or nests things too much (it looks like a YAML bomb), so I refused to read it.', err)
+    }
     throw invalidInput("I couldn't read this YAML file. There's a syntax error in it.", err)
   }
   if (docs.length === 0) throw invalidInput('This YAML file is empty.')
@@ -169,12 +176,12 @@ function parseYaml(text: string, yaml: typeof import('js-yaml')): unknown {
   return value
 }
 
-export async function readData(path: string, ext: string): Promise<Data> {
+export async function readData(path: string, ext: string, signal: AbortSignal = new AbortController().signal): Promise<Data> {
   switch (ext.toLowerCase()) {
     case 'csv':
       return { kind: 'table', table: parseCsv(await readText(path), await loadPapa()) }
     case 'xlsx':
-      return { kind: 'table', table: await readXlsx(path) }
+      return { kind: 'table', table: await readXlsx(path, signal) }
     case 'json': {
       const text = await readText(path)
       if (!text.trim()) throw invalidInput('This JSON file is empty.')
@@ -214,8 +221,13 @@ async function writeXlsx(t: Table): Promise<Buffer> {
   return Buffer.from(await wb.xlsx.writeBuffer())
 }
 
-export async function convertData(optionId: OptionId, path: string, ext: string): Promise<{ data: Uint8Array | string; ext: string }> {
-  const data = await readData(path, ext)
+export async function convertData(
+  optionId: OptionId,
+  path: string,
+  ext: string,
+  signal: AbortSignal = new AbortController().signal
+): Promise<{ data: Uint8Array | string; ext: string }> {
+  const data = await readData(path, ext, signal)
   switch (optionId) {
     case 'to-csv':
       return { data: toCsv(asTable(data), await loadPapa()), ext: 'csv' }

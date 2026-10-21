@@ -220,7 +220,7 @@ describe('model manager', () => {
     resetModelCacheState()
     const cacheDir = join(dir, 'models1')
     const progress: number[] = []
-    const p = await ensureModel({ cacheDir, signal: new AbortController().signal, env: {}, fetchImpl: okFetch, urls: ['https://primary/x.onnx'], sha256: sha, onProgress: (v) => progress.push(v) })
+    const p = await ensureModel({ cacheDir, signal: new AbortController().signal, env: {}, fetchImpl: okFetch, urls: ['https://primary/x.onnx'], allowedHosts: ['primary'], sha256: sha, onProgress: (v) => progress.push(v) })
     expect(await readFile(p)).toEqual(body)
     expect(progress.at(-1)).toBe(1)
     expect((await readdir(cacheDir)).filter((f) => f.endsWith('.part'))).toEqual([])
@@ -229,7 +229,7 @@ describe('model manager', () => {
     expect(again).toBe(p)
   })
 
-  it('falls back to the upstream URL when the mirror fails or has the wrong bytes', async () => {
+  it('falls back to the next URL when the first fails or has the wrong bytes', async () => {
     resetModelCacheState()
     const urls: string[] = []
     const fetchImpl = (async (u: string | URL | Request) => {
@@ -237,7 +237,7 @@ describe('model manager', () => {
       if (String(u).includes('mirror')) return new Response('wrong bytes', { status: 200 })
       return new Response(body, { status: 200 })
     }) as typeof fetch
-    const p = await ensureModel({ cacheDir: join(dir, 'models2'), signal: new AbortController().signal, env: {}, fetchImpl, urls: ['https://mirror/x', 'https://upstream/x'], sha256: sha })
+    const p = await ensureModel({ cacheDir: join(dir, 'models2'), signal: new AbortController().signal, env: {}, fetchImpl, urls: ['https://mirror/x', 'https://upstream/x'], allowedHosts: ['mirror', 'upstream'], sha256: sha })
     expect(urls).toEqual(['https://mirror/x', 'https://upstream/x'])
     expect(await readFile(p)).toEqual(body)
   })
@@ -246,7 +246,7 @@ describe('model manager', () => {
     resetModelCacheState()
     const cacheDir = join(dir, 'models3')
     const fetchImpl = (async () => new Response('nope', { status: 404 })) as typeof fetch
-    await expect(ensureModel({ cacheDir, signal: new AbortController().signal, env: {}, fetchImpl, urls: ['https://a', 'https://b'], sha256: sha })).rejects.toMatchObject({ code: 'MODEL_DOWNLOAD_FAILED' })
+    await expect(ensureModel({ cacheDir, signal: new AbortController().signal, env: {}, fetchImpl, urls: ['https://a', 'https://b'], allowedHosts: ['a', 'b'], sha256: sha })).rejects.toMatchObject({ code: 'MODEL_DOWNLOAD_FAILED' })
     expect(await readdir(cacheDir)).toEqual([])
   })
 
@@ -255,7 +255,7 @@ describe('model manager', () => {
     const cacheDir = join(dir, 'models4')
     await mkdir(cacheDir, { recursive: true })
     await writeFile(join(cacheDir, 'isnet-general-use.onnx'), 'corrupt')
-    const p = await ensureModel({ cacheDir, signal: new AbortController().signal, env: {}, fetchImpl: okFetch, urls: ['https://x'], sha256: sha })
+    const p = await ensureModel({ cacheDir, signal: new AbortController().signal, env: {}, fetchImpl: okFetch, urls: ['https://x'], allowedHosts: ['x'], sha256: sha })
     expect(await readFile(p)).toEqual(body)
   })
 

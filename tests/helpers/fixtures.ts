@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
-import { crc32 } from 'node:zlib'
+import { crc32, deflateRawSync } from 'node:zlib'
 import sharp from 'sharp'
 
 const execFileP = promisify(execFile)
@@ -290,6 +290,10 @@ export interface RawZipEntry {
   data: string | Buffer
   /** Upper 16 bits = Unix mode when madeBy is Unix (3). */
   unixMode?: number
+  /** 0 = stored (default), 8 = deflated (raw deflate of `data`). */
+  method?: 0 | 8
+  /** Lie about the uncompressed size in both headers (zip-bomb fixtures). */
+  declaredSize?: number
 }
 
 /**
@@ -302,16 +306,19 @@ export function rawZip(entries: readonly RawZipEntry[]): Buffer {
   let offset = 0
   for (const e of entries) {
     const name = Buffer.from(e.name, 'utf8')
-    const data = Buffer.isBuffer(e.data) ? e.data : Buffer.from(e.data)
-    const crc = crc32(data)
+    const raw = Buffer.isBuffer(e.data) ? e.data : Buffer.from(e.data)
+    const method = e.method ?? 0
+    const data = method === 8 ? deflateRawSync(raw) : raw
+    const crc = crc32(raw)
+    const usize = e.declaredSize ?? raw.length
     const local = Buffer.alloc(30)
     local.writeUInt32LE(0x04034b50, 0)
     local.writeUInt16LE(20, 4) // version needed
     local.writeUInt16LE(0x0800, 6) // UTF-8 names
-    local.writeUInt16LE(0, 8) // stored
+    local.writeUInt16LE(method, 8)
     local.writeUInt32LE(crc, 14)
     local.writeUInt32LE(data.length, 18)
-    local.writeUInt32LE(data.length, 22)
+    local.writeUInt32LE(usize, 22)
     local.writeUInt16LE(name.length, 26)
     locals.push(local, name, data)
     const central = Buffer.alloc(46)
@@ -319,10 +326,10 @@ export function rawZip(entries: readonly RawZipEntry[]): Buffer {
     central.writeUInt16LE(e.unixMode !== undefined ? (3 << 8) | 20 : 20, 4) // made by
     central.writeUInt16LE(20, 6)
     central.writeUInt16LE(0x0800, 8)
-    central.writeUInt16LE(0, 10)
+    central.writeUInt16LE(method, 10)
     central.writeUInt32LE(crc, 16)
     central.writeUInt32LE(data.length, 20)
-    central.writeUInt32LE(data.length, 24)
+    central.writeUInt32LE(usize, 24)
     central.writeUInt16LE(name.length, 28)
     central.writeUInt32LE(e.unixMode !== undefined ? (e.unixMode << 16) >>> 0 : 0, 38)
     central.writeUInt32LE(offset, 42)
@@ -383,6 +390,37 @@ export function tinyOnnxModel(size = 1024): Buffer {
   ])
   const opset = Buffer.concat([fieldBytes(1, ''), fieldVarint(2, 13)])
   return Buffer.concat([fieldVarint(1, 8 /* ir_version */), fieldBytes(2, 'lud-tests'), fieldBytes(7, graph), fieldBytes(8, opset)])
+}
+
+// --- hostile inputs ---------------------------------------------------------------------------
+
+function pngChunk(type: string, data: Buffer): Buffer {
+  const len = Buffer.alloc(4)
+  len.writeUInt32BE(data.length)
+  const body = Buffer.concat([Buffer.from(type, 'latin1'), data])
+  const crc = Buffer.alloc(4)
+  crc.writeUInt32BE(crc32(body))
+  return Buffer.concat([len, body, crc])
+}
+
+/**
+ * A tiny PNG whose header DECLARES `width`×`height` (e.g. 30000×30000) but carries almost no data:
+ * the "decompression bomb" shape used to test the pixel cap without allocating anything.
+ */
+export function pngDeclaring(width: number, height: number): Buffer {
+  const ihdr = Buffer.alloc(13)
+  ihdr.writeUInt32BE(width, 0)
+  ihdr.writeUInt32BE(height, 4)
+  ihdr[8] = 8 // bit depth
+  ihdr[9] = 0 // greyscale
+  const idat = deflateRawSync(Buffer.alloc(16)) // far too little data, never reached
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), pngChunk('IHDR', ihdr), pngChunk('IDAT', idat), pngChunk('IEND', Buffer.alloc(0))])
+}
+
+/** A minimal valid-looking XLSX/DOCX skeleton plus extra entries (for bomb fixtures). */
+export function officeZip(kind: 'xlsx' | 'docx', extra: readonly RawZipEntry[] = []): Buffer {
+  const main = kind === 'xlsx' ? 'xl/workbook.xml' : 'word/document.xml'
+  return rawZip([{ name: '[Content_Types].xml', data: '<Types/>' }, { name: main, data: '<x/>' }, ...extra])
 }
 
 // --- misc -------------------------------------------------------------------------------------

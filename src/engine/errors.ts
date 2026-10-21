@@ -1,5 +1,6 @@
 // Engine errors: every failure is mapped to a JobErrorCode with a friendly, user-safe message.
 import type { JobError, JobErrorCode } from '../shared/types'
+import { MAX_DETAIL_CHARS, MAX_MESSAGE_CHARS } from './limits'
 
 export const FRIENDLY_MESSAGES: Readonly<Record<JobErrorCode, string>> = {
   UNSUPPORTED: "The Uncle can't do that with this file.",
@@ -40,8 +41,43 @@ function errMessage(err: unknown): string {
   return String(err)
 }
 
-/** Map any thrown value to a JobError (never leaks stack traces into `message`). */
+/** One line, at most `max` characters (an ellipsis marks the cut). */
+export function clampText(text: string, max: number): string {
+  const one = text.replace(/\s+/g, ' ').trim()
+  return one.length <= max ? one : `${one.slice(0, Math.max(0, max - 1)).trimEnd()}…`
+}
+
+/** Shorten a file name for messages, keeping its start and its extension: "very-long…name.png". */
+export function shortName(name: string, max = 48): string {
+  if (name.length <= max) return name
+  const keepEnd = Math.min(12, Math.floor(max / 3))
+  return `${name.slice(0, max - keepEnd - 1)}…${name.slice(-keepEnd)}`
+}
+
+/**
+ * Map any thrown value to a JobError (never leaks stack traces into `message`). The message is a
+ * single line of at most 200 characters; `detail` (logs only) is capped at 4 KB.
+ */
 export function toJobError(err: unknown): JobError {
+  const e = rawJobError(err)
+  const out: JobError = { code: e.code, message: clampText(e.message, MAX_MESSAGE_CHARS) || FRIENDLY_MESSAGES[e.code] }
+  if (e.detail !== undefined) out.detail = e.detail.length > MAX_DETAIL_CHARS ? `${e.detail.slice(0, MAX_DETAIL_CHARS - 1)}…` : e.detail
+  return out
+}
+
+/**
+ * Prefix an error's user-facing message with the name of the file it is about (batch jobs,
+ * TPM decision D7). CANCELLED stays as it is.
+ */
+export function aboutFile(err: unknown, fileName: string): unknown {
+  const e = err instanceof EngineError ? err : undefined
+  const job = e ?? (isAbortError(err) ? undefined : rawJobError(err))
+  if (!job || job.code === 'CANCELLED') return err
+  const named = new EngineError(job.code, `${shortName(fileName)}: ${job.message}`, job.detail)
+  return named
+}
+
+function rawJobError(err: unknown): JobError {
   if (err instanceof EngineError) {
     const out: JobError = { code: err.code, message: err.message }
     if (err.detail !== undefined) out.detail = err.detail

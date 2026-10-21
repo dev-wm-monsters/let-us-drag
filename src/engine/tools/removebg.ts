@@ -10,8 +10,8 @@
 import { cpus } from 'node:os'
 import { dirname, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import sharp from 'sharp'
-import type { Sharp } from 'sharp'
+import { MAX_INPUT_PIXELS } from '../limits'
+import { sharp, sharpError, type Sharp } from './sharp-safe'
 import { EngineError, errMessage, throwIfAborted } from '../errors'
 import { resolveEntry } from '../resolve'
 
@@ -145,17 +145,26 @@ export async function predictMask(modelPath: string, rgb1024: Uint8Array, prefer
 /** Remove the background from an (already auto-oriented) image. Returns PNG bytes. */
 export async function removeBackground(img: Sharp, modelPath: string, signal: AbortSignal, onStage: (p: number, stage: string) => void): Promise<Buffer> {
   onStage(-1, 'Looking closely')
-  const { data: rgb, info } = await img.clone().removeAlpha().toColourspace('srgb').raw().toBuffer({ resolveWithObject: true })
+  // First pixel access: this is where libvips really decodes the input (lazy loaders).
+  const { data: rgb, info } = await img
+    .clone()
+    .removeAlpha()
+    .toColourspace('srgb')
+    .raw()
+    .toBuffer({ resolveWithObject: true })
+    .catch((err: unknown) => {
+      throw sharpError(err)
+    })
   if (info.channels !== 3) throw new EngineError('INTERNAL', undefined, `expected 3 channels, got ${info.channels}`)
   const { width, height } = info
-  const raw = { raw: { width, height, channels: 3 as const } }
+  const raw = { raw: { width, height, channels: 3 as const }, limitInputPixels: MAX_INPUT_PIXELS }
   const small = await sharp(rgb, raw).resize(MODEL_INPUT_SIZE, MODEL_INPUT_SIZE, { fit: 'fill', kernel: 'lanczos3' }).raw().toBuffer()
   throwIfAborted(signal)
   onStage(0.2, 'Finding the subject')
   const mask1024 = await predictMask(modelPath, small)
   throwIfAborted(signal)
   onStage(0.9, 'Cutting it out')
-  const mask = await sharp(mask1024, { raw: { width: MODEL_INPUT_SIZE, height: MODEL_INPUT_SIZE, channels: 1 } })
+  const mask = await sharp(mask1024, { raw: { width: MODEL_INPUT_SIZE, height: MODEL_INPUT_SIZE, channels: 1 }, limitInputPixels: MAX_INPUT_PIXELS })
     .resize(width, height, { fit: 'fill', kernel: 'lanczos3' })
     .extractChannel(0) // sharp would otherwise emit a 3-channel sRGB buffer
     .raw()
