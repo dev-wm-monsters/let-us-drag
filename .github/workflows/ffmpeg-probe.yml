@@ -4,6 +4,9 @@ name: FFmpeg probe (macOS)
 # flags and encoders, and report URL + SHA-256 as annotations (so the TPM can pin them).
 on:
   workflow_dispatch:
+  push:
+    branches: [develop]
+    paths: ['.github/workflows/ffmpeg-probe.yml']
 
 permissions:
   contents: read
