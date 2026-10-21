@@ -1,5 +1,5 @@
 // Launch at login.
-// - macOS / Windows: app.setLoginItemSettings (done by the caller, see index.ts).
+// - macOS / Windows: app.setLoginItemSettings (done by the caller, app.ts, with loginItemSettings()).
 // - Linux: an XDG autostart entry at $XDG_CONFIG_HOME/autostart/let-us-drag.desktop
 //   (default ~/.config/autostart). Limitations: honoured by desktop environments that implement
 //   the XDG Autostart spec (GNOME, KDE, Xfce, Cinnamon, MATE…), not by bare window managers.
@@ -8,7 +8,7 @@
 
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { dirname, isAbsolute, join } from 'node:path'
+import { dirname, isAbsolute, join, win32 } from 'node:path'
 
 export const AUTOSTART_FILE_NAME = 'let-us-drag.desktop'
 
@@ -64,4 +64,26 @@ export async function setLinuxAutostart(enabled: boolean, file: string, command:
   }
   await mkdir(dirname(file), { recursive: true })
   await writeFile(file, buildDesktopEntry(command), { encoding: 'utf8', mode: 0o644 })
+}
+
+/**
+ * Argument for app.setLoginItemSettings (macOS / Windows).
+ * - Windows portable build: the portable .exe the user started (PORTABLE_EXECUTABLE_FILE), not
+ *   the temporary folder it unpacked itself into (process.execPath).
+ * - Windows, unpackaged (development): electron.exe plus the project directory; electron.exe
+ *   alone would start Electron's default app at login.
+ * - Otherwise Electron's defaults (process.execPath on Windows, the app bundle on macOS).
+ */
+export function loginItemSettings(opts: {
+  platform: NodeJS.Platform
+  enabled: boolean
+  isPackaged: boolean
+  execPath: string
+  appPath: string
+  portableExecutable?: string
+}): { openAtLogin: boolean; path?: string; args?: string[] } {
+  if (opts.platform !== 'win32') return { openAtLogin: opts.enabled }
+  if (opts.portableExecutable && win32.isAbsolute(opts.portableExecutable)) return { openAtLogin: opts.enabled, path: opts.portableExecutable }
+  if (!opts.isPackaged) return { openAtLogin: opts.enabled, path: opts.execPath, args: [opts.appPath] }
+  return { openAtLogin: opts.enabled }
 }

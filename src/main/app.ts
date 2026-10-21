@@ -6,7 +6,7 @@ import { isAbsolute, join } from 'node:path'
 import { IPC } from '../shared/api'
 import { TEST_CANCEL_CHANNEL, TEST_FEED_DROP_CHANNEL, type TestDropPayload } from '../shared/test-hooks'
 import type { JobEvent, JobRequest, PlatformStatus, Settings } from '../shared/types'
-import { launchCommand, linuxAutostartPath, setLinuxAutostart } from './autostart'
+import { launchCommand, linuxAutostartPath, loginItemSettings, setLinuxAutostart } from './autostart'
 import { EngineHost, type WorkerLike } from './engine-host'
 import { HtmlToPdf } from './html-to-pdf'
 import { parseOrThrow } from './ipc-validation'
@@ -19,6 +19,7 @@ import { AccessibilityPermission } from './platform/permissions'
 import { blockRemoteRequests, hardenSession, hardenWebContents } from './security'
 import { SettingsStore, settingsPatchSchema } from './settings-store'
 import { AppTray } from './tray'
+import { engineWorkerEnv } from './worker-env'
 import type { WindowContext } from './windows/common'
 import { createFeedWindow } from './windows/feed'
 import { OverlayController } from './windows/overlay'
@@ -34,8 +35,9 @@ export interface RunningApp {
   openSettingsWindow(): Promise<unknown>
 }
 
-function forkEngine(modulePath: string): WorkerLike {
-  const child = utilityProcess.fork(modulePath, [], { serviceName: 'Let us drag! engine' })
+function forkEngine(modulePath: string, env: Record<string, string> | undefined): WorkerLike {
+  // env undefined → inherit process.env (unpackaged); packaged → no LUD_* keys (F-16, D18).
+  const child = utilityProcess.fork(modulePath, [], env ? { serviceName: 'Let us drag! engine', env } : { serviceName: 'Let us drag! engine' })
   return {
     postMessage: (m) => child.postMessage(m),
     on(event: 'message' | 'exit', listener: ((m: unknown) => void) | ((code: number) => void)) {
@@ -127,7 +129,8 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
   const workerOverride = e2e ? process.env['LUD_E2E_ENGINE_WORKER'] : undefined
   const workerPath = workerOverride && isAbsolute(workerOverride) ? workerOverride : engineWorkerPath(layout)
   const engine = new EngineHost({
-    fork: () => forkEngine(workerPath),
+    // Computed per fork so a restarted worker gets the same filtered environment.
+    fork: () => forkEngine(workerPath, engineWorkerEnv(process.env, app.isPackaged)),
     options: { cacheDir: join(userData, 'models'), resourcesDir: resourcesDir(layout) },
     htmlToPdf: (html) => pdf.convert(html),
     renderPdfPages: (bytes, options, signal) => pdfPages.render(bytes, options, signal),
@@ -214,8 +217,16 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
       await setLinuxAutostart(enabled, linuxAutostartPath(process.env), cmd)
       return
     }
-    const portable = platform === 'win32' ? process.env['PORTABLE_EXECUTABLE_FILE'] : undefined
-    app.setLoginItemSettings(portable ? { openAtLogin: enabled, path: portable } : { openAtLogin: enabled })
+    app.setLoginItemSettings(
+      loginItemSettings({
+        platform,
+        enabled,
+        isPackaged: app.isPackaged,
+        execPath: process.execPath,
+        appPath: app.getAppPath(),
+        portableExecutable: process.env['PORTABLE_EXECUTABLE_FILE']
+      })
+    )
   }
 
   // --- IPC --------------------------------------------------------------------------------
