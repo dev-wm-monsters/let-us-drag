@@ -2,7 +2,7 @@
 const tseslint = require('typescript-eslint')
 
 module.exports = tseslint.config(
-  { ignores: ['.tsbuild/**', 'out/**', 'dist/**', 'node_modules/**', 'release/**', 'test-results/**', 'playwright-report/**'] },
+  { ignores: ['.claude/**', '.tsbuild/**', 'out/**', 'dist/**', 'node_modules/**', 'release/**', 'test-results/**', 'playwright-report/**'] },
   ...tseslint.configs.recommended,
   {
     rules: {
