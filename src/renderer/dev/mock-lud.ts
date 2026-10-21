@@ -179,6 +179,8 @@ export function createMockLud(opts: MockOptions = {}): MockControl {
     overlayDone: async () => void log('overlayDone'),
     overlayEngaged: async () => void log('overlayEngaged'),
     openFeedWindow: async () => void log('openFeedWindow'),
+    openSettingsWindow: async () => void log('openSettingsWindow'),
+    onPlatformStatusChanged: () => () => {},
     onJobEvent: (cb) => job.on(cb),
     onOverlayArm: (cb) => armCh.on(cb),
     onOverlayDisarm: (cb) => disarmCh.on(() => cb()),
