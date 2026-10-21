@@ -7,8 +7,14 @@
     "provider": "John Van Sickle static build (FFmpeg 7.0.2), redistributed by the ffmpeg-static project",
     "sourceInfo": "https://johnvansickle.com/ffmpeg/ (build info) and https://ffmpeg.org/releases/ffmpeg-7.0.2.tar.xz",
     "extras": {
-      "FFMPEG-LICENSE.txt": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/linux-x64.LICENSE",
-      "FFMPEG-README.txt": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/linux-x64.README"
+      "FFMPEG-LICENSE.txt": {
+        "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/linux-x64.LICENSE",
+        "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+      },
+      "FFMPEG-README.txt": {
+        "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/linux-x64.README",
+        "sha256": "72f4b1b06d419d22ace6e7cc75f06826f90737345aa0b1736158929f4aacc537"
+      }
     }
   },
   "win32-x64": {
@@ -19,8 +25,14 @@
     "provider": "gyan.dev essentials build (FFmpeg 6.1.1), redistributed by the ffmpeg-static project",
     "sourceInfo": "https://www.gyan.dev/ffmpeg/builds/ (build info) and https://ffmpeg.org/releases/ffmpeg-6.1.1.tar.xz",
     "extras": {
-      "FFMPEG-LICENSE.txt": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/win32-x64.LICENSE",
-      "FFMPEG-README.txt": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/win32-x64.README"
+      "FFMPEG-LICENSE.txt": {
+        "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/win32-x64.LICENSE",
+        "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+      },
+      "FFMPEG-README.txt": {
+        "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/win32-x64.README",
+        "sha256": "a636a7183c58006351acbaf35303c0ed85c6e1320fd4e80de453ba6157de6311"
+      }
     }
   },
   "darwin-x64": {

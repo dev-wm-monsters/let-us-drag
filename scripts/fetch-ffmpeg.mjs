@@ -74,7 +74,12 @@ mkdirSync(outDir, { recursive: true })
 const binary = src.format === 'zip' ? await unzipSingle(archive, exe) : gunzipSync(archive)
 writeFileSync(join(outDir, exe), binary)
 if (platform !== 'win32') chmodSync(join(outDir, exe), 0o755)
-for (const [name, url] of Object.entries(src.extras ?? {})) writeFileSync(join(outDir, name), await get(url))
+for (const [name, extra] of Object.entries(src.extras ?? {})) {
+  const data = await get(extra.url)
+  const extraSha = createHash('sha256').update(data).digest('hex')
+  if (extraSha !== extra.sha256) throw new Error(`Checksum mismatch for ${key} ${name}: expected ${extra.sha256}, got ${extraSha}`)
+  writeFileSync(join(outDir, name), data)
+}
 writeFileSync(
   join(outDir, 'FFMPEG-SOURCE.txt'),
   `FFmpeg binary for ${key}\nDownloaded from: ${src.url}\nSHA-256 of the download: ${sha}\nLicence: ${src.license}\n` +
@@ -94,9 +99,16 @@ if (platform === process.platform && arch === process.arch) {
     )
   }
   const conf = spawnSync(bin, ['-hide_banner', '-buildconf'], { encoding: 'utf8' })
+  // Fail closed: the binary must run, report the GPL, and be built without --enable-nonfree.
+  if (lic.status !== 0 || conf.status !== 0) {
+    throw new Error(`${key}: licence gate could not run ffmpeg (status ${lic.status}/${conf.status}, ${lic.error ?? conf.error ?? ''})`)
+  }
   const text = `${lic.stdout}${lic.stderr}${conf.stdout}${conf.stderr}`
   if (/not legally redistributable|--enable-nonfree/i.test(text)) throw new Error(`${key}: ffmpeg is a nonfree build; refusing to ship it`)
-  console.log(`  licence gate: ok (${(lic.stdout || '').split('\n').find((l) => /GNU|LGPL|GPL/.test(l))?.trim() ?? 'see -L'})`)
+  if (!/GNU General Public License/.test(lic.stdout) || !/--enable-gpl/.test(conf.stdout)) {
+    throw new Error(`${key}: ffmpeg does not report a GPL build; refusing to ship it`)
+  }
+  console.log('  licence gate: ok (GPL build, no nonfree)')
 } else {
   console.log('  licence gate: skipped (binary cannot run on this machine)')
 }
