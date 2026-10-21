@@ -390,6 +390,19 @@ time; screenshots of every reached Uncle state go to `test-results/screens/`. Te
 `@needs-integration` require the Platform/Frontend/Engine implementation and **are expected to fail
 on the scaffold** (run only those: `npx playwright test --grep @needs-integration`).
 
+Useful commands:
+
+```sh
+npm run build
+xvfb-run -a npm run test:e2e                                   # everything
+xvfb-run -a npx playwright test --grep-invert @needs-integration  # only what runs on the scaffold
+LUD_E2E_KEEP=1 xvfb-run -a npx playwright test convert          # keep temp fixtures/userData for debugging
+node tests/qa/check-artifacts.mjs [--platform linux --arch x64] [--no-installers]   # after electron-builder
+```
+
+On the scaffold, a test tagged `@needs-integration` fails after ~20 s with
+"globalThis.__ludTest was not installed"; the main-process log is attached to every test report.
+
 | ID | Spec › title (abridged) | Needs integration |
 |---|---|---|
 | — | `helpers.spec.ts` › pure helper unit tests (5) | no |
