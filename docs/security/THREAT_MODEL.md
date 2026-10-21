@@ -1,6 +1,7 @@
 # Let us drag! — Threat model (v0.1)
 
-Owner: Security analyst. Status: phase 1 (design-time model, written before the implementation exists).
+Owner: Security analyst. Status: phase 1 (design-time model, written before the implementation exists); phase 2
+re-review of the implementation and new findings F-15..F-22: [REVIEW.md](REVIEW.md).
 Baseline reviewed: branch `develop` @ `e9fae72` (scaffold: contracts in `src/shared`, placeholder `src/main`,
 `src/preload`, `src/engine/worker.ts`, CI workflows, `electron-builder.yml`, `scripts/fetch-ffmpeg.mjs`).
 The verifiable requirements derived from this model are in [CHECKLIST.md](CHECKLIST.md) (`SEC-xx` IDs).
@@ -20,7 +21,7 @@ How claims are marked:
 |---|---|---|
 | AS-1 | The user's files (inputs, the folders they live in, every other file the user account can read) | The app runs as the user and parses arbitrary files. A bug can read, overwrite or leak unrelated files. |
 | AS-2 | Keyboard and mouse activity of the whole desktop session | `uiohook-napi` installs a **global** hook (macOS event tap, Windows `WH_KEYBOARD_LL`/`WH_MOUSE_LL`, X11 XRecord [V: libuiohook sources]). It sees every keystroke, including passwords typed into other apps. |
-| AS-3 | OS permissions granted to the app (macOS Accessibility; Input Monitoring [U]) | Any code that runs inside our signed/approved process inherits these grants. Malware could abuse them to log keys. |
+| AS-3 | OS permissions granted to the app (macOS Accessibility; Input Monitoring is not requested: see REVIEW.md §5.1) | Any code that runs inside our signed/approved process inherits these grants. Malware could abuse them to log keys. |
 | AS-4 | Integrity of the shipped binaries (app.asar, native modules, ffmpeg, the ONNX model) | We execute them on users' machines. Tampering means code execution for every user. |
 | AS-5 | The user's privacy expectation: "local only, nothing is uploaded" | Any network request that a document can trigger (a remote image, a font, a playlist segment) breaks this promise. It is a tracking beacon and leaks the user's IP address and the fact that a file was opened. |
 | AS-6 | Availability and responsiveness of the desktop | An always-on-top window and a global input hook can freeze or block the whole desktop if they misbehave. |
@@ -136,7 +137,7 @@ ffmpeg is a huge C attack surface, and the builds we ship are network-capable (h
 - **MUST** spawn with `spawn(ffmpegPath, args, { shell: false, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] })`, use absolute paths only, and add `-nostdin -hide_banner -nostats`. (SEC-60)
 - **MUST** pass `-protocol_whitelist file` (add `pipe` only if pipes are used) **before** `-i`. [V: with it, an HLS playlist's `http://` segment is refused: "Protocol 'http' not on whitelist 'file'".] (SEC-61)
 - **MUST** pass `-format_whitelist` with only the demuxers a category needs, for example video/audio: `mov,mp4,m4a,3gp,3g2,mj2,matroska,webm,avi,mp3,wav,ogg,flac,aac`, and BMP/ICO: `bmp_pipe,ico` (exact names verified with `-demuxers` on the shipped linux build [V]). This blocks the `concat` and `hls` demuxers. [V: a file named `cc.mp3` that holds `ffconcat version 1.0\nfile secret.wav` **is** opened by the concat demuxer and reads a sibling file with ffmpeg 7.0.2. With the whitelist it fails with "Format not on whitelist".] (ffmpeg ≥ 6.1 already refuses HLS on non-`.m3u8` extensions [V: 6.1 and 7.0.2], but the darwin-arm64 build is 6.0 [V], so do not rely on that.) (SEC-62)
-- **MUST** never let a path be read as a pattern or an option. Prefix paths with `file:`. For image outputs, avoid `image2` sequence semantics (`-update 1`, or an explicit muxer) so that a `%d` in a file name is not expanded. Never let a path start with `-`; absolute paths guarantee this. (SEC-63)
+- **MUST** never let a path be read as a pattern or an option. For image outputs, avoid `image2` sequence semantics (`-update 1`, or an explicit muxer) so that a `%d` in a file name is not expanded. For BMP/ICO **inputs** force `-f image2 -pattern_type none` (or `-f bmp_pipe`): an input named `a%03d.bmp` is otherwise read as the sequence `a001.bmp`… [V, phase 2]. A `file:` prefix does **not** prevent that expansion [V, phase 2; corrected]. Never let a path start with `-`; absolute paths guarantee this. (SEC-63)
 - **MUST** write to a temp name and then commit without clobbering (§5.10). Pass `-n` so ffmpeg itself never overwrites. (SEC-64)
 - **MUST** kill the process tree on cancel or timeout and clean up the partial output. (SEC-65)
 - Output limits: GIF ≤ 15 fps and ≤ 480 px (already in the plan); cap the output duration to the input duration.
@@ -273,11 +274,11 @@ There are no GPL-only JS dependencies (jszip is dual MIT/GPL, and we elect MIT).
 
 ## 10. Assumptions and open questions
 
-- Q1 [U]: Which macOS TCC service does the active event tap need on current macOS: Accessibility only, or also Input Monitoring? This affects the onboarding text and the manual checklist (plan U7).
-- Q2 [U]: Do Windows/Linux packages keep Electron's `LICENSES.chromium.html`? Check the packaged output in CI.
+- Q1 (answered in phase 2, REVIEW.md §5.1): libuiohook requires Accessibility (`AXIsProcessTrustedWithOptions`, with the prompt option) and creates an active tap; it uses no Input Monitoring API. Accessibility only; final confirmation stays a manual macOS check (plan U7).
+- Q2 (answered in phase 2): Linux yes [V: packaged build]; Windows yes (electron-builder only renames `LICENSE` to `LICENSE.electron.txt` on non-mac) [V: source + Electron zip listing]; macOS no (deleted by electron-builder), see THIRD_PARTY_NOTICES R-3.
 - Q3 [U]: Remove-BG model choice and license (plan U6).
 - Q4 [U]: macOS 15+ behaviour for ad-hoc apps (Open Anyway flow; whether the Accessibility grant survives updates).
-- Q5 [U]: whether `onnxruntime` on Windows needs the MSVC runtime (`MSVCP140.dll`, `VCRUNTIME140*.dll` are imported [V: objdump]), which Electron may not ship. This is a functional risk; flagged to the Engine/TPM, not a security finding.
+- Q5 (answered in phase 2, REVIEW.md §5.2): yes; Electron 45 does not ship the VC++ runtime (static CRT). Without the VC++ redistributable, Remove BG falls back to onnxruntime-web (finding F-22, Info).
 
 ## 11. Mapping to the plan's Definition of Done
 
