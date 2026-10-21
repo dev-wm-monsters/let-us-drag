@@ -11,3 +11,4 @@ playwright-report/
 .vite/
 coverage/
 tests/.tmp/
+.tsbuild/

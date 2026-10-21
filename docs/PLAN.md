@@ -102,7 +102,8 @@ The exact TypeScript lives in `src/shared/*.ts`. Additive changes are allowed by
 - `JobRequest { id, optionId, inputPaths: string[] }`, `JobEvent` (`queued|progress|done|error`),
   `JobResult { outputPaths: string[] }`, `JobError { code, message }`
 - `Settings { triggerKey, sounds, hungryMode, plainMode, launchAtLogin, firstRunDone }`
-- IPC channels in `src/shared/ipc.ts`; preload API type `LudApi` in `src/shared/api.ts`.
+- IPC channels + preload API type `LudApi` in `src/shared/api.ts`; engine contract in `src/engine/api.ts`.
+- E2E test hooks + DOM test-id contract in `src/shared/test-hooks.ts`.
 
 ## 5. Conversion catalog v0.1 (max 8 options per category)
 
@@ -166,10 +167,10 @@ Sounds (WebAudio synthesized): pop-in, gulp, chew-crunch loop, toss whoosh, coug
 | Role | Owns (may edit) | Must not edit |
 |---|---|---|
 | TPM (orchestrator) | docs/PLAN.md, src/shared (contract), config files, CI, merges, final report | — |
-| Backend dev — Engine | src/engine/**, tests/engine/**, scripts/fetch-*.mjs | src/renderer, src/main |
+| Backend dev — Engine | src/engine/**, tests/engine/**, tests/helpers/**, scripts/fetch-model.mjs | src/renderer, src/main |
 | Backend dev — Platform | src/main/**, src/preload/** | src/engine (except calling its API), src/renderer |
-| Frontend dev | src/renderer/**, resources/icons (art) | src/main, src/engine |
-| QA | tests/** (except tests/engine unit tests written by Engine dev, which QA may extend), docs/qa/** | production code |
+| Frontend dev | src/renderer/**, resources/icon.png, resources/tray/**, docs/art/** | src/main, src/engine |
+| QA | tests/e2e/**, tests/qa/**, docs/qa/** (may extend tests/engine + tests/helpers after the build phase) | production code |
 | Security analyst | docs/security/** | production code (findings go to owners) |
 
 `package.json` dependencies are frozen after scaffolding. Need a new dependency? Report it
