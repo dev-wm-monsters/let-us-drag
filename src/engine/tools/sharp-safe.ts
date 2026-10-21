@@ -29,6 +29,9 @@ export const ALLOWED_LOADERS: readonly string[] = [
 
 sharp.block({ operation: ['VipsForeignLoad'] })
 sharp.unblock({ operation: [...ALLOWED_LOADERS] })
+// No libvips operation cache: cached operations keep the input file open, which on Windows locks
+// the user's original (it cannot be renamed or deleted until the app quits). Each job reads once.
+sharp.cache(false)
 
 /**
  * Options for every sharp() input (SEC-51): an explicit pixel cap (never `unlimited`), and

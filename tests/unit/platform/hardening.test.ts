@@ -132,10 +132,11 @@ describe('IPC payload validation (SEC-13, SEC-14)', () => {
   })
 
   it('job requests and settings patches are strict', () => {
-    expect(jobRequestSchema.safeParse({ id: 'j1', optionId: 'to-png', inputPaths: ['/a.jpg'] }).success).toBe(true)
-    expect(jobRequestSchema.safeParse({ id: 'j1', optionId: 'to-png', inputPaths: ['/a.jpg'], extra: 1 }).success).toBe(false)
-    expect(jobRequestSchema.safeParse({ id: 'j1', optionId: 'to-png', inputPaths: Array(501).fill('/a.jpg') }).success).toBe(false)
-    expect(jobRequestSchema.safeParse({ id: 'x'.repeat(65), optionId: 'to-png', inputPaths: ['/a.jpg'] }).success).toBe(false)
+    const a = process.platform === 'win32' ? 'C:\\a.jpg' : '/a.jpg'
+    expect(jobRequestSchema.safeParse({ id: 'j1', optionId: 'to-png', inputPaths: [a] }).success).toBe(true)
+    expect(jobRequestSchema.safeParse({ id: 'j1', optionId: 'to-png', inputPaths: [a], extra: 1 }).success).toBe(false)
+    expect(jobRequestSchema.safeParse({ id: 'j1', optionId: 'to-png', inputPaths: Array(501).fill(a) }).success).toBe(false)
+    expect(jobRequestSchema.safeParse({ id: 'x'.repeat(65), optionId: 'to-png', inputPaths: [a] }).success).toBe(false)
     expect(settingsPatchSchema.safeParse({ sounds: false }).success).toBe(true)
     expect(settingsPatchSchema.safeParse({ sounds: false, evil: true }).success).toBe(false)
   })
