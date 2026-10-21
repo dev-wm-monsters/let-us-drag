@@ -1,0 +1,46 @@
+{
+  "linux-x64": {
+    "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-linux-x64.gz",
+    "format": "gz",
+    "sha256": "bfe8a8fc511530457b528c48d77b5737527b504a3797a9bc4866aeca69c2dffa",
+    "license": "GPL-3.0-or-later",
+    "provider": "John Van Sickle static build (FFmpeg 7.0.2), redistributed by the ffmpeg-static project",
+    "sourceInfo": "https://johnvansickle.com/ffmpeg/ (build info) and https://ffmpeg.org/releases/ffmpeg-7.0.2.tar.xz",
+    "extras": {
+      "FFMPEG-LICENSE.txt": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/linux-x64.LICENSE",
+      "FFMPEG-README.txt": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/linux-x64.README"
+    }
+  },
+  "win32-x64": {
+    "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-win32-x64.gz",
+    "format": "gz",
+    "sha256": "8883a3dffbd0a16cf4ef95206ea05283f78908dbfb118f73c83f4951dcc06d77",
+    "license": "GPL-3.0-or-later",
+    "provider": "gyan.dev essentials build (FFmpeg 6.1.1), redistributed by the ffmpeg-static project",
+    "sourceInfo": "https://www.gyan.dev/ffmpeg/builds/ (build info) and https://ffmpeg.org/releases/ffmpeg-6.1.1.tar.xz",
+    "extras": {
+      "FFMPEG-LICENSE.txt": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/win32-x64.LICENSE",
+      "FFMPEG-README.txt": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/win32-x64.README"
+    }
+  },
+  "darwin-x64": {
+    "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-darwin-x64.gz",
+    "format": "gz",
+    "sha256": "929b375c1182d956c51f7ac25e0b2b0411fb01f6f407aa15c9758efeb4242106",
+    "license": "GPL-3.0-or-later",
+    "provider": "Helmut K. C. Tessarek (evermeet/tessus) build (FFmpeg 6.1.1), redistributed by the ffmpeg-static project",
+    "sourceInfo": "https://evermeet.cx/ffmpeg/ (build info) and https://ffmpeg.org/releases/ffmpeg-6.1.1.tar.xz",
+    "extras": {
+      "FFMPEG-LICENSE.txt": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/darwin-x64.LICENSE",
+      "FFMPEG-README.txt": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/darwin-x64.README"
+    }
+  },
+  "darwin-arm64": {
+    "url": "PENDING (D11: GPL non-nonfree build, resolved by .github/workflows/ffmpeg-probe.yml)",
+    "format": "zip",
+    "sha256": "",
+    "license": "GPL-3.0-or-later",
+    "provider": "PENDING",
+    "sourceInfo": "PENDING"
+  }
+}
