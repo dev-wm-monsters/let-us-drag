@@ -13,9 +13,9 @@ export const MOUTH_TOP = 57
 /** Head silhouette. The chin drops with the jaw, the jowls widen with `puff` (chewing cheeks). */
 export function headPath(jaw: number, puff = 0): string {
   const J = jaw * JAW_DROP
-  const w = 112 + puff * 16
-  const jw = 92 + puff * 26
-  const jy = 90 + J * 0.7 - puff * 4
+  const w = 112 + puff * 5
+  const jw = 92 + puff * 10
+  const jy = 90 + J * 0.7
   return [
     `M ${P(0, -126)}`,
     `C ${P(66, -127)} ${P(112, -88)} ${P(112, -24)}`,

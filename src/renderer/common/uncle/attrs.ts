@@ -9,6 +9,12 @@ const n = (x: number): string => (Math.round(x * 100) / 100).toString()
 const tr = (x: number, y: number): string => `translate(${n(x)} ${n(y)})`
 const layer = (p: Pose, d: { x: number; y: number }): string => tr(p.lx * d.x, p.ly * d.y)
 
+/** Chewing cheek pouches: grow out of the jowls (scale 0 = hidden). */
+function pouch(side: -1 | 1, puff: number, J: number): string {
+  const s = Math.max(0, Math.min(1.3, puff))
+  return `translate(${n(side * (90 + s * 8))} ${n(58 + J * 0.5)}) scale(${n(s)})`
+}
+
 export const EYE_RX = 20
 export const EYE_RY = 22
 
@@ -20,6 +26,10 @@ export const PART_KEYS = [
   'headFill',
   'headClip',
   'shade',
+  'pouchInkL',
+  'pouchInkR',
+  'pouchL',
+  'pouchR',
   'ears',
   'hair',
   'combover',
@@ -73,7 +83,7 @@ export type PartKey = (typeof PART_KEYS)[number]
 export function poseAttrs(p: Pose): Record<PartKey, Attrs> {
   const J = p.jaw * JAW_DROP
   const puff = Math.min(1.3, p.cheek)
-  const head = headPath(p.jaw, puff * 0.6)
+  const head = headPath(p.jaw, puff)
   const m = mouthShape(p.jaw, p.smile)
   const mouth = mouthPath(p.jaw, p.smile)
   const bodyDy = p.bodyY + J * 0.78 + p.headY * 0.25
@@ -101,6 +111,10 @@ export function poseAttrs(p: Pose): Record<PartKey, Attrs> {
     headFill: { d: head },
     headClip: { d: head },
     shade: { cy: n(-28 + J * 0.45), ry: n(146 + J * 0.85), rx: n(118 + puff * 10) },
+    pouchInkL: { transform: pouch(-1, puff, J) },
+    pouchInkR: { transform: pouch(1, puff, J) },
+    pouchL: { transform: pouch(-1, puff, J) },
+    pouchR: { transform: pouch(1, puff, J) },
     ears: { transform: layer(p, DEPTH.ears) },
     hair: { transform: layer(p, DEPTH.hair) },
     combover: { transform: `rotate(${n(p.hairRot)} 6 -128)` },
@@ -152,8 +166,8 @@ export function poseAttrs(p: Pose): Record<PartKey, Attrs> {
     lowerTeeth: { transform: `${tr(0, m.bottom)} scale(${n(m.w / 50)} 1)` },
     upperTeeth: { transform: `${tr(0, m.top + 1)} scale(${n(m.w / 50)} 1)` },
     lip: {
-      d: `M ${n(-m.w * 0.45)} ${n(lipY + 7)} Q 0 ${n(lipY + 13)} ${n(m.w * 0.45)} ${n(lipY + 7)}`,
-      opacity: n(Math.min(1, 0.4 + p.jaw))
+      d: `M ${n(-m.w * 0.42)} ${n(lipY + 6)} Q 0 ${n(lipY + 13 + Math.max(0, p.smile) * 3)} ${n(m.w * 0.42)} ${n(lipY + 6)}`,
+      opacity: '0.9'
     },
     chin: { transform: tr(0, 123 + J - 12) },
     armLInk: { d: armL },

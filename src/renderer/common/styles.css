@@ -140,7 +140,7 @@ button {
   color: var(--ink);
 }
 .lud-option.is-long .lud-option-label {
-  font-size: 13.5px;
+  font-size: 12.5px;
   line-height: 1.05;
   max-width: 64px;
   text-align: center;

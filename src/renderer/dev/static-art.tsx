@@ -43,21 +43,22 @@ export function renderIconSvg(): string {
 }
 
 /**
- * Tray glyph: a simple silhouette (bald head + glasses + moustache + open mouth) in one colour.
- * `color` = '#000' for macOS template images.
+ * Tray glyph: a bold, simple Uncle face (bald head, round glasses, moustache, open mouth).
+ * Template mode = black + alpha only (macOS menu bar); colored = skin + ink for Windows/Linux trays.
  */
-export function renderTraySvg(size: number, color: string, colored = false): string {
-  const fg = colored ? '#2b1a14' : color
+export function renderTraySvg(size: number, colored = false): string {
+  const ink = colored ? '#2b1a14' : '#000'
   const skin = colored ? '#f6c39b' : 'none'
+  const lens = colored ? '#ffffff' : 'none'
+  const mouth = colored ? '#7a1420' : '#000'
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 32 32">
-  <g fill="none" stroke="${fg}" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M16 2.5 C 24 2.5 28.5 7.5 28.5 14.5 C 28.5 22 23.5 29.5 16 29.5 C 8.5 29.5 3.5 22 3.5 14.5 C 3.5 7.5 8 2.5 16 2.5 Z" fill="${skin}" stroke-width="2.4"/>
-  </g>
-  <g fill="${fg}">
-    <circle cx="11" cy="12" r="3.6"/><circle cx="21" cy="12" r="3.6"/>
-    <rect x="13.5" y="11" width="5" height="1.6" rx="0.8"/>
-    <path d="M7 18.5 C 10 16 13.5 16.2 16 17.6 C 18.5 16.2 22 16 25 18.5 C 23 19.6 20.5 19.4 19 18.9 C 18.5 24.5 13.5 24.5 13 18.9 C 11.5 19.4 9 19.6 7 18.5 Z"/>
-  </g>
-  ${colored ? '<circle cx="11" cy="12" r="1.7" fill="#fff"/><circle cx="21" cy="12" r="1.7" fill="#fff"/><path d="M14 20.3 Q16 22.6 18 20.3 Z" fill="#f0707e"/>' : '<circle cx="11" cy="12" r="1.7" fill="#000" style="mix-blend-mode:destination-out"/>'}
+  <path d="M16 3.2 Q 17 1 19.2 1.8" fill="none" stroke="${ink}" stroke-width="1.8" stroke-linecap="round"/>
+  <circle cx="16" cy="17" r="12.6" fill="${skin}" stroke="${ink}" stroke-width="3"/>
+  <circle cx="11.2" cy="13.6" r="3.7" fill="${lens}" stroke="${ink}" stroke-width="2.5"/>
+  <circle cx="20.8" cy="13.6" r="3.7" fill="${lens}" stroke="${ink}" stroke-width="2.5"/>
+  ${colored ? '<circle cx="11.8" cy="14" r="1.5" fill="#2b1a14"/><circle cx="21.4" cy="14" r="1.5" fill="#2b1a14"/>' : ''}
+  <path d="M7.5 20.2 C 10.5 17.6 13.6 17.8 16 19 C 18.4 17.8 21.5 17.6 24.5 20.2 C 21.8 21.6 18.8 21.2 16 20.6 C 13.2 21.2 10.2 21.6 7.5 20.2 Z" fill="${ink}" stroke="${ink}" stroke-width="1.2" stroke-linejoin="round"/>
+  <path d="M12.2 21.6 L 19.8 21.6 Q 19.4 26.6 16 26.6 Q 12.6 26.6 12.2 21.6 Z" fill="${mouth}"/>
+  ${colored ? '<path d="M13.6 25 Q 16 23.4 18.4 25 Q 16 26.4 13.6 25 Z" fill="#f0707e"/>' : ''}
 </svg>`
 }

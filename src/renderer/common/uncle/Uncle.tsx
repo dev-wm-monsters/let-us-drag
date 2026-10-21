@@ -1,6 +1,6 @@
 // Animated Uncle: one requestAnimationFrame loop writes pose attributes straight into the SVG
 // (no React re-render per frame, transforms/paths only, no layout reads inside the loop).
-import { type RefObject, useEffect, useId, useMemo, useRef } from 'react'
+import { type RefObject, useEffect, useId, useLayoutEffect, useMemo, useRef } from 'react'
 import type { Point } from '../geometry'
 import { type Attrs, PART_KEYS, type PartKey, poseAttrs } from './attrs'
 import { createBrain, type Modifiers, type Mood, settle, step } from './pose'
@@ -72,8 +72,11 @@ export function Uncle(props: UncleProps) {
     if (svgRef.current) rect.current = svgRef.current.getBoundingClientRect()
   }, [mood, width])
 
-  useEffect(() => {
+  // Layout effect + one synchronous frame: the very first painted frame after engagement already
+  // shows the correct pose (no stale frame), so the Uncle is visible within one frame.
+  useLayoutEffect(() => {
     if (paused) return
+    if (svgRef.current) rect.current = svgRef.current.getBoundingClientRect()
     const brain = createBrain(seed ?? 7)
     let raf = 0
     let last = performance.now() / 1000
@@ -116,7 +119,7 @@ export function Uncle(props: UncleProps) {
       }
       raf = requestAnimationFrame(frame)
     }
-    raf = requestAnimationFrame(frame)
+    frame(performance.now())
     return () => cancelAnimationFrame(raf)
   }, [paused, seed, lookRef])
 

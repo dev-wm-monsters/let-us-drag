@@ -18,22 +18,26 @@ try {
       ['trayTemplate.png', 16],
       ['trayTemplate@2x.png', 32]
     ]) {
-      await sharp(Buffer.from(art.renderTraySvg(size * 8, '#000')), { density: 72 })
+      await sharp(Buffer.from(art.renderTraySvg(size * 8)), { density: 72 })
         .resize(size, size)
         .png()
         .toFile(resolve(res, 'tray', file))
     }
-    await sharp(Buffer.from(art.renderTraySvg(256, '#000', true))).resize(32, 32).png().toFile(resolve(res, 'tray', 'tray.png'))
+    await sharp(Buffer.from(art.renderTraySvg(256, true))).resize(32, 32).png().toFile(resolve(res, 'tray', 'tray.png'))
     console.log('icons written to', res)
   } else if (cmd === 'poses') {
     const out = resolve(outArg ?? resolve(repoRoot, 'docs/art/poses'))
     mkdirSync(out, { recursive: true })
-    const moods = ['idle', 'appear', 'hover', 'feedMe', 'eat', 'chew', 'spit', 'choke', 'refuse']
-    for (const mood of moods) {
+    const moods = ['idle', 'appear', 'hover', 'feedMe', 'eat', 'chew', 'hamster', 'struggle', 'spit', 'choke', 'refuse']
+    for (const name of moods) {
+      const mood = name === 'hamster' || name === 'struggle' ? 'chew' : name
+      const mods = { hamster: name === 'hamster', struggle: name === 'struggle' }
       const seconds = mood === 'eat' ? 0.4 : mood === 'spit' ? 0.8 : mood === 'choke' ? 0.05 : 0.7
-      const svg = art.renderUncleSvg({ mood, seconds, target: mood === 'hover' ? { x: 160, y: -140 } : { x: 0, y: 30 }, width: 520 })
-      writeFileSync(resolve(out, `pose-${mood}.svg`), svg)
-      await sharp(Buffer.from(svg)).flatten({ background: '#f3ead8' }).png().toFile(resolve(out, `pose-${mood}.png`))
+      const target = mood === 'hover' ? { x: 160, y: -140 } : { x: 0, y: 30 }
+      const svg = art.renderUncleSvg({ mood, seconds, target, mods, width: 520 })
+      const mood_ = name // file name
+      writeFileSync(resolve(out, `pose-${mood_}.svg`), svg)
+      await sharp(Buffer.from(svg)).flatten({ background: '#f3ead8' }).png().toFile(resolve(out, `pose-${mood_}.png`))
     }
     // Contact sheet for quick reviews.
     const tiles = await Promise.all(moods.map((m) => sharp(resolve(out, `pose-${m}.png`)).resize(260).toBuffer()))

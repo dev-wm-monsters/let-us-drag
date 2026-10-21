@@ -1,5 +1,10 @@
 /* Feed Window + Settings window chrome. */
+html {
+  background: var(--paper);
+}
 body {
+  min-height: 100%;
+  background-attachment: fixed;
   background:
     radial-gradient(circle at 20% 10%, rgba(255, 255, 255, 0.7) 0, transparent 40%),
     radial-gradient(circle at 80% 90%, rgba(240, 138, 60, 0.12) 0, transparent 45%),

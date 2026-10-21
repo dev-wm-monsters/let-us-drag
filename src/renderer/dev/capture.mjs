@@ -12,6 +12,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync 
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { chromium } from 'playwright'
+import sharp from 'sharp'
 import { repoRoot, serverUrl, startRendererServer } from './vite-dev.mjs'
 
 const outDir = resolve(process.env.LUD_SCREENS_DIR ?? join(repoRoot, 'docs/art/screens'))
@@ -60,10 +61,14 @@ async function open(params, { width = 600, height = 600, reducedMotion = 'no-pre
   return { page, ctx, errors }
 }
 
-async function shot(page, name) {
+/** Screenshot → palette PNG (keeps docs/art small; visually lossless for flat cartoon art). */
+async function save(buf, name) {
   const file = join(outDir, `${name}.png`)
-  await page.screenshot({ path: file })
+  await sharp(buf).png({ palette: true, quality: 92, effort: 8 }).toFile(file)
   written.push(file)
+}
+async function shot(page, name) {
+  await save(await page.screenshot(), name)
 }
 
 const H = (page, fn, ...args) => page.evaluate(fn, ...args)
@@ -175,7 +180,8 @@ const scenarios = {
     await sleep(800)
     await expectState(page, 'spit')
     await shot(page, 'overlay-09-spit')
-    await sleep(2400)
+    await page.waitForFunction(() => window.__harness.state() === 'leave', null, { polling: 'raf', timeout: 5000 })
+    await sleep(110)
     await shot(page, 'overlay-10-leave')
     await ctx.close()
   },
@@ -287,8 +293,7 @@ const scenarios = {
       const { page, ctx } = await open(params, { width: 560, height: 900 })
       await page.waitForSelector('[data-testid="settings-root"][data-loaded="true"]')
       await sleep(400)
-      await page.screenshot({ path: join(outDir, `${name}.png`), fullPage: true })
-      written.push(join(outDir, `${name}.png`))
+      await save(await page.screenshot({ fullPage: true }), name)
       await ctx.close()
     }
   },

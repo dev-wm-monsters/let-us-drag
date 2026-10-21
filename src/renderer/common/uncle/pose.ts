@@ -359,9 +359,9 @@ export function rootTransform(mood: Mood, moodT: number, reduced: boolean): { sc
   }
   if (mood === 'appear' && moodT < 0.42 && !reduced) {
     const p = moodT / 0.42
-    return { scale: 0.6 + 0.4 * easeOutBack(p), opacity: Math.min(1, moodT / 0.08), rot: 0 }
+    return { scale: 0.6 + 0.4 * easeOutBack(p), opacity: Math.min(1, 0.45 + moodT / 0.1), rot: 0 }
   }
-  if (mood === 'appear' && reduced) return { scale: 1, opacity: Math.min(1, moodT / 0.15), rot: 0 }
+  if (mood === 'appear' && reduced) return { scale: 1, opacity: Math.min(1, 0.45 + moodT / 0.15), rot: 0 }
   return { scale: 1, opacity: 1, rot: 0 }
 }
 

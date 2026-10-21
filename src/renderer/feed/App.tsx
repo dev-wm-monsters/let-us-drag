@@ -2,13 +2,9 @@
 // Plain HTML5 drag & drop + a file picker; after the drop it's the same flow as the overlay.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Stage } from '../common/Stage'
-import { DEFAULT_RING, type RingGeometry, usePrefersReducedMotion, useUncleSession } from '../common/useUncleSession'
+import { feedRing, uncleWidthFor } from '../common/layout'
+import { usePrefersReducedMotion, useUncleSession } from '../common/useUncleSession'
 import { isBusy } from '../overlay/state'
-
-export function feedRing(w: number, h: number): RingGeometry {
-  const radius = Math.max(108, Math.min(DEFAULT_RING.radius, Math.min(w, h) / 2 - 54))
-  return { radius, hitRadius: 42, mouthRadius: Math.round(radius * 0.52) }
-}
 
 function useElementSize<T extends HTMLElement>() {
   const ref = useRef<T | null>(null)
@@ -31,7 +27,7 @@ export function FeedApp() {
   const s = useUncleSession('feed', ring)
   const reduced = usePrefersReducedMotion()
   const inputRef = useRef<HTMLInputElement | null>(null)
-  const uncleWidth = Math.round(Math.min(220, ring.radius * 1.22))
+  const uncleWidth = uncleWidthFor(ring.radius, 220)
   const [dragOver, setDragOver] = useState(false)
 
   useEffect(() => {

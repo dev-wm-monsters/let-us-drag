@@ -212,7 +212,20 @@ export const UncleSvg = forwardRef(function UncleSvg(
             strokeLinejoin="round"
             transform={INK_OFF}
           />
+          <g ref={r('pouchInkL')} {...A.pouchInkL}>
+            <circle r={27} fill={C.ink} transform="translate(0.6 1.9)" />
+          </g>
+          <g ref={r('pouchInkR')} {...A.pouchInkR}>
+            <circle r={27} fill={C.ink} transform="translate(2.4 2.2)" />
+          </g>
           <path ref={r('headFill')} {...A.headFill} fill={C.skinShade} />
+          <g ref={r('pouchL')} {...A.pouchL}>
+            <circle r={23} fill={C.skin} />
+            <ellipse cx={-6} cy={-8} rx={8} ry={5} fill={C.skinLight} transform="rotate(-30 -6 -8)" />
+          </g>
+          <g ref={r('pouchR')} {...A.pouchR}>
+            <circle r={23} fill={C.skinShade} />
+          </g>
           <g clipPath={url('head')}>
             <ellipse ref={r('shade')} cx={-14} {...A.shade} fill={C.skin} />
             <g ref={r('shine')} {...A.shine}>

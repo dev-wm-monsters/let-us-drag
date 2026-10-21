@@ -2,13 +2,8 @@
 // Invisible "sensor" until a real file dragenter; then the Uncle pops in within one frame.
 import { useEffect, useState } from 'react'
 import { Stage } from '../common/Stage'
-import { DEFAULT_RING, type RingGeometry, usePrefersReducedMotion, useUncleSession } from '../common/useUncleSession'
-
-/** Fit the ring into the window: radius ~190 px when the window is large enough. */
-export function overlayRing(w: number, h: number): RingGeometry {
-  const radius = Math.max(120, Math.min(DEFAULT_RING.radius, Math.min(w, h) / 2 - 58))
-  return { radius, hitRadius: DEFAULT_RING.hitRadius, mouthRadius: Math.round(radius * 0.52) }
-}
+import { overlayRing, uncleWidthFor } from '../common/layout'
+import { usePrefersReducedMotion, useUncleSession } from '../common/useUncleSession'
 
 function useWindowSize() {
   const [size, setSize] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }))
@@ -25,6 +20,6 @@ export function OverlayApp() {
   const ring = overlayRing(w, h)
   const s = useUncleSession('overlay', ring)
   const reduced = usePrefersReducedMotion()
-  const uncleWidth = Math.round(Math.min(250, ring.radius * 1.3))
+  const uncleWidth = uncleWidthFor(ring.radius, 250)
   return <Stage s={s} testId="overlay-root" uncleWidth={uncleWidth} ring={ring} reducedMotion={reduced} />
 }

@@ -39,5 +39,14 @@ export interface TestDropPayload {
  * - each option bubble has `data-testid="option-<OptionId>"`
  * - output card has `data-testid="output-card"`, error message `data-testid="error-message"`
  * - feed window drop zone `data-testid="feed-dropzone"`; settings controls `data-testid="setting-<key>"`
+ * Additive (Frontend):
+ * - overlay root also carries `data-hamster` / `data-struggle` ("true"|"false") and `data-plain`
+ * - feed window stage `data-testid="feed-root"` with `data-uncle-state` (adds 'idle' = resting, Uncle visible)
+ * - `data-testid="speech-bubble"`, `"progress-ring"`, `"held-files"` (feedMe with dropped files),
+ *   `"plain-target"` (Plain Mode), `"feed-pick"` (Feed Window file picker button)
+ * - settings: `data-testid="settings-root"` (data-loaded="true" once settings arrived), `"onboarding"`,
+ *   `"onboarding-done"`, `"platform-status"`, `"accessibility-section"`, `"grant-accessibility"`,
+ *   `"open-feed-window"`, `"test-sound"`
+ * - option bubbles are <button>s: clickable only while files are held (feedMe after a drop on the mouth)
  */
 export {}
