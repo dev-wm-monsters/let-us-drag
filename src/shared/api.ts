@@ -1,4 +1,5 @@
 // IPC channel names and the preload API (window.lud). Contract owner: TPM.
+import type { TestDropPayload } from './test-hooks'
 import type { DroppedItem, JobEvent, JobRequest, OptionId, PlatformStatus, Settings } from './types'
 
 export const IPC = {
@@ -14,12 +15,16 @@ export const IPC = {
   overlayInteractive: 'lud:overlay-interactive', // (interactive: boolean) => void (focus/click for feedMe)
   overlayDone: 'lud:overlay-done', // () => void  renderer finished its leave animation
   openFeedWindow: 'lud:open-feed-window', // () => void
+  // Additive (Platform, v0.1):
+  overlayEngaged: 'lud:overlay-engaged', // () => void  overlay renderer saw a Files dragenter → main stops moving the sensor
+  openSettingsWindow: 'lud:open-settings-window', // () => void
   // main → renderer (send)
   jobEvent: 'lud:job-event', // JobEvent
   overlayArm: 'lud:overlay-arm', // (info: OverlayArmInfo)
   overlayDisarm: 'lud:overlay-disarm', // ()  mouse released without a file drop
   cursor: 'lud:cursor', // (p: {x:number,y:number}) cursor in overlay-window coordinates (for eye tracking)
-  settingsChanged: 'lud:settings-changed' // (s: Settings)
+  settingsChanged: 'lud:settings-changed', // (s: Settings)
+  platformStatusChanged: 'lud:platform-status-changed' // (s: PlatformStatus) e.g. after macOS Accessibility is granted
 } as const
 
 export interface OverlayArmInfo {
@@ -48,6 +53,16 @@ export interface LudApi {
   onOverlayDisarm(cb: () => void): () => void
   onCursor(cb: (p: { x: number; y: number }) => void): () => void
   onSettingsChanged(cb: (s: Settings) => void): () => void
+  // Additive (Platform, v0.1):
+  /** Overlay only: a drag carrying Files entered the sensor; main stops following the cursor. */
+  overlayEngaged(): Promise<void>
+  openSettingsWindow(): Promise<void>
+  onPlatformStatusChanged(cb: (s: PlatformStatus) => void): () => void
+  /**
+   * E2E only (LUD_E2E=1): simulated drops sent by the test hooks (src/shared/test-hooks.ts).
+   * In normal runs this never calls back and returns a no-op unsubscribe.
+   */
+  onTestDrop(cb: (p: TestDropPayload) => void): () => void
 }
 
 export type { OptionId }
