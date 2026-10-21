@@ -21,14 +21,18 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   let running: RunningApp | null = null
+  let showSettingsWhenReady = false
   app.on('second-instance', () => {
-    // Launching the app again shows the settings window (the app lives in the tray).
-    void running?.openSettingsWindow()
+    // Launching the app again shows the settings window (the app lives in the tray). If we are
+    // still starting up, do it as soon as startup has finished.
+    if (running) void running.openSettingsWindow()
+    else showSettingsWhenReady = true
   })
   app
     .whenReady()
     .then(async () => {
       running = await startApp({ e2e, log })
+      if (showSettingsWhenReady) void running.openSettingsWindow()
     })
     .catch((err: unknown) => {
       log(`startup failed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`)
