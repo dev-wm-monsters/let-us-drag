@@ -26,6 +26,8 @@ jobs:
       ONNXRUNTIME_NODE_INSTALL: skip
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -48,6 +50,19 @@ jobs:
       - name: Build
         shell: bash
         run: set -o pipefail && npm run build 2>&1 | tee ci-logs/build.log
+      - name: Cache Remove-BG model (Linux only, used by the real-model test)
+        if: runner.os == 'Linux'
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.cache/lud-models
+          key: isnet-general-use-60920e99
+      - name: Fetch Remove-BG model (Linux only; SHA-256 verified)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          m=node_modules/.cache/lud-models/isnet-general-use.onnx
+          if [ -f "$m" ]; then echo "model restored from cache: $(sha256sum "$m")" | tee ci-logs/model.log; else node scripts/fetch-model.mjs 2>&1 | tee ci-logs/model.log; fi
+          echo "LUD_MODEL_PATH=$GITHUB_WORKSPACE/node_modules/.cache/lud-models/isnet-general-use.onnx" >> "$GITHUB_ENV"
       - name: Unit + engine tests
         shell: bash
         run: set -o pipefail && npm test 2>&1 | tee ci-logs/test.log

@@ -26,25 +26,39 @@ async function get(url) {
   return Buffer.from(await res.arrayBuffer())
 }
 
-/** Extract a single file from a zip archive (stored or deflated entries only). */
+/** Extract a single file from a zip archive via its central directory (stored or deflated entries). */
 async function unzipSingle(zip, wanted) {
   const { inflateRawSync } = await import('node:zlib')
-  let off = 0
-  while (off + 30 <= zip.length && zip.readUInt32LE(off) === 0x04034b50) {
-    const method = zip.readUInt16LE(off + 8)
-    const csize = zip.readUInt32LE(off + 18)
-    const nameLen = zip.readUInt16LE(off + 26)
-    const extraLen = zip.readUInt16LE(off + 28)
-    const name = zip.subarray(off + 30, off + 30 + nameLen).toString('utf8')
-    const dataStart = off + 30 + nameLen + extraLen
-    if ((zip.readUInt16LE(off + 6) & 0x08) !== 0) throw new Error('zip with data descriptors is not supported')
-    const data = zip.subarray(dataStart, dataStart + csize)
+  // End of central directory record: signature 0x06054b50, searched from the end (comment <= 64 KiB).
+  let eocd = -1
+  for (let i = zip.length - 22; i >= Math.max(0, zip.length - 22 - 0xffff); i--) {
+    if (zip.readUInt32LE(i) === 0x06054b50) {
+      eocd = i
+      break
+    }
+  }
+  if (eocd < 0) throw new Error('not a zip archive (no end of central directory)')
+  const entries = zip.readUInt16LE(eocd + 10)
+  let off = zip.readUInt32LE(eocd + 16)
+  for (let n = 0; n < entries; n++) {
+    if (zip.readUInt32LE(off) !== 0x02014b50) throw new Error('corrupt zip central directory')
+    const method = zip.readUInt16LE(off + 10)
+    const csize = zip.readUInt32LE(off + 20)
+    const nameLen = zip.readUInt16LE(off + 28)
+    const extraLen = zip.readUInt16LE(off + 30)
+    const commentLen = zip.readUInt16LE(off + 32)
+    const localOff = zip.readUInt32LE(off + 42)
+    const name = zip.subarray(off + 46, off + 46 + nameLen).toString('utf8')
+    if (csize === 0xffffffff || localOff === 0xffffffff) throw new Error('zip64 archives are not supported')
     if (name === wanted || name.endsWith(`/${wanted}`)) {
+      if (zip.readUInt32LE(localOff) !== 0x04034b50) throw new Error('corrupt zip local header')
+      const dataStart = localOff + 30 + zip.readUInt16LE(localOff + 26) + zip.readUInt16LE(localOff + 28)
+      const data = zip.subarray(dataStart, dataStart + csize)
       if (method === 0) return Buffer.from(data)
       if (method === 8) return inflateRawSync(data)
       throw new Error(`unsupported zip compression method ${method}`)
     }
-    off = dataStart + csize
+    off += 46 + nameLen + extraLen + commentLen
   }
   throw new Error(`${wanted} not found in zip`)
 }
