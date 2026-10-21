@@ -24,23 +24,19 @@
     }
   },
   "darwin-x64": {
-    "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-darwin-x64.gz",
-    "format": "gz",
-    "sha256": "929b375c1182d956c51f7ac25e0b2b0411fb01f6f407aa15c9758efeb4242106",
-    "license": "GPL-3.0-or-later",
-    "provider": "Helmut K. C. Tessarek (evermeet/tessus) build (FFmpeg 6.1.1), redistributed by the ffmpeg-static project",
-    "sourceInfo": "https://evermeet.cx/ffmpeg/ (build info) and https://ffmpeg.org/releases/ffmpeg-6.1.1.tar.xz",
-    "extras": {
-      "FFMPEG-LICENSE.txt": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/darwin-x64.LICENSE",
-      "FFMPEG-README.txt": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/darwin-x64.README"
-    }
+    "url": "https://ffmpeg.martin-riedl.de/download/macos/amd64/1789931006_9.0.2/ffmpeg.zip",
+    "sha256": "7c6b4125b191cbf773832dc51f424cf2b6bb7da43007d1e066f95909e47cacd4",
+    "format": "zip",
+    "license": "GPL-3.0-or-later (built with --enable-gpl --enable-version3; verified: no --enable-nonfree)",
+    "provider": "Martin Riedl's FFmpeg Build Server, FFmpeg 9.0.2 static release build (signed), minimum macOS 12.0",
+    "sourceInfo": "FFmpeg 9.0.2 source: https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz; build scripts and library versions: https://ffmpeg.martin-riedl.de/ and https://gitlab.com/martinr92/ffmpeg"
   },
   "darwin-arm64": {
-    "url": "PENDING (D11: GPL non-nonfree build, resolved by .github/workflows/ffmpeg-probe.yml)",
+    "url": "https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffmpeg.zip",
+    "sha256": "c8ed4c4e6978a03c485edbfe4e0a5dc2380f8a30bba5150531b31b094492d924",
     "format": "zip",
-    "sha256": "",
-    "license": "GPL-3.0-or-later",
-    "provider": "PENDING",
-    "sourceInfo": "PENDING"
+    "license": "GPL-3.0-or-later (built with --enable-gpl --enable-version3; verified: no --enable-nonfree)",
+    "provider": "Martin Riedl's FFmpeg Build Server, FFmpeg 9.0.2 static release build (signed), minimum macOS 12.0",
+    "sourceInfo": "FFmpeg 9.0.2 source: https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz; build scripts and library versions: https://ffmpeg.martin-riedl.de/ and https://gitlab.com/martinr92/ffmpeg"
   }
 }
