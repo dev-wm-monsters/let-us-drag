@@ -34,3 +34,10 @@ Each agent appends: date, role, what was done, files touched, open issues.
 - **Backend · Engine** (fix/engine-p3): Windows pdf.js asset paths (B-016/17), cross-drive test (B-018), sanitized HTML outputs (D17), FAT/exFAT save fallback and Windows folder-commit robustness.
 - **Backend · Platform** (fix/platform-p3): LUD_* stripped from packaged engine env (D18), macOS re-launch opens Settings, Windows UNC/SMB request block, sandbox-protocol device-name guard, settings rename retry, dev autostart fix.
 - Integrated: 440 unit/engine tests ✓, 62/62 E2E ✓ (Linux).
+
+## 2026-10-21 · Phase 3b · QA final verification (qa/final)
+- Gates on 5afa281: typecheck ✓, lint ✓, 441 unit/engine ✓ (5 skipped), build ✓, E2E 62 ✓ / 1 skipped, 4 runs (2 on c2c4bfa, 2 on 5afa281), no flakes.
+- Exploratory run through the real app (tests/qa/explore, 90 checks): all 30 options of PLAN §5 with realistic fixtures (real HEVC HEIC, real photos, real ISNet model and real first-use download), nasty names/paths, 0-byte, 1 GB sparse, 20-file batches, cancel at every stage, modes mid-session, settings persistence, Feed Window. Visual review at the real 560 px overlay size over white/black/grey (tests/qa/visual-contrast.mjs).
+- Found QA3-01..QA3-12 (docs/qa/QA_REPORT.md §4): High QA3-01 Remove BG fails every second time (onnxruntime-node crashes the engine utilityProcess on the 2nd run; minimal repro tests/qa/probes/ort-utility); Medium: download text not shown (D15), hint and error card clipped, Esc cannot cancel while chewing, overlay blocks clicks during long jobs.
+- Rewrote docs/qa/MANUAL_CHECKLIST.md as the single checklist for the product owner (Platform manual items, Gatekeeper/SmartScreen, logs, bug reporting). Confidence 62/100 (QA_REPORT §5).
+- Files: docs/qa/QA_REPORT.md, docs/qa/MANUAL_CHECKLIST.md, tests/qa/**, tests/engine/qa-removebg-repeat.test.ts.
