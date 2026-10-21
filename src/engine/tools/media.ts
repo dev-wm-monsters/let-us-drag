@@ -137,7 +137,7 @@ export interface MediaJobIo {
 /** Convert one media file. Returns the temp path holding the result and its extension. */
 export async function convertMedia(optionId: OptionId, kind: 'video' | 'audio', io: MediaJobIo): Promise<{ temp: string; ext: string }> {
   io.progress(-1, 'Sniffing the file')
-  const info = await probeMedia(io.ffmpeg, io.input, io.signal)
+  const info = await probeMedia(io.ffmpeg, io.input, io.signal, kind)
   if (optionId === 'to-gif' && kind === 'video') return convertGif(info, io)
   const target = mediaTarget(optionId, kind, info)
   if (!target) throw new EngineError('UNSUPPORTED')
@@ -148,6 +148,7 @@ export async function convertMedia(optionId: OptionId, kind: 'video' | 'audio', 
   const temp = await io.tempFile(target.ext)
   await runConversion(io.ffmpeg, io.input, target.args, temp, {
     signal: io.signal,
+    kind,
     durationSec: info.durationSec,
     onProgress: (p) => io.progress(p, 'Chewing')
   })
@@ -162,6 +163,7 @@ async function convertGif(info: MediaInfo, io: MediaJobIo): Promise<{ temp: stri
   const pass1 = subProgress(io.progress, 0, 0.3)
   await runConversion(io.ffmpeg, io.input, ['-vf', `${filter},palettegen=stats_mode=diff`, '-frames:v', '1', '-update', '1', '-f', 'image2'], palette, {
     signal: io.signal,
+    kind: 'video',
     durationSec: info.durationSec,
     onProgress: (p) => pass1(p, 'Picking colours')
   })
@@ -172,7 +174,14 @@ async function convertGif(info: MediaInfo, io: MediaJobIo): Promise<{ temp: stri
     io.input,
     ['-lavfi', `${filter}[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`, '-loop', '0', '-f', 'gif'],
     temp,
-    { signal: io.signal, durationSec: info.durationSec, onProgress: (p) => pass2(p, 'Drawing frames'), extraInputs: [palette] }
+    {
+      signal: io.signal,
+      kind: 'video',
+      durationSec: info.durationSec,
+      onProgress: (p) => pass2(p, 'Drawing frames'),
+      // Our own palette PNG: forced demuxer, so no image2 pattern expansion even if the folder has a "%".
+      extraInputs: [{ path: palette, kind: 'image', format: 'png_pipe' }]
+    }
   )
   return { temp, ext: 'gif' }
 }

@@ -3,13 +3,14 @@ import { writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { Category, DroppedItem, JobEvent, JobRequest, OptionId } from '../shared/types'
 import type { EngineAdapters, EngineOptions } from './api'
-import { EngineError, cancelledOrTimeout, throwIfAborted, toJobError } from './errors'
+import { EngineError, aboutFile, cancelledOrTimeout, invalidInput, shortName, throwIfAborted, toJobError } from './errors'
+import { JOB_TIMEOUT_MS, MAX_INPUT_BYTES, formatBytes } from './limits'
 import { OutputStager, convertedName, mergedName, pagesFolderName, suffixedName, unzipFolderName, zipName } from './output'
 import { createThrottledProgress, subProgress, type ProgressFn } from './progress'
 import { assertJobRequest, describePaths, validateRequest } from './registry'
 import { resolveFfmpeg } from './tools/ffmpeg'
 
-export const DEFAULT_JOB_TIMEOUT_MS = 30 * 60 * 1000
+export const DEFAULT_JOB_TIMEOUT_MS = JOB_TIMEOUT_MS
 
 /** Engine-internal knobs (not part of the shared contract). */
 export interface EngineRuntimeOptions extends EngineOptions {
@@ -41,13 +42,36 @@ async function stageData(ctx: JobContext, dir: string, name: string, data: Uint8
 
 type EachHandler = (ctx: JobContext, item: DroppedItem, progress: ProgressFn) => Promise<void>
 
+/**
+ * 'each' batches are all-or-nothing (TPM decision D7): outputs are only committed when every input
+ * succeeded, and the error names the file that failed.
+ */
 async function forEachItem(ctx: JobContext, handler: EachHandler): Promise<void> {
   const n = ctx.items.length
   for (let i = 0; i < n; i++) {
     throwIfAborted(ctx.signal)
-    await handler(ctx, ctx.items[i]!, subProgress(ctx.progress, i / n, (i + 1) / n))
+    const item = ctx.items[i]!
+    try {
+      await handler(ctx, item, subProgress(ctx.progress, i / n, (i + 1) / n))
+    } catch (err) {
+      throw n > 1 ? aboutFile(err, item.name) : err
+    }
   }
 }
+
+/** Refuse inputs above the per-category byte limit (SEC-41) before any parser sees them. */
+export function assertInputSizes(category: Category, items: readonly DroppedItem[]): void {
+  const max = MAX_INPUT_BYTES[category]
+  for (const item of items) {
+    if (!item.isDirectory && item.sizeBytes > max) {
+      throw invalidInput(`${shortName(item.name)} is larger than ${formatBytes(max)}, which is more than I can chew for this kind of file.`)
+    }
+  }
+}
+
+/** Stage text while the Remove-BG model is downloaded once (TPM decision D10). */
+export const MODEL_DOWNLOAD_STAGE = 'One-time download of my scissors (179 MB AI model)'
+export const MODEL_VERIFY_STAGE = 'Checking the download'
 
 // --- image ------------------------------------------------------------------------------------
 
@@ -62,19 +86,22 @@ const imageEach: EachHandler = async (ctx, item, progress) => {
       cacheDir: ctx.options.cacheDir,
       signal: ctx.signal,
       env: ctx.options.env,
-      onProgress: (p) => progress(p * 0.4, 'Fetching my scissors (one-time download)')
+      onProgress: (p) => progress(p * 0.4, MODEL_DOWNLOAD_STAGE),
+      onVerify: () => progress(0.4, MODEL_VERIFY_STAGE)
     })
     const img = await openImage(item.path, item.ext, deps)
     const png = await removeBackground(img, modelPath, ctx.signal, (p, stage) => progress(p < 0 ? -1 : 0.4 + p * 0.6, stage))
     await stageData(ctx, dir, suffixedName(item.name, '-nobg', 'png'), png)
     return
   }
-  const { encodeImage } = await import('./tools/image')
+  const { encodeImageTo, imageOutputExt } = await import('./tools/image')
   progress(-1, 'Chewing')
-  const res = await encodeImage(ctx.req.optionId, item.path, item.ext, deps)
+  // Encoded straight into the temp file: the output never sits in JS memory as a whole.
+  const temp = await ctx.out.tempFile(dir, imageOutputExt(ctx.req.optionId, item.ext))
+  const res = await encodeImageTo(ctx.req.optionId, item.path, item.ext, deps, temp)
   if (res.note) progress(1, res.note)
   const name = res.suffix ? suffixedName(item.name, res.suffix, res.ext) : convertedName(item.name, res.ext)
-  await stageData(ctx, dir, name, res.data)
+  ctx.out.stage(temp, dir, name)
 }
 
 async function imagesToPdfJob(ctx: JobContext): Promise<void> {
@@ -123,7 +150,7 @@ const pdfEach: EachHandler = async (ctx, item, progress) => {
     return
   }
   const ext = ctx.req.optionId === 'pdf-to-jpg' ? 'jpg' : 'png'
-  const sharp = ext === 'jpg' ? (await import('sharp')).default : undefined
+  const sharp = ext === 'jpg' ? (await import('./tools/sharp-safe')).safeSharp : undefined
   const folder = await ctx.out.tempDir(dir)
   const { join } = await import('node:path')
   let lastFile = ''
@@ -162,7 +189,7 @@ async function docOrTextToBytes(ctx: JobContext, item: DroppedItem, optionId: Op
   const title = splitName(item.name).base
   const htmlToPdf = (html: string): Promise<Uint8Array> => ctx.adapters.htmlToPdf(html)
   return ctx.category === 'document'
-    ? text.convertDocx(optionId, item.path, title, htmlToPdf)
+    ? text.convertDocx(optionId, item.path, title, htmlToPdf, ctx.signal)
     : text.convertText(optionId, item.path, item.ext, title, htmlToPdf)
 }
 
@@ -186,10 +213,15 @@ async function docsToPdfJob(ctx: JobContext): Promise<void> {
   for (let i = 0; i < n; i++) {
     throwIfAborted(ctx.signal)
     ctx.progress(i / n, 'Printing')
-    const res = await docOrTextToBytes(ctx, ctx.items[i]!, 'to-pdf')
-    const src = await PDFDocument.load(res.data as Uint8Array)
-    const pages = await merged.copyPages(src, src.getPageIndices())
-    pages.forEach((p) => merged.addPage(p))
+    const item = ctx.items[i]!
+    try {
+      const res = await docOrTextToBytes(ctx, item, 'to-pdf')
+      const src = await PDFDocument.load(res.data as Uint8Array)
+      const pages = await merged.copyPages(src, src.getPageIndices())
+      pages.forEach((p) => merged.addPage(p))
+    } catch (err) {
+      throw aboutFile(err, item.name)
+    }
   }
   await stageData(ctx, dirname(first.path), mergedName(first.name, 'pdf'), await merged.save())
 }
@@ -199,7 +231,7 @@ async function docsToPdfJob(ctx: JobContext): Promise<void> {
 const dataEach: EachHandler = async (ctx, item, progress) => {
   const { convertData } = await import('./tools/data')
   progress(-1, 'Crunching numbers')
-  const res = await convertData(ctx.req.optionId, item.path, item.ext)
+  const res = await convertData(ctx.req.optionId, item.path, item.ext, ctx.signal)
   await stageData(ctx, dirname(item.path), convertedName(item.name, res.ext), res.data)
 }
 
@@ -276,6 +308,7 @@ export async function runJob(
     throwIfAborted(jobSignal)
     const items = await describePaths(req.inputPaths)
     const category = validateRequest(req, items)
+    if (req.optionId !== 'zip') assertInputSizes(category, items) // zip streams any size
     const progress = createThrottledProgress((p, stage) => emit(stage === undefined ? { type: 'progress', jobId, progress: p } : { type: 'progress', jobId, progress: p, stage }))
     progress(0, 'Chewing')
     let ffmpegPath: string | undefined

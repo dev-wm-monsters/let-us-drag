@@ -126,7 +126,7 @@ describe('unzip', () => {
     expect(await readdir(out!)).toEqual(['real.txt'])
   })
 
-  it('refuses archives that declare more than 4 GB uncompressed in total (zip bomb)', async () => {
+  it('refuses archives that declare gigabytes from a few bytes (zip bomb)', async () => {
     // Two entries whose central directory claims ≈ 4 GiB each: rejected before anything is written.
     const buf = rawZip([
       { name: 'b1.bin', data: 'x' },
@@ -143,7 +143,7 @@ describe('unzip', () => {
     await writeFile(z, buf)
     const res = await runOption('unzip', [z])
     expect(res.error?.code).toBe('INPUT_INVALID')
-    expect(res.error?.message).toMatch(/4 GB/)
+    expect(res.error?.message).toMatch(/zip bomb/)
     expect(await readdir(sub)).toEqual(['bomb.zip'])
   })
 

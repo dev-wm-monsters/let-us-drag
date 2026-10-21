@@ -1,7 +1,8 @@
-// Downloads the Remove-BG model (isnet-general-use.onnx, as distributed by the rembg project),
-// prints its SHA-256 and checks it against the pinned value in src/engine/tools/model.ts.
-// Used by CI (then: LUD_MODEL_PATH=<printed path> npm test) and before mirroring the file to our
-// own GitHub release "models-v1".
+// Downloads the Remove-BG model (isnet-general-use.onnx) from the upstream rembg release (the same
+// primary source the app uses, TPM decision D10), prints its SHA-256 and checks it against the
+// pinned value in src/engine/tools/model.ts. Used by CI and developers to get a local copy
+// (then: LUD_MODEL_PATH=<printed path> npm test). We do NOT mirror the weights in our releases
+// (D10: the weights' license is not stated upstream).
 //
 // Usage: node scripts/fetch-model.mjs [outDir] [--url <url>] [--no-verify]
 //   outDir defaults to node_modules/.cache/lud-models (git-ignored).
@@ -30,10 +31,10 @@ const verify = !args.includes('--no-verify')
 const positional = args.filter((a, i) => !a.startsWith('--') && !(urlIdx >= 0 && i === urlIdx + 1))
 const outDir = resolve(positional[0] ?? join(root, 'node_modules', '.cache', 'lud-models'))
 const target = join(outDir, FILE)
-const part = `${target}.part`
+const part = `${target}.${process.pid}.part`
 
 mkdirSync(outDir, { recursive: true })
-const res = await fetch(url, { redirect: 'follow' })
+const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(30 * 60 * 1000) })
 if (!res.ok || !res.body) {
   console.error(`GET ${url} -> HTTP ${res.status}`)
   process.exit(1)

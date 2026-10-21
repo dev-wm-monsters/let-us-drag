@@ -1,10 +1,11 @@
 // Safe output naming and atomic writes (docs/PLAN.md §3 decision 7).
 // - Outputs go next to the source and never overwrite anything: "name (1).ext", "name (2).ext", ...
 // - Every output is first written to a hidden temp file/folder in the SAME directory and only
-//   renamed into place once the whole job succeeded, so a failed job leaves no half-written files.
+//   committed (link / exclusive copy / reserved folder) once the whole job succeeded, so a failed
+//   job leaves no half-written files and nothing that already exists is ever replaced.
 import { randomBytes } from 'node:crypto'
-import { existsSync } from 'node:fs'
-import { link, mkdir, open, rename, rm, unlink } from 'node:fs/promises'
+import { constants as fsConstants } from 'node:fs'
+import { copyFile, link, mkdir, open, readdir, rename, rm, rmdir, unlink } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
 import { EngineError, errnoCode } from './errors'
 
@@ -70,45 +71,83 @@ function writeError(err: unknown, dir: string): EngineError {
   return new EngineError('OUTPUT_NOT_WRITABLE', undefined, `${dir}: ${String(err)}`)
 }
 
-/** Commit a finished temp file under a unique final name without ever replacing an existing file. */
+/**
+ * Commit a finished temp file under a unique final name without ever replacing an existing file
+ * (SEC-110). link() fails with EEXIST instead of replacing: an atomic "create if absent". On
+ * filesystems without hard links (FAT/exFAT, some network shares) copyFile(COPYFILE_EXCL) is the
+ * equally race-safe fallback (O_EXCL). rename() is never used for files: it silently replaces.
+ */
 export async function commitFile(tempPath: string, dir: string, name: string): Promise<string> {
   const { base, ext } = splitName(name)
+  let linkWorks = true
   for (let n = 0; n < MAX_COLLISIONS; n++) {
     const finalPath = join(dir, numberedName(base, ext, n))
+    if (linkWorks) {
+      try {
+        await link(tempPath, finalPath)
+        await unlink(tempPath).catch(() => undefined)
+        return finalPath
+      } catch (err) {
+        const code = errnoCode(err)
+        if (code === 'EEXIST') continue
+        if (!LINK_UNSUPPORTED.has(code ?? '')) throw writeError(err, dir)
+        linkWorks = false
+      }
+    }
     try {
-      // link() fails with EEXIST instead of replacing: an atomic "create if absent".
-      await link(tempPath, finalPath)
+      await copyFile(tempPath, finalPath, fsConstants.COPYFILE_EXCL)
       await unlink(tempPath).catch(() => undefined)
       return finalPath
     } catch (err) {
-      const code = errnoCode(err)
-      if (code === 'EEXIST') continue
-      // Filesystems without hard links (FAT/exFAT, some network shares): check-then-rename.
-      if (existsSync(finalPath)) continue
-      try {
-        await rename(tempPath, finalPath)
-        return finalPath
-      } catch (err2) {
-        if (errnoCode(err2) === 'EEXIST') continue
-        throw writeError(err2, dir)
-      }
+      if (errnoCode(err) === 'EEXIST') continue
+      throw writeError(err, dir)
     }
   }
   throw new EngineError('OUTPUT_NOT_WRITABLE', 'Too many files with the same name already exist here.')
 }
 
-/** Commit a finished temp folder under a unique final name. */
+/** Errors from link() that mean "no hard links here", not "no permission". */
+const LINK_UNSUPPORTED = new Set(['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'ENOSYS', 'EXDEV', 'EMLINK', 'EINVAL'])
+
+async function moveChildren(from: string, to: string): Promise<void> {
+  for (const child of await readdir(from)) {
+    // `to` was created empty by us a moment ago, so these names cannot clash with user files.
+    await rename(join(from, child), join(to, child))
+  }
+  await rm(from, { recursive: true, force: true })
+}
+
+/**
+ * Commit a finished temp folder under a unique final name (SEC-104/110). The final folder is first
+ * reserved with a non-recursive mkdir (fails with EEXIST if anything has that name). The temp
+ * folder then replaces that EMPTY folder of ours (POSIX rename onto an empty directory; it fails
+ * with ENOTEMPTY if anything appeared inside meanwhile), or, where directories cannot be renamed
+ * onto each other (Windows), its children are moved in.
+ */
 export async function commitDir(tempDir: string, parent: string, name: string): Promise<string> {
   for (let n = 0; n < MAX_COLLISIONS; n++) {
     const finalPath = join(parent, numberedName(name, '', n))
-    if (existsSync(finalPath)) continue
+    try {
+      await mkdir(finalPath)
+    } catch (err) {
+      if (errnoCode(err) === 'EEXIST') continue
+      throw writeError(err, parent)
+    }
     try {
       await rename(tempDir, finalPath)
       return finalPath
     } catch (err) {
       const code = errnoCode(err)
-      if ((code === 'EEXIST' || code === 'ENOTEMPTY' || code === 'EPERM') && existsSync(finalPath)) continue
-      throw writeError(err, parent)
+      if (code === 'ENOTEMPTY' || code === 'EEXIST') {
+        if (process.platform !== 'win32') continue // someone wrote into our reserved folder: leave it, take the next name
+      }
+      try {
+        await moveChildren(tempDir, finalPath)
+        return finalPath
+      } catch (err2) {
+        await rmdir(finalPath).catch(() => undefined) // only succeeds while it is still empty
+        throw writeError(err2, parent)
+      }
     }
   }
   throw new EngineError('OUTPUT_NOT_WRITABLE', 'Too many folders with the same name already exist here.')
