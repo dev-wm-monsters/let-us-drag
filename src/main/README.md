@@ -4,20 +4,23 @@ Owner: Backend dev, Platform (docs/PLAN.md section 7). The preload lives in `src
 
 | File | What it does |
 |---|---|
-| `index.ts` | Single-instance lock, E2E userData override, then `startApp()` |
+| `index.ts` | Registers the `lud-sandbox:` scheme, single-instance lock, then `startApp()` (never overrides userData, TPM D5) |
+| `e2e-mode.ts` | Pure: E2E mode = `LUD_E2E=1` AND not packaged (TPM D12, SEC-18) |
 | `app.ts` | Wiring: windows, tray, engine host, gesture, IPC, settings side effects, quit cleanup |
-| `paths.ts` | Pure: renderer page / preload / worker / resources / tray icon paths, trusted renderer URL check |
-| `security.ts` | Secure `webPreferences`, navigation / window.open / webview blocking, deny-all permission handlers |
+| `paths.ts` | Pure: renderer page / preload / worker / resources / tray icon paths; `rendererPageOf()` (which of our pages a URL is); dev server URL ignored when packaged (F-09) |
+| `security.ts` | Secure `webPreferences` (callers cannot weaken them), navigation / window.open / webview blocking for every webContents, deny-all permission / display-capture / download handlers, remote-request blocking for the app session (SEC-150) |
 | `windows/overlay.ts` | Overlay window + sensor/engage flow (PLAN §3.5); `overlay-session.ts` is the pure state machine + safety timeouts; `overlay-geometry.ts` is the pure placement math |
 | `windows/feed.ts`, `windows/settings.ts` | Single-instance Feed and Settings windows (`singleton.ts`) |
 | `platform/trigger-logic.ts` | Pure trigger state machine (drag + key); `trigger.ts` adapts uiohook-napi; `gesture.ts` owns start/stop/pause + `PlatformStatus`; `gesture-env.ts` is the pure "may the hook start?" decision; `permissions.ts` handles macOS Accessibility |
-| `engine-host.ts` | Host side of `src/engine/api.ts` (init, queueing until ready, crash → INTERNAL + bounded restart) |
-| `html-to-pdf.ts` | `htmlToPdf` adapter: one hidden, JS-less, sandboxed window in an in-memory session. Requests are filtered and the CSP is injected by `pdf-csp.ts`. Jobs run one at a time with a 30 s timeout. |
-| `ipc.ts`, `ipc-validation.ts` | All `ipcMain.handle` handlers; zod-validated payloads; sender must be one of our windows showing one of our pages |
+| `engine-host.ts` | Host side of `src/engine/api.ts` (init + `hostAdapters`, queueing until ready, crash → INTERNAL + bounded restart, watchdog: kill + restart when a cancelled job is still running after 5 s or a job runs past 32 min) |
+| `html-to-pdf.ts` | `htmlToPdf` adapter: a hidden, JS-less, sandboxed window without preload in an in-memory session; the document is served from memory on `lud-sandbox://print/<uuid>.html` (never `file://`); every other request is cancelled; CSP injected by `pdf-csp.ts`; 64 MB cap; 30 s timeout; window destroyed after each job (SEC-82) |
+| `pdf-render.ts`, `pdf-render-plan.ts` | `renderPdfPages` adapter: pdf.js in one hidden, sandboxed window without preload, in an in-memory session that serves only pdf.js files + the current PDF on `lud-sandbox://pdf/`. See below. |
+| `sandbox-protocol.ts` | Pure helpers for the `lud-sandbox:` scheme used by the two helper windows |
+| `ipc.ts`, `ipc-validation.ts`, `ipc-policy.ts` | All `ipcMain.handle` handlers; strict zod payloads; sender must be the main frame of one of our windows, still showing the page main loaded into it, and that page must be on the channel's allowlist (`IPC_ALLOWLIST`) |
 | `settings-store.ts` | Settings JSON in userData, validated field by field, atomic writes |
 | `autostart.ts` | Linux XDG autostart entry (macOS/Windows use `app.setLoginItemSettings`) |
 | `job-registry.ts` | Paths produced by finished jobs (only those can be revealed) + recorded events for E2E |
-| `test-hooks.ts` | `globalThis.__ludTest` (E2E only) |
+| `test-hooks.ts` | `globalThis.__ludTest` (E2E only; loaded with a dynamic import) |
 
 ## Overlay lifecycle
 
@@ -44,18 +47,79 @@ Every state change (arm, engage, disarm, interactive on/off, job start/finish) r
 While the overlay is visible, the `cursor` channel carries the cursor position in overlay-window
 coordinates (CSS px), only when it changes, at most about 60 Hz.
 
-## E2E design (LUD_E2E=1)
+## E2E design (LUD_E2E=1, unpackaged only)
 
-- `globalThis.__ludTest` is installed only when `process.env.LUD_E2E === '1'`. The input hook
-  (uiohook) is never started then. First-run onboarding is skipped so boots are deterministic.
-- `TEST_DROP_CHANNEL` is sent only by `__ludTest.dropFiles`. The preload subscribes to it only when
-  main started the renderer with the `--lud-e2e` argument, which main passes through
-  `additionalArguments` only under `LUD_E2E=1`. In a normal run, `lud.onTestDrop()` is a no-op.
-- Optional, E2E only:
-  - `LUD_E2E_USER_DATA=/abs/dir` isolates `userData`.
-  - `LUD_E2E_ENGINE_WORKER=/abs/file.cjs` swaps in a fake engine worker
-    (see `tests/unit/platform/smoke/fake-engine-worker.cjs`).
-- Smoke test against the built app: `npm run build && xvfb-run -a node tests/unit/platform/smoke/electron-smoke.mjs`.
+- E2E mode = `LUD_E2E=1` AND `!app.isPackaged` (`e2e-mode.ts`). A packaged build ignores `LUD_E2E`
+  completely: no `__ludTest`, no `--lud-e2e` renderer flag, no env overrides. QA runs E2E against
+  the unpackaged build (`electron .`), so this costs nothing.
+- In E2E mode `globalThis.__ludTest` is installed at the end of startup (after the windows, engine
+  and IPC exist; the hooks await the overlay page themselves). The input hook (uiohook) is never
+  started. First-run onboarding is skipped so boots are deterministic.
+- The test channels are sent only by `__ludTest`: `TEST_DROP_CHANNEL` (overlay, `dropFiles`),
+  `TEST_FEED_DROP_CHANNEL` (Feed Window, `dropFilesOnFeed`, opens the window first) and
+  `TEST_CANCEL_CHANNEL` (overlay + Feed Window, `cancelActive`). The preload subscribes to them
+  (`onTestDrop`, `onTestFeedDrop`, `onTestCancel`) only when main started the renderer with
+  `--lud-e2e`; otherwise they are no-ops. The renderer decides what a drop/cancel means, so the
+  hooks exercise the same code path as the real UI.
+- `userData` is isolated with the Chromium switch `--user-data-dir=<dir>` (main never calls
+  `app.setPath('userData')`, TPM D5).
+- Optional, E2E only: `LUD_E2E_ENGINE_WORKER=/abs/file.cjs` swaps in a fake engine worker
+  (see `tests/unit/platform/smoke/fake-engine-worker.cjs`).
+- Smoke tests against the built app:
+  - `npm run build && xvfb-run -a node tests/unit/platform/smoke/electron-smoke.mjs` (fake engine:
+    windows, IPC policy, hooks, htmlToPdf, crash/restart, hardened webPreferences);
+  - `npm run build && LUD_FFMPEG_PATH=/usr/bin/ffmpeg xvfb-run -a node tests/unit/platform/smoke/pdf-render-smoke.mjs`
+    (real engine: PDF → PNG/JPG through `renderPdfPages`, huge/hostile/corrupt PDFs, SEC-82 HTML checks).
+
+## Hidden helper windows (htmlToPdf, renderPdfPages)
+
+Both render untrusted content, so both use the same pattern:
+
+- `secureWebPreferences()` (sandbox, context isolation, no node), **no preload**, `devTools: false`,
+  `show: false`, a dedicated non-persistent session (`lud-html-to-pdf`, `lud-pdf-render`) with
+  deny-all permissions/downloads.
+- Content comes from main through the session's own `lud-sandbox:` protocol handler (registered as
+  privileged in `index.ts`): only the URLs main decides to serve exist. The session's webRequest
+  filter cancels everything else (http(s), ws, `file://`, other hosts).
+- Navigation, new windows and `<webview>` are blocked (`web-contents-created`).
+
+`renderPdfPages` specifics: JavaScript is on (pdf.js needs it), but the only scripts are pdf.js
+(`node_modules/pdfjs-dist/build/pdf.mjs` + `pdf.worker.mjs`, read by main, also from app.asar) and a
+tiny page script; CSP `script-src 'self' 'wasm-unsafe-eval'` (no eval; pdf.js 6 has no eval path,
+`isEvalSupported: false` is still passed). pdf.js runs with `enableXfa: false`,
+`useSystemFonts: false`, local cmaps/standard fonts/wasm, `maxImageSize` 100 MP; only
+`page.render()` is used (no annotation/scripting layer). Main drives it page by page with
+`executeJavaScript` (open → size → render), computes each page's scale with the engine's
+`PdfRenderOptions` (scale, maxSide, maxPixels; clamped again by main), and validates every result
+(PNG magic, ≤ 1000 pages, ≤ 1 GB total). Jobs are serialized, one window is reused and closed after
+60 s idle; a job times out after 4 min (the engine waits 5); on timeout, cancel (engine worker gone)
+or renderer crash the window is destroyed and the next job gets a fresh one.
+
+## Engine watchdog
+
+Synchronous parsers in the engine cannot be interrupted, so `engine-host.ts` watches each job:
+
+| Situation | Action |
+|---|---|
+| `cancel` sent, no `done`/`error` from the worker within 5 s | kill the utilityProcess, start a new one at once |
+| a job runs > 32 min after its first `progress` (engine's own limit is 30 min) | same |
+| a job waits inside the worker > 32 min without any message from the worker | same |
+
+On such a kill every in-flight job gets an `error`: `CANCELLED` for jobs the user cancelled,
+`INTERNAL` ("This took too long…") for the job that timed out, `INTERNAL` ("The converter had to
+restart…") for the others. Deliberate kills do not count towards the crash-restart budget.
+
+## Privacy of the input hook (SEC-30..37)
+
+- `trigger.ts` is the only file that touches uiohook. The trigger is derived from the modifier mask
+  on mouse events + left-button state + movement distance. A key listener maps the 8 modifier key
+  codes to an abstract `{ key, held }` event and returns at once for every other key.
+- `trigger-logic.ts` only sees abstract events (`down/up/move` with modifier flags, `modifier`).
+- No hook data is stored, logged, sent over IPC or the network. Arm/disarm side effects run
+  outside the hook callback (`setImmediate`).
+- The hook runs only when the gesture is available and not paused; it is stopped on pause, on quit,
+  and when macOS Accessibility is revoked (checked every 5 s while the hook runs).
+- The overlay is hidden on `lock-screen` and `suspend`.
 
 ## Launch at login
 

@@ -1,7 +1,19 @@
 import { EventEmitter } from 'node:events'
 import { describe, expect, it, vi } from 'vitest'
 import type { HostToWorker } from '../../../src/engine/api'
-import { CRASH_ERROR, EngineHost, MAX_RESTARTS, UNAVAILABLE_ERROR, type WorkerLike } from '../../../src/main/engine-host'
+import {
+  CANCEL_GRACE_MS,
+  CANCELLED_ERROR,
+  CRASH_ERROR,
+  EngineHost,
+  HUNG_ERROR,
+  JOB_HARD_TIMEOUT_MS,
+  MAX_RESTARTS,
+  RESTARTED_ERROR,
+  UNAVAILABLE_ERROR,
+  type EngineHostDeps,
+  type WorkerLike
+} from '../../../src/main/engine-host'
 import type { JobEvent, JobRequest } from '../../../src/shared/types'
 
 class FakeWorker extends EventEmitter implements WorkerLike {
@@ -22,11 +34,20 @@ class FakeWorker extends EventEmitter implements WorkerLike {
   }
 }
 
-function setup(opts: { htmlToPdf?: (html: string) => Promise<Uint8Array> } = {}) {
+interface FakeTimer {
+  id: number
+  fn: () => void
+  ms: number
+  at: number
+}
+
+function setup(opts: { htmlToPdf?: (html: string) => Promise<Uint8Array>; renderPdfPages?: EngineHostDeps['renderPdfPages'] } = {}) {
   const workers: FakeWorker[] = []
   const events: JobEvent[] = []
-  const timers: { fn: () => void; ms: number }[] = []
+  /** Live (not cleared, not fired) timers. */
+  const timers: FakeTimer[] = []
   let now = 0
+  let nextId = 1
   const host = new EngineHost({
     fork: () => {
       const w = new FakeWorker()
@@ -35,25 +56,45 @@ function setup(opts: { htmlToPdf?: (html: string) => Promise<Uint8Array> } = {})
     },
     options: { cacheDir: '/tmp/cache', resourcesDir: '/tmp/res' },
     htmlToPdf: opts.htmlToPdf ?? (async () => new Uint8Array([37, 80, 68, 70])),
+    ...(opts.renderPdfPages ? { renderPdfPages: opts.renderPdfPages } : {}),
     onEvent: (e) => events.push(e),
     setTimer: (fn, ms) => {
-      timers.push({ fn, ms })
-      return timers.length
+      const t = { id: nextId++, fn, ms, at: now + ms }
+      timers.push(t)
+      return t.id
     },
-    clearTimer: () => undefined,
+    clearTimer: (h) => {
+      const i = timers.findIndex((t) => t.id === h)
+      if (i >= 0) timers.splice(i, 1)
+    },
     now: () => now
   })
+  /** Advance the fake clock, firing due timers in order. */
+  const advance = (ms: number): void => {
+    const target = now + ms
+    for (;;) {
+      const due = timers.filter((t) => t.at <= target).sort((a, b) => a.at - b.at)[0]
+      if (!due) break
+      timers.splice(timers.indexOf(due), 1)
+      now = due.at
+      due.fn()
+    }
+    now = target
+  }
   return {
     host,
     workers,
     events,
     timers,
-    advance: (ms: number) => {
-      now += ms
-    },
+    advance,
+    /** Restart timers currently scheduled (crash recovery). */
+    restartTimers: () => timers.filter((t) => t.ms < CANCEL_GRACE_MS),
+    /** Fire only the crash-restart timers (not the job watchdogs). */
     runTimers: () => {
-      const t = timers.splice(0)
-      for (const x of t) x.fn()
+      for (const t of timers.filter((x) => x.ms < CANCEL_GRACE_MS)) {
+        timers.splice(timers.indexOf(t), 1)
+        t.fn()
+      }
     }
   }
 }
@@ -149,7 +190,7 @@ describe('EngineHost', () => {
   })
 
   it('fails in-flight jobs with INTERNAL on crash and restarts the worker', () => {
-    const { host, workers, events, timers, runTimers } = setup()
+    const { host, workers, events, restartTimers, runTimers } = setup()
     host.start()
     workers[0]!.fromWorker({ type: 'ready' })
     host.run(req('j1'))
@@ -160,7 +201,7 @@ describe('EngineHost', () => {
       { type: 'error', jobId: 'j2', error: CRASH_ERROR }
     ])
     expect(host.isReady).toBe(false)
-    expect(timers).toHaveLength(1)
+    expect(restartTimers()).toHaveLength(1)
     // a job submitted while restarting waits for the new worker
     host.run(req('j3'))
     runTimers()
@@ -193,6 +234,7 @@ describe('EngineHost', () => {
     host.start()
     workers[0]!.fromWorker({ type: 'ready' })
     host.run(req('j1'))
+    expect(timers).toHaveLength(1) // the job's watchdog
     host.stop()
     expect(workers[0]!.killed).toBe(true)
     workers[0]!.crash()
@@ -218,5 +260,148 @@ describe('EngineHost', () => {
     host.start()
     expect(calls).toBe(1)
     expect(timers).toHaveLength(1)
+  })
+
+  it('declares renderPdfPages in init and answers renderPdf requests', async () => {
+    const seen: { bytes: number[]; scale: number; aborted: boolean }[] = []
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1])
+    const { host, workers } = setup({
+      renderPdfPages: async (pdf, o, signal) => {
+        seen.push({ bytes: Array.from(pdf), scale: o.scale, aborted: signal.aborted })
+        return [png, png]
+      }
+    })
+    host.start()
+    const w = workers[0]!
+    expect(w.sent[0]).toEqual({ type: 'init', options: { cacheDir: '/tmp/cache', resourcesDir: '/tmp/res' }, hostAdapters: ['renderPdfPages'] })
+    w.fromWorker({ type: 'renderPdf', requestId: 'p1', pdf: new Uint8Array([37, 80]), options: { scale: 2, maxSide: 100, maxPixels: 1000 } })
+    await vi.waitFor(() => expect(w.sent.at(-1)).toMatchObject({ type: 'renderPdf:result', requestId: 'p1' }))
+    const reply = w.sent.at(-1) as Extract<HostToWorker, { type: 'renderPdf:result' }>
+    expect(reply.pages).toHaveLength(2)
+    expect(seen).toEqual([{ bytes: [37, 80], scale: 2, aborted: false }])
+  })
+
+  it('reports renderPdf failures and rejects malformed renderPdf requests', async () => {
+    const { host, workers } = setup({ renderPdfPages: async () => Promise.reject(new Error('bad pdf')) })
+    host.start()
+    const w = workers[0]!
+    w.fromWorker({ type: 'renderPdf', requestId: 'p2', pdf: 'not bytes', options: { scale: 2, maxSide: 1, maxPixels: 1 } })
+    w.fromWorker({ type: 'renderPdf', requestId: 'p3', pdf: new Uint8Array([1]), options: { scale: 2, maxSide: 1, maxPixels: 1 } })
+    await vi.waitFor(() => expect(w.sent.at(-1)).toEqual({ type: 'renderPdf:result', requestId: 'p3', error: 'bad pdf' }))
+    expect(w.sent.filter((m) => m.type === 'renderPdf:result')).toHaveLength(1)
+  })
+
+  it('without the adapter, init declares nothing and renderPdf requests fail', async () => {
+    const { host, workers } = setup()
+    host.start()
+    const w = workers[0]!
+    expect(w.sent[0]).toEqual({ type: 'init', options: { cacheDir: '/tmp/cache', resourcesDir: '/tmp/res' } })
+    w.fromWorker({ type: 'renderPdf', requestId: 'p4', pdf: new Uint8Array([1]), options: { scale: 2, maxSide: 1, maxPixels: 1 } })
+    await vi.waitFor(() => expect(w.sent.at(-1)).toMatchObject({ type: 'renderPdf:result', requestId: 'p4', error: expect.any(String) }))
+  })
+
+  it('aborts adapter work when the worker dies', async () => {
+    let signal: AbortSignal | null = null
+    const { host, workers } = setup({
+      renderPdfPages: (_pdf, _o, s) => {
+        signal = s
+        return new Promise(() => undefined)
+      }
+    })
+    host.start()
+    workers[0]!.fromWorker({ type: 'renderPdf', requestId: 'p5', pdf: new Uint8Array([1]), options: { scale: 2, maxSide: 1, maxPixels: 1 } })
+    expect(signal!.aborted).toBe(false)
+    workers[0]!.crash()
+    expect(signal!.aborted).toBe(true)
+  })
+
+  it('watchdog: a cancelled job that does not stop within the grace period kills and restarts the worker', () => {
+    const { host, workers, events, advance } = setup()
+    host.start()
+    const w = workers[0]!
+    w.fromWorker({ type: 'ready' })
+    host.run(req('stuck'))
+    host.run(req('other'))
+    w.fromWorker({ type: 'event', event: { type: 'progress', jobId: 'stuck', progress: 0 } })
+    host.cancel('stuck')
+    host.cancel('stuck') // a second cancel does not extend the grace period
+    expect(w.sent.filter((m) => m.type === 'cancel')).toHaveLength(2)
+    advance(CANCEL_GRACE_MS - 1)
+    expect(w.killed).toBe(false)
+    advance(1)
+    expect(w.killed).toBe(true)
+    expect(events).toEqual([
+      { type: 'progress', jobId: 'stuck', progress: 0 },
+      { type: 'error', jobId: 'stuck', error: CANCELLED_ERROR },
+      { type: 'error', jobId: 'other', error: RESTARTED_ERROR }
+    ])
+    // restarted immediately (not counted as a crash), and the old worker is ignored
+    expect(workers).toHaveLength(2)
+    expect(workers[1]!.sent[0]?.type).toBe('init')
+    w.crash()
+    w.fromWorker({ type: 'event', event: { type: 'done', jobId: 'stuck', outputPaths: [] } })
+    expect(events).toHaveLength(3)
+    workers[1]!.fromWorker({ type: 'ready' })
+    host.run(req('stuck')) // the id is free again
+    expect(workers[1]!.sent.at(-1)).toEqual({ type: 'run', req: req('stuck') })
+  })
+
+  it('watchdog: a cancelled job that stops in time does not trigger a restart', () => {
+    const { host, workers, events, advance, timers } = setup()
+    host.start()
+    const w = workers[0]!
+    w.fromWorker({ type: 'ready' })
+    host.run(req('j1'))
+    host.cancel('j1')
+    w.fromWorker({ type: 'event', event: { type: 'error', jobId: 'j1', error: CANCELLED_ERROR } })
+    expect(timers).toHaveLength(0)
+    advance(JOB_HARD_TIMEOUT_MS * 2)
+    expect(w.killed).toBe(false)
+    expect(events).toEqual([{ type: 'error', jobId: 'j1', error: CANCELLED_ERROR }])
+  })
+
+  it('watchdog: a job running longer than the hard timeout kills and restarts the worker', () => {
+    const { host, workers, events, advance } = setup()
+    host.start()
+    const w = workers[0]!
+    w.fromWorker({ type: 'ready' })
+    host.run(req('long'))
+    advance(1_000)
+    w.fromWorker({ type: 'event', event: { type: 'progress', jobId: 'long', progress: 0 } }) // starts now
+    advance(JOB_HARD_TIMEOUT_MS - 1)
+    expect(w.killed).toBe(false)
+    advance(1)
+    expect(w.killed).toBe(true)
+    expect(events.at(-1)).toEqual({ type: 'error', jobId: 'long', error: HUNG_ERROR })
+    expect(workers).toHaveLength(2)
+  })
+
+  it('watchdog: jobs waiting inside a live worker are not timed out while it keeps talking', () => {
+    const { host, workers, events, advance } = setup()
+    host.start()
+    const w = workers[0]!
+    w.fromWorker({ type: 'ready' })
+    host.run(req('running'))
+    host.run(req('waiting'))
+    w.fromWorker({ type: 'event', event: { type: 'progress', jobId: 'running', progress: 0 } })
+    for (let i = 0; i < 20; i++) {
+      advance(JOB_HARD_TIMEOUT_MS / 20 - 10)
+      w.fromWorker({ type: 'event', event: { type: 'progress', jobId: 'running', progress: i / 20 } })
+    }
+    w.fromWorker({ type: 'event', event: { type: 'done', jobId: 'running', outputPaths: ['/tmp/x'] } })
+    w.fromWorker({ type: 'event', event: { type: 'progress', jobId: 'waiting', progress: 0 } })
+    expect(w.killed).toBe(false)
+    w.fromWorker({ type: 'event', event: { type: 'done', jobId: 'waiting', outputPaths: ['/tmp/y'] } })
+    expect(events.filter((e) => e.type === 'error')).toEqual([])
+  })
+
+  it('a crash after a cancel reports CANCELLED for that job', () => {
+    const { host, workers, events } = setup()
+    host.start()
+    workers[0]!.fromWorker({ type: 'ready' })
+    host.run(req('c1'))
+    host.cancel('c1')
+    workers[0]!.crash()
+    expect(events).toEqual([{ type: 'error', jobId: 'c1', error: CANCELLED_ERROR }])
   })
 })

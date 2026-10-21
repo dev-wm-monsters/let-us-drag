@@ -2,6 +2,8 @@
 // Speaks the src/engine/api.ts protocol:
 //   to-pdf  → asks the host to render HTML (htmlToPdf adapter) and writes <input>.pdf
 //   zip with an input path containing "crash" → exits the process (crash/restart test)
+//   zip with an input path containing "hang" → blocks the event loop forever (watchdog test:
+//     like a synchronous parser that cannot see the cancel message)
 //   anything else → writes <input>.out (a copy)
 const { copyFileSync, writeFileSync } = require('node:fs')
 
@@ -25,6 +27,15 @@ port.on('message', (e) => {
     event({ type: 'queued', jobId: id })
     event({ type: 'progress', jobId: id, progress: 0.5, stage: 'fake' })
     if (optionId === 'zip' && inputPaths.some((p) => p.includes('crash'))) process.exit(3)
+    if (optionId === 'zip' && inputPaths.some((p) => p.includes('hang'))) {
+      // Let the queued/progress events go out first, then never yield again.
+      setTimeout(() => {
+        for (;;) {
+          // busy
+        }
+      }, 50)
+      return
+    }
     if (optionId === 'to-pdf') {
       const requestId = `r${++counter}`
       pendingPdf.set(requestId, { id, out: `${inputPaths[0]}.pdf` })

@@ -1,4 +1,9 @@
-// Pure helper for the htmlToPdf adapter: a CSP that blocks all network and scripts.
+// Pure helpers for the htmlToPdf adapter: a CSP that blocks all network and scripts, and the
+// request filter of its session.
+
+import { isSandboxUrl } from './sandbox-protocol'
+
+export const PRINT_HOST = 'print'
 
 export const PDF_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline' data:; font-src data:; media-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'"
 
@@ -9,3 +14,10 @@ export function injectCsp(html: string, csp: string = PDF_CSP): string {
   if (m) return html.slice(0, m[0].length) + meta + html.slice(m[0].length)
   return meta + html
 }
+
+/** Pure: may the print session load this URL? Only the current document and data: URLs. */
+export function isAllowedPrintRequest(url: string, documentUrl: string | null): boolean {
+  if (url.startsWith('data:')) return true
+  return documentUrl !== null && url === documentUrl && isSandboxUrl(url, PRINT_HOST)
+}
+

@@ -38,6 +38,7 @@ export class OverlayController {
     const isMac = process.platform === 'darwin'
     this.win = createAppWindow(
       deps.ctx,
+      'overlay',
       {
         width: OVERLAY_SIZE,
         height: OVERLAY_SIZE,
@@ -149,6 +150,16 @@ export class OverlayController {
 
   /** Renderer finished its leave animation. */
   done(): void {
+    this.hideNow()
+  }
+
+  /**
+   * Hide right away whatever the state (screen locked, system suspending: SEC-36). A running job
+   * keeps running; its result still reaches the Feed Window and the job events.
+   */
+  forceHide(): void {
+    if (this.session.phase === 'hidden' && !this.isVisible()) return
+    if (this.session.phase === 'armed' || this.session.phase === 'engaged') this.send(IPC.overlayDisarm)
     this.hideNow()
   }
 
