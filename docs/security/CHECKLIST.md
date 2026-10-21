@@ -10,8 +10,9 @@ plus the evidence (file:line, command output, test name). "MUST" items block the
 Status column: the state on the scaffold baseline `develop@e9fae72`. "—" means it cannot be judged yet
 because the code does not exist. "FAIL F-xx" refers to the baseline findings in §K.
 
-**Current status (phase 2, `develop@a6c0d94`): see [REVIEW.md](REVIEW.md)**, which records PASS/FAIL per ID with
-file:line evidence, new findings F-15..F-22, and which owner is expected to close each ID.
+**Current status (final review, `develop@c2c4bfa`): see [REVIEW.md](REVIEW.md)**, which records PASS / WAIVED (Dxx) /
+FAIL per ID with file:line evidence, the probes run on a packaged build, new findings F-23..F-30, the public
+release blockers and the private-test-build verdict. The phase-2 review is in git history (`c23aad7`).
 
 Shorthand used in the "Verify" column:
 - `grep:` means `git grep -nE '<regex>' -- <paths>` must return the stated result.
@@ -131,7 +132,7 @@ Shorthand used in the "Verify" column:
 
 | ID | Level | Requirement | Verify | Baseline |
 |---|---|---|---|---|
-| SEC-140 | MUST | `scripts/fetch-ffmpeg.mjs` fails closed: every downloaded asset (binary **and** LICENSE/README) must have a committed SHA-256 in `scripts/ffmpeg-checksums.json`; a missing entry is an error. | Run the script with the checksums file removed → non-zero exit. | **FAIL F-02** |
+| SEC-140 | MUST | `scripts/fetch-ffmpeg.mjs` fails closed: every downloaded asset (binary **and** LICENSE/README) must have a committed SHA-256 in `scripts/ffmpeg-sources.json`; a missing entry is an error. | Run the script with a pin removed → non-zero exit; the licence gate must also fail when the binary cannot run (REVIEW.md F-26). | **FAIL F-02** |
 | SEC-141 | MUST | Every shipped ffmpeg is redistributable: the CI gate fails if `ffmpeg -hide_banner -L` contains `not legally redistributable` or `-buildconf` contains `--enable-nonfree`. | Package workflow step + its log. | **FAIL F-01** |
 | SEC-142 | MUST | Workflow default `permissions: contents: read`; `contents: write` only on the job that creates the draft release; that job does not run `npm ci` or any project scripts. | Read `.github/workflows/*.yml`. | **FAIL F-04** |
 | SEC-143 | MUST | `actions/checkout` uses `persist-credentials: false` in jobs that run `npm ci`/builds. | Read the workflows. | **FAIL F-04** |

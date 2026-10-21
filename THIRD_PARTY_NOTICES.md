@@ -22,17 +22,20 @@ ourselves, the text says **[unverified]**.
 This file is accurate for the current test builds. Before a **public** release, the product owner must
 also do the following. Until then, releases must stay drafts or private test builds.
 
-| # | What | Why | Who |
-|---|---|---|---|
-| R-1 | Attach the **Corresponding Source** of every GPL/LGPL binary we ship to the same GitHub release as the installers (list in section 12). | GPLv3 section 6(d) (download from a "designated place" → offer the source "in the same way through the same place"). Applies to FFmpeg (all platforms), libvips and its LGPL libraries, libheif + libde265 (libheif-js), libuiohook. | Product owner + TPM (release job) |
-| R-2 | If the app is ever conveyed on a physical medium (USB stick, CD, preinstalled device), include the source on the medium or the written offer in Appendix A, completed with a real postal and e-mail address. | GPLv3 section 6(a)/(b). For downloads, the written offer alone is **not** enough under GPLv3; R-1 is the route. | Product owner |
-| R-3 | macOS: ship Electron's `LICENSE` and `LICENSES.chromium.html` (electron-builder deletes them from macOS builds). | MIT + Chromium third-party licenses (BSD and others) require the notices in binary distributions. | TPM (`electron-builder.yml`) |
-| R-4 | Ship `docs/security/licenses/onnxruntime-1.30.0-ThirdPartyNotices.txt` and `onnxruntime-1.30.0-LICENSE.txt` in the app. | ONNX Runtime (in `onnxruntime-node` and `onnxruntime-web`) statically includes protobuf, abseil, Eigen and others whose licenses require the notices. | TPM (`electron-builder.yml`) |
-| R-5 | Decide about `buffers@0.1.1` (no license declared anywhere we could reach). | Without a license grant the default is "all rights reserved". | Product owner |
-| R-6 | Decide about mirroring the Remove-BG model (section 9). Today it is downloaded from upstream and **not** redistributed. | The license of the pretrained weights is not stated upstream. | Product owner (TPM decision D10) |
-| R-7 | Windows: exclude `DirectML.dll`, `dxcompiler.dll`, `dxil.dll`, or include Microsoft's redistribution terms. | Their terms are not in this file **[unverified]**; the app uses only the CPU execution provider. | TPM + Engine |
+Status as of `develop@c2c4bfa` (2026-10-21, final security review, `docs/security/REVIEW.md`):
 
-The recommended `electron-builder.yml` snippets for R-3/R-4/R-7 are in `docs/security/REVIEW.md` (section "Licensing").
+| # | What | Why | Who | Status |
+|---|---|---|---|---|
+| R-1 | Attach the **Corresponding Source** of every GPL/LGPL binary we ship to the same GitHub release as the installers (list in section 12). | GPLv3 section 6(d) (download from a "designated place" → offer the source "in the same way through the same place"). Applies to FFmpeg (all platforms) **and every library linked into it**, plus the build scripts; libvips and its LGPL libraries; libheif + libde265 (libheif-js); libuiohook. | Product owner + TPM (release job) | **open** (public-release blocker). For macOS see section 3.1: the builder's public scripts do not match the shipped 9.0.2 build. |
+| R-2 | If the app is ever conveyed on a physical medium (USB stick, CD, preinstalled device), include the source on the medium or the written offer in Appendix A, completed with a real postal and e-mail address. | GPLv3 section 6(a)/(b). For downloads, the written offer alone is **not** enough under GPLv3; R-1 is the route. | Product owner | open (only if physical media) |
+| R-3 | macOS: ship Electron's `LICENSE` and `LICENSES.chromium.html` (electron-builder deletes them from macOS builds). | MIT + Chromium third-party licenses (BSD and others) require the notices in binary distributions. | TPM (`electron-builder.yml`) | **done in config** (`electron-builder.yml` `mac.extraResources` → `Contents/Resources/LICENSE.electron.txt`, `LICENSES.chromium.html`); the macOS output itself was not inspected by Security (CI log only). |
+| R-4 | Ship `docs/security/licenses/onnxruntime-1.30.0-ThirdPartyNotices.txt` and `onnxruntime-1.30.0-LICENSE.txt` in the app. | ONNX Runtime (in `onnxruntime-node` and `onnxruntime-web`) statically includes protobuf, abseil, Eigen and others whose licenses require the notices. | TPM (`electron-builder.yml`) | **done** (`extraResources` → `<resources>/licenses/`; verified in a packaged Linux build). |
+| R-5 | Decide about `buffers@0.1.1` (no license declared anywhere we could reach). | Without a license grant the default is "all rights reserved". | Product owner | open |
+| R-6 | Decide about mirroring the Remove-BG model (section 9). Today it is downloaded from upstream and **not** redistributed. | The license of the pretrained weights is not stated upstream. | Product owner (TPM decision D10) | open (the code still lists our own `models-v1` release URL as a second source; it must stay unpublished until this is decided) |
+| R-7 | Windows: exclude `DirectML.dll`, `dxcompiler.dll`, `dxil.dll`, or include Microsoft's redistribution terms. | Their terms are not in this file **[unverified]**; the app uses only the CPU execution provider. | TPM + Engine | open |
+| R-8 | FFmpeg patent notice: the shipped FFmpeg builds contain H.264/H.265 (x264, x265, OpenH264) and other patent-encumbered codecs. Copyright licences (GPL, BSD) do not grant patent rights; Cisco's OpenH264 patent coverage applies only to the binaries Cisco itself distributes, not to OpenH264 compiled into another program. | Legal risk assessment for a public, possibly commercial distribution (not a copyright-licence violation). | Product owner | open (decision) |
+
+The recommended `electron-builder.yml` snippet for R-7 is in `docs/security/REVIEW.md` (phase 2, section 6.2).
 
 ---
 
@@ -43,7 +46,7 @@ The recommended `electron-builder.yml` snippets for R-3/R-4/R-7 are in `docs/sec
 | Electron (includes Chromium, Node.js, V8) | 45.0.0 (Chromium 156.0.8078.48, Node 24.22.0) | MIT (Electron); BSD-3-Clause and many others (Chromium) | the app runtime | 2 |
 | FFmpeg (separate program `ffmpeg[.exe]`) | 7.0.2 (Linux), 6.1.1 (Windows), 9.0.2 (macOS) | **GPL-3.0-or-later** | separate executable in `<resources>/bin/` | 3 |
 | sharp + libvips and its libraries | sharp 0.35.5, sharp-libvips 1.3.4 (libvips 8.18.7) | Apache-2.0 (sharp); **LGPL-3.0-or-later** (libvips, glib, pango, librsvg, libheif, libexif, fribidi, proxy-libintl); MIT/BSD/zlib/MPL-1.1 (others) | native module + shared library, outside the asar | 4 |
-| libheif + libde265 (as WebAssembly, via `libheif-js` and `heic-decode`) | libheif-js 1.23.5 | **LGPL-3.0** | JavaScript + WebAssembly inside `app.asar` | 5 |
+| libheif + libde265 (as WebAssembly, via `libheif-js` and `heic-decode`) | libheif-js 1.23.5 | **LGPL-3.0** | JavaScript + WebAssembly in `app.asar.unpacked` (outside the integrity-checked `app.asar`, so it stays replaceable) | 5 |
 | libuiohook (inside `uiohook-napi`) | uiohook-napi 1.5.5 | **LGPL-3.0-or-later** (libuiohook); MIT (uiohook-napi glue) | native module, outside the asar | 6 |
 | ONNX Runtime (`onnxruntime-node`, `onnxruntime-web`) | 1.30.0 | MIT + third-party notices | native module / WebAssembly, outside the asar | 7 |
 | Skia / `@napi-rs/canvas` | 1.0.13 | MIT + others | **not shipped** (excluded from the package) | 8 |
@@ -65,8 +68,9 @@ The recommended `electron-builder.yml` snippets for R-3/R-4/R-7 are in `docs/sec
   `LICENSE` to `LICENSE.electron.txt` on non-macOS platforms (`app-builder-lib/out/electron/ElectronFramework.js`).]
 - **macOS:** electron-builder 26.15.3 deletes `LICENSE` and `LICENSES.chromium.html` when it builds the `.app`
   (`app-builder-lib/out/electron/electronMac.js`), and the Electron macOS distribution has them only outside the
-  `.app` [verified: file listing of `electron-v45.0.0-darwin-arm64.zip`]. Until R-3 is done, macOS users can
-  get the same files from the Electron release:
+  `.app` [verified: file listing of `electron-v45.0.0-darwin-arm64.zip`]. The build therefore copies them back
+  into the app (`electron-builder.yml` `mac.extraResources`): `Let us drag!.app/Contents/Resources/LICENSE.electron.txt`
+  and `…/Contents/Resources/LICENSES.chromium.html` (R-3). The same files are also in the Electron release:
   `https://github.com/electron/electron/releases/download/v45.0.0/electron-v45.0.0-darwin-arm64.zip`
   (or `-darwin-x64.zip`); both files are at the top level of the zip. Electron is not an npm package inside the
   app (it is the runtime), so its license text is reproduced here:
@@ -111,8 +115,8 @@ We redistribute these binaries **unmodified**. Each is pinned by SHA-256 in `scr
 |---|---|---|---|---|
 | Linux x64 | 7.0.2 (`7.0.2-static`) | John Van Sickle (johnvansickle.com), redistributed by the ffmpeg-static project, release b6.1.1 | `ffmpeg-linux-x64.gz` (`bfe8a8fc511530457b528c48d77b5737527b504a3797a9bc4866aeca69c2dffa`) | `FFMPEG-LICENSE.txt` (GPLv3), `FFMPEG-README.txt` (build and library versions), `FFMPEG-SOURCE.txt` |
 | Windows x64 | 6.1.1 (`6.1.1-essentials_build-www.gyan.dev`) | Gyan Doshi (gyan.dev), redistributed by the ffmpeg-static project, release b6.1.1 | `ffmpeg-win32-x64.gz` (`8883a3dffbd0a16cf4ef95206ea05283f78908dbfb118f73c83f4951dcc06d77`) | `FFMPEG-LICENSE.txt` (GPLv3), `FFMPEG-README.txt` (configuration and library versions), `FFMPEG-SOURCE.txt` |
-| macOS arm64 | 9.0.2 | Martin Riedl's FFmpeg build server (ffmpeg.martin-riedl.de), minimum macOS 12.0 | `.../macos/arm64/1789931890_9.0.2/ffmpeg.zip` (`c8ed4c4e6978a03c485edbfe4e0a5dc2380f8a30bba5150531b31b094492d924`) | `FFMPEG-SOURCE.txt` only (the zip contains no license file; the GPLv3 text is in Appendix B of this file) |
-| macOS x64 | 9.0.2 | Martin Riedl's FFmpeg build server, minimum macOS 12.0 | `.../macos/amd64/1789931006_9.0.2/ffmpeg.zip` (`7c6b4125b191cbf773832dc51f424cf2b6bb7da43007d1e066f95909e47cacd4`) | as above |
+| macOS arm64 | 9.0.2 (`9.0.2-https://www.martin-riedl.de`) | Martin Riedl's FFmpeg build server (ffmpeg.martin-riedl.de), minimum macOS 12.0 | `.../macos/arm64/1789931890_9.0.2/ffmpeg.zip` (`c8ed4c4e6978a03c485edbfe4e0a5dc2380f8a30bba5150531b31b094492d924`) | `FFMPEG-LICENSE.txt` (the licence statement the binary prints with `ffmpeg -L`, written by `scripts/fetch-ffmpeg.mjs` because the zip contains no licence file; the full GPLv3 text is Appendix B of this file) and `FFMPEG-SOURCE.txt` (download URL, SHA-256, licence, build provider, source pointers) |
+| macOS x64 | 9.0.2 (`9.0.2-https://www.martin-riedl.de`) | Martin Riedl's FFmpeg build server, minimum macOS 12.0 | `.../macos/amd64/1789931006_9.0.2/ffmpeg.zip` (`7c6b4125b191cbf773832dc51f424cf2b6bb7da43007d1e066f95909e47cacd4`) | as above |
 
 Configuration lines (from the binaries themselves: `ffmpeg -buildconf` on Linux in this repo's container, the
 embedded configuration string of the Windows binary, and the CI probe log of run 39672571045 for macOS):
@@ -145,9 +149,8 @@ embedded configuration string of the Windows binary, and the CI probe log of run
   --enable-libass --enable-libklvanc --enable-libzimg --enable-libzvbi --enable-libaom --enable-libdav1d
   --enable-libopenh264 --enable-libopenjpeg --enable-librav1e --enable-libsvtav1 --enable-libvpx --enable-libvvenc
   --enable-libwebp --enable-libx264 --enable-libx265 --enable-libmp3lame --enable-libopus --enable-libvorbis
-  --enable-libtheora`. No non-system dynamic libraries (`otool -L`). The library versions are published by the
-  build server (`https://ffmpeg.martin-riedl.de/`, build scripts at `https://gitlab.com/martinr92/ffmpeg`)
-  **[unverified from this repo: the build server was not reachable from our analysis container]**.
+  --enable-libtheora`. No non-system dynamic libraries (`otool -L`). Library licences and source availability:
+  section 3.1.
 
 **Getting the source code.** The FFmpeg source of each version is at
 `https://ffmpeg.org/releases/ffmpeg-7.0.2.tar.xz`, `https://ffmpeg.org/releases/ffmpeg-6.1.1.tar.xz` (Windows
@@ -159,6 +162,73 @@ release: see R-1 (section 0) and section 12. Until R-1 is done, the builders' pa
 `https://johnvansickle.com/ffmpeg/`, `https://www.gyan.dev/ffmpeg/builds/`, `https://ffmpeg.martin-riedl.de/`.
 
 FFmpeg is a trademark of Fabrice Bellard, originator of the FFmpeg project.
+
+### 3.1 macOS builds in detail (Martin Riedl, FFmpeg 9.0.2)
+
+**Licence of the binary.** Both macOS binaries are FFmpeg 9.0.2 configured with `--enable-gpl --enable-version3`
+and **without** `--enable-nonfree` (and without `--enable-decklink`, the one optional library of the builder's
+scripts that needs `nonfree`). The binary as a whole is therefore under the **GNU GPL version 3 or later**.
+[Verified in CI on `develop@c2c4bfa`, Package run 39686581984, jobs mac-arm64 and mac-x64: SHA-256 of the
+download matched the pin, `ffmpeg -version` reported `9.0.2-https://www.martin-riedl.de`, the licence gate
+found no `--enable-nonfree` / "not legally redistributable", and all required encoders were present. The
+configure line below is from the CI probe run 39672571045.] All libraries below are under licences that are
+compatible with GPLv3 (Apache-2.0, MPL-2.0 and BSD-3-Clause-Clear are compatible with GPLv3 but not with GPLv2,
+which is why `--enable-version3` is needed).
+
+**Libraries enabled by the configure line** (statically linked; `otool -L` shows only macOS system libraries).
+The licence column is the upstream project licence **[from upstream; not checked against the exact versions
+inside this build, see "Source availability" below]**:
+
+| Library (configure flag) | Licence (upstream) | Upstream source |
+|---|---|---|
+| x264 (`--enable-libx264`) | GPL-2.0-or-later | `https://code.videolan.org/videolan/x264` |
+| x265 (`--enable-libx265`) | GPL-2.0-or-later | `https://bitbucket.org/multicoreware/x265_git` |
+| libvpx (`--enable-libvpx`) | BSD-3-Clause (+ WebM patent grant) | `https://chromium.googlesource.com/webm/libvpx` |
+| Opus (`--enable-libopus`) | BSD-3-Clause | `https://github.com/xiph/opus` |
+| LAME / libmp3lame (`--enable-libmp3lame`) | LGPL-2.0-or-later | `https://lame.sourceforge.io/` |
+| libvorbis (`--enable-libvorbis`), with libogg | BSD-3-Clause | `https://github.com/xiph/vorbis`, `https://github.com/xiph/ogg` |
+| libtheora (`--enable-libtheora`) | BSD-3-Clause | `https://github.com/xiph/theora` |
+| libaom (`--enable-libaom`) | BSD-2-Clause + AOMedia Patent License 1.0 | `https://aomedia.googlesource.com/aom` |
+| dav1d (`--enable-libdav1d`) | BSD-2-Clause | `https://code.videolan.org/videolan/dav1d` |
+| rav1e (`--enable-librav1e`) | BSD-2-Clause + AOMedia Patent License 1.0; Rust crates compiled in under MIT/Apache-2.0 | `https://github.com/xiph/rav1e` |
+| SVT-AV1 (`--enable-libsvtav1`) | BSD-3-Clause-Clear + AOMedia Patent License 1.0 | `https://gitlab.com/AOMediaCodec/SVT-AV1` |
+| OpenH264 (`--enable-libopenh264`) | BSD-2-Clause (no patent licence when built from source, see R-8) | `https://github.com/cisco/openh264` |
+| OpenJPEG (`--enable-libopenjpeg`) | BSD-2-Clause | `https://github.com/uclouvain/openjpeg` |
+| libwebp (`--enable-libwebp`) | BSD-3-Clause | `https://chromium.googlesource.com/webm/libwebp` |
+| zimg (`--enable-libzimg`) | WTFPL | `https://github.com/sekrit-twc/zimg` |
+| libass (`--enable-libass`), with FriBidi | ISC (libass); LGPL-2.1-or-later (FriBidi) | `https://github.com/libass/libass`, `https://github.com/fribidi/fribidi` |
+| FreeType (`--enable-libfreetype`) | FreeType License (FTL), or GPL-2.0 (dual). Used under the FTL: "Portions of this software are copyright © The FreeType Project (www.freetype.org). All rights reserved." | `https://freetype.org/` |
+| Fontconfig (`--enable-fontconfig`) | MIT-style (Fontconfig licence) | `https://gitlab.freedesktop.org/fontconfig/fontconfig` |
+| HarfBuzz (`--enable-libharfbuzz`) | MIT ("Old MIT") | `https://github.com/harfbuzz/harfbuzz` |
+| libbluray (`--enable-libbluray`) | LGPL-2.1-or-later | `https://code.videolan.org/videolan/libbluray` |
+| Snappy (`--enable-libsnappy`) | BSD-3-Clause | `https://github.com/google/snappy` |
+| SRT (`--enable-libsrt`) | MPL-2.0 | `https://github.com/Haivision/srt` |
+| libvmaf (`--enable-libvmaf`) | BSD-2-Clause-Patent | `https://github.com/Netflix/vmaf` |
+| libklvanc (`--enable-libklvanc`) | LGPL-2.1-or-later | `https://github.com/stoth68000/libklvanc` |
+| ZVBI (`--enable-libzvbi`) | LGPL-2.0-or-later for the library (some files GPL-2.0-or-later or BSD/MIT) **[unverified]** | `https://github.com/zapping-vbi/zvbi` |
+| OpenSSL (`--enable-openssl`) | Apache-2.0 (OpenSSL 3.x) | `https://github.com/openssl/openssl` |
+| libxml2 (`--enable-libxml2`) | MIT | `https://gitlab.gnome.org/GNOME/libxml2` |
+| VVenC (`--enable-libvvenc`) | BSD-3-Clause-Clear | `https://github.com/fraunhoferhhi/vvenc` |
+| Transitive build dependencies listed by the builder's scripts (`DEPENDENCY.md`): zlib, libiconv | Zlib; LGPL-2.1-or-later (GNU libiconv) **[whether libiconv is linked statically or the macOS system copy is used is unverified]** | `https://zlib.net/`, `https://www.gnu.org/software/libiconv/` |
+
+FFmpeg itself (its own files) is LGPL-2.1-or-later with GPL parts; with `--enable-gpl --enable-version3` the
+combined binary is GPL-3.0-or-later.
+
+**Source availability (what we know, and what is missing).**
+
+- FFmpeg 9.0.2 source: `https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz` (the version string carries only the
+  builder's `--extra-version`; no evidence of local patches **[unverified]**).
+- Build scripts: the builder's public repository `https://gitlab.com/martinr92/ffmpeg` (Apache-2.0) has the
+  scripts and a `version/` folder with one pinned version per library. **It does not describe the shipped
+  build:** on 2026-10-21 its `main` branch pins FFmpeg `7.1` (last commit 2025-01-17) and `develop` pins
+  `7.1.1` (last commit 2025-05-13), while we ship 9.0.2 built in 2026 [verified via the GitLab API]. The exact
+  library versions of the shipped 9.0.2 builds are published only on the build server
+  (`https://ffmpeg.martin-riedl.de/`), which our analysis container cannot reach **[unverified]**.
+- Consequence for R-1: before a public release, the product owner/TPM must obtain the complete Corresponding
+  Source for exactly these two binaries (FFmpeg 9.0.2 + every library above at the versions used + the build
+  scripts and configure flags), e.g. from the build server's per-build information or from the author, and
+  attach it to the release; or build FFmpeg ourselves in CI from pinned source tarballs, which makes R-1 a
+  by-product of the build. Pointing to the upstream projects alone does not meet GPLv3 section 6(d).
 
 ---
 
@@ -262,8 +332,10 @@ module `uiohook-napi.node` is compiled from the uiohook-napi glue code **and lib
 
 **Source code:** the complete source of uiohook-napi 1.5.5, including the libuiohook sources it is built
 from, is in the npm package `https://registry.npmjs.org/uiohook-napi/-/uiohook-napi-1.5.5.tgz` (upstream
-`https://github.com/SnosMe/uiohook-napi`). The current packaging excludes the `libuiohook/` and `src/` folders
-from the app, so the source is not inside the app; for a public release attach the tarball (R-1). The native
+`https://github.com/SnosMe/uiohook-napi`). The app now ships the `libuiohook/` and `src/` folders next to the
+native module (`app.asar.unpacked/node_modules/uiohook-napi/{libuiohook,src}` [verified in a packaged Linux build
+of `develop@c2c4bfa`]); for a public release also attach the tarball (R-1) so the source is next to the
+download. The native
 module lives outside the asar (`app.asar.unpacked/node_modules/uiohook-napi/prebuilds/…`), so it can be
 replaced with a rebuilt one.
 
@@ -279,7 +351,8 @@ Eigen, flatbuffers, ONNX, re2, SafeInt, cpuinfo and others). Their notices are i
 `ThirdPartyNotices.txt` for this version, which the npm packages do not include. We keep a verbatim copy at
 `docs/security/licenses/onnxruntime-1.30.0-ThirdPartyNotices.txt` (from
 `https://raw.githubusercontent.com/microsoft/onnxruntime/v1.30.0/ThirdPartyNotices.txt`, 338 088 bytes,
-SHA-256 `143764b952fdb1a7c69ce653bfba74a7744d6a8a573bfb73e235fba356c83de3`). Shipping it inside the app is R-4.
+SHA-256 `143764b952fdb1a7c69ce653bfba74a7744d6a8a573bfb73e235fba356c83de3`). Both files are shipped inside the
+app at `<resources>/licenses/` (R-4, done).
 
 Which runtime ships where: `onnxruntime-node` binaries for macOS arm64, Linux x64 and Windows x64 only
 (`bin/napi-v6/<platform>/<arch>`); macOS x64 uses `onnxruntime-web` (WebAssembly). `onnxruntime-web` is shipped
@@ -289,8 +362,9 @@ on every platform (its Node entry points and `ort-wasm-simd-threaded.*`) as the 
 (Microsoft). The app does not use the DirectML execution provider, and their redistribution terms are **not**
 included here **[unverified]** (R-7).
 
-`onnxruntime-node` also ships install-time helpers (`script/`, `adm-zip`, `global-agent` and their
-dependencies) that the app never runs; their licenses are in section 11.
+The install-time helpers of `onnxruntime-node` (`script/`, `adm-zip`, `global-agent`) are excluded from the
+package; three of `global-agent`'s dependencies (`matcher`, `serialize-error`, `type-fest`) are still copied
+along and are listed in section 11.
 
 ---
 
@@ -308,7 +382,8 @@ location, ICU, FreeType, libpng, IJG and others, listed in the package's `sbom.c
 
 The "Remove BG" option uses the ISNet model `isnet-general-use.onnx` (IS-Net, Qin et al., "Highly Accurate
 Dichotomous Image Segmentation", ECCV 2022) as exported to ONNX by the rembg project. **The model is not part of
-the app or of our releases.** On first use, after the user confirms, the app downloads it from the rembg
+the app or of our releases.** On first use (the Remove BG option says beforehand that its first use downloads a
+179 MB AI model, TPM decision D15), the app downloads it from the rembg
 release (`https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-general-use.onnx`, 178 648 008
 bytes) and checks its SHA-256 (`60920e99c45464f2ba57bee2ad08c919a52bbf852739e96947fbb4358c0d964a`) before use
 (TPM decision D10).
@@ -373,7 +448,7 @@ Notes on special cases:
 
 <!-- BEGIN GENERATED NPM NOTICES (docs/security/tools/gen-npm-notices.mjs) -->
 
-Generated from a packaged Linux x64 build: 248 package directories, 141 distinct licence texts.
+Generated from a packaged Linux x64 build: 246 package directories, 139 distinct licence texts.
 
 | Package | Version | Declared licence | Licence text(s) | Source repository |
 |---|---|---|---|---|
@@ -397,234 +472,232 @@ Generated from a packaged Linux x64 build: 248 package directories, 141 distinct
 | @types/node | 22.20.5 | MIT | L8 | https://github.com/DefinitelyTyped/DefinitelyTyped |
 | @types/node | 26.6.5 | MIT | L8 | https://github.com/DefinitelyTyped/DefinitelyTyped |
 | @xmldom/xmldom | 0.8.15 | MIT | L9 | git://github.com/xmldom/xmldom |
-| adm-zip | 0.6.1 | MIT | L10 | https://github.com/cthackers/adm-zip |
-| archiver | 5.3.2 | MIT | L11 | https://github.com/archiverjs/node-archiver |
-| archiver-utils | 2.1.0 | MIT | L12 | https://github.com/archiverjs/archiver-utils |
-| archiver-utils | 3.0.4 | MIT | L12 | https://github.com/archiverjs/archiver-utils |
-| argparse | 1.0.10 | MIT | L97 | nodeca/argparse |
-| argparse | 3.0.3 | PSF-2.0 | L15 | nodeca/argparse |
-| array-buffer-byte-length | 1.0.2 | MIT | L16 | https://github.com/inspect-js/array-buffer-byte-length |
-| arraybuffer.prototype.slice | 1.0.4 | MIT | L17 | https://github.com/es-shims/ArrayBuffer.prototype.slice |
-| async | 3.2.6 | MIT | L18 | https://github.com/caolan/async |
-| async-function | 1.0.0 | MIT | L19 | https://github.com/ljharb/async-function |
-| available-typed-arrays | 1.0.7 | MIT | L20 | https://github.com/inspect-js/available-typed-arrays |
-| balanced-match | 1.0.2 | MIT | L21 | git://github.com/juliangruber/balanced-match |
-| base64-js | 1.5.1 | MIT | L22 | git://github.com/beatgammit/base64-js |
-| big-integer | 1.6.52 | Unlicense | L23 | git@github.com:peterolson/BigInteger.js |
-| binary | 0.3.0 | MIT | L24 | http://github.com/substack/node-binary |
-| bl | 4.1.0 | MIT | L25 | https://github.com/rvagg/bl |
-| bluebird | 3.4.7 | MIT | L26 | git://github.com/petkaantonov/bluebird |
-| brace-expansion | 1.1.21 | MIT | L27 | git://github.com/juliangruber/brace-expansion |
-| brace-expansion | 2.1.7 | MIT | L27 | git://github.com/juliangruber/brace-expansion |
-| buffer | 5.7.1 | MIT | L28, L29 | git://github.com/feross/buffer |
-| buffer-crc32 | 0.2.13 | MIT | L30 | git://github.com/brianloveswords/buffer-crc32 |
-| buffer-crc32 | 1.0.0 | MIT | L140 | git://github.com/brianloveswords/buffer-crc32 |
-| buffer-indexof-polyfill | 1.0.2 | MIT | L31 | https://github.com/sarosia/buffer-indexof-polyfill |
-| buffers | 0.1.1 | NONE DECLARED | L32 | http://github.com/substack/node-buffers |
-| call-bind | 1.0.9 | MIT | L33 | https://github.com/ljharb/call-bind |
-| call-bind-apply-helpers | 1.0.2 | MIT | L34 | https://github.com/ljharb/call-bind-apply-helpers |
-| call-bound | 1.0.4 | MIT | L34 | https://github.com/ljharb/call-bound |
-| chainsaw | 0.1.0 | MIT/X11 | L35 | http://github.com/substack/node-chainsaw |
-| compress-commons | 4.1.2 | MIT | L36 | https://github.com/archiverjs/node-compress-commons |
-| concat-map | 0.0.1 | MIT | L37 | git://github.com/substack/node-concat-map |
-| core-util-is | 1.0.3 | MIT | L38 | git://github.com/isaacs/core-util-is |
-| crc-32 | 1.2.2 | Apache-2.0 | L39 | git://github.com/SheetJS/js-crc32 |
-| crc32-stream | 4.0.3 | MIT | L36 | https://github.com/archiverjs/node-crc32-stream |
-| data-view-buffer | 1.0.2 | MIT | L40 | https://github.com/inspect-js/data-view-buffer |
-| data-view-byte-length | 1.0.2 | MIT | L34 | https://github.com/inspect-js/data-view-byte-length |
-| data-view-byte-offset | 1.0.1 | MIT | L34 | https://github.com/inspect-js/data-view-byte-offset |
-| dayjs | 1.11.23 | MIT | L41 | https://github.com/iamkun/dayjs |
-| define-data-property | 1.1.4 | MIT | L40 | https://github.com/ljharb/define-data-property |
-| define-properties | 1.2.1 | MIT | L42 | git://github.com/ljharb/define-properties |
-| detect-libc | 2.1.2 | Apache-2.0 | L43 | git://github.com/lovell/detect-libc |
-| dingbat-to-unicode | 1.0.2 | BSD-2-Clause | L44 | https://github.com/mwilliamson/dingbat-to-unicode |
-| docx | 9.13.0 | MIT | L45 | https://github.com/dolanmiu/docx |
-| duck | 0.1.12 | BSD | L46 | https://github.com/mwilliamson/duck.js |
-| dunder-proto | 1.0.1 | MIT | L47 | https://github.com/es-shims/dunder-proto |
-| duplexer2 | 0.1.4 | BSD-3-Clause | L48 | deoxxa/duplexer2 |
-| end-of-stream | 1.4.5 | MIT | L49 | git://github.com/mafintosh/end-of-stream |
-| es-abstract | 1.24.2 | MIT | L42 | git://github.com/ljharb/es-abstract |
-| es-abstract-get | 1.0.0 | MIT | L50 | https://github.com/ljharb/es-abstract-get |
-| es-define-property | 1.0.1 | MIT | L34 | https://github.com/ljharb/es-define-property |
-| es-errors | 1.3.0 | MIT | L34 | https://github.com/ljharb/es-errors |
-| es-object-atoms | 1.1.2 | MIT | L34 | https://github.com/ljharb/es-object-atoms |
-| es-set-tostringtag | 2.1.0 | MIT | L51 | https://github.com/es-shims/es-set-tostringtag |
-| es-to-primitive | 1.3.4 | MIT | L52 | git://github.com/ljharb/es-to-primitive |
-| escape-string-regexp | 4.0.0 | MIT | L53 | sindresorhus/escape-string-regexp |
-| exceljs | 4.4.0 | MIT | L54 | https://github.com/exceljs/exceljs |
+| archiver | 5.3.2 | MIT | L10 | https://github.com/archiverjs/node-archiver |
+| archiver-utils | 2.1.0 | MIT | L11 | https://github.com/archiverjs/archiver-utils |
+| archiver-utils | 3.0.4 | MIT | L11 | https://github.com/archiverjs/archiver-utils |
+| argparse | 1.0.10 | MIT | L95 | nodeca/argparse |
+| argparse | 3.0.3 | PSF-2.0 | L14 | nodeca/argparse |
+| array-buffer-byte-length | 1.0.2 | MIT | L15 | https://github.com/inspect-js/array-buffer-byte-length |
+| arraybuffer.prototype.slice | 1.0.4 | MIT | L16 | https://github.com/es-shims/ArrayBuffer.prototype.slice |
+| async | 3.2.6 | MIT | L17 | https://github.com/caolan/async |
+| async-function | 1.0.0 | MIT | L18 | https://github.com/ljharb/async-function |
+| available-typed-arrays | 1.0.7 | MIT | L19 | https://github.com/inspect-js/available-typed-arrays |
+| balanced-match | 1.0.2 | MIT | L20 | git://github.com/juliangruber/balanced-match |
+| base64-js | 1.5.1 | MIT | L21 | git://github.com/beatgammit/base64-js |
+| big-integer | 1.6.52 | Unlicense | L22 | git@github.com:peterolson/BigInteger.js |
+| binary | 0.3.0 | MIT | L23 | http://github.com/substack/node-binary |
+| bl | 4.1.0 | MIT | L24 | https://github.com/rvagg/bl |
+| bluebird | 3.4.7 | MIT | L25 | git://github.com/petkaantonov/bluebird |
+| brace-expansion | 1.1.21 | MIT | L26 | git://github.com/juliangruber/brace-expansion |
+| brace-expansion | 2.1.7 | MIT | L26 | git://github.com/juliangruber/brace-expansion |
+| buffer | 5.7.1 | MIT | L27, L28 | git://github.com/feross/buffer |
+| buffer-crc32 | 0.2.13 | MIT | L29 | git://github.com/brianloveswords/buffer-crc32 |
+| buffer-crc32 | 1.0.0 | MIT | L138 | git://github.com/brianloveswords/buffer-crc32 |
+| buffer-indexof-polyfill | 1.0.2 | MIT | L30 | https://github.com/sarosia/buffer-indexof-polyfill |
+| buffers | 0.1.1 | NONE DECLARED | L31 | http://github.com/substack/node-buffers |
+| call-bind | 1.0.9 | MIT | L32 | https://github.com/ljharb/call-bind |
+| call-bind-apply-helpers | 1.0.2 | MIT | L33 | https://github.com/ljharb/call-bind-apply-helpers |
+| call-bound | 1.0.4 | MIT | L33 | https://github.com/ljharb/call-bound |
+| chainsaw | 0.1.0 | MIT/X11 | L34 | http://github.com/substack/node-chainsaw |
+| compress-commons | 4.1.2 | MIT | L35 | https://github.com/archiverjs/node-compress-commons |
+| concat-map | 0.0.1 | MIT | L36 | git://github.com/substack/node-concat-map |
+| core-util-is | 1.0.3 | MIT | L37 | git://github.com/isaacs/core-util-is |
+| crc-32 | 1.2.2 | Apache-2.0 | L38 | git://github.com/SheetJS/js-crc32 |
+| crc32-stream | 4.0.3 | MIT | L35 | https://github.com/archiverjs/node-crc32-stream |
+| data-view-buffer | 1.0.2 | MIT | L39 | https://github.com/inspect-js/data-view-buffer |
+| data-view-byte-length | 1.0.2 | MIT | L33 | https://github.com/inspect-js/data-view-byte-length |
+| data-view-byte-offset | 1.0.1 | MIT | L33 | https://github.com/inspect-js/data-view-byte-offset |
+| dayjs | 1.11.23 | MIT | L40 | https://github.com/iamkun/dayjs |
+| define-data-property | 1.1.4 | MIT | L39 | https://github.com/ljharb/define-data-property |
+| define-properties | 1.2.1 | MIT | L41 | git://github.com/ljharb/define-properties |
+| detect-libc | 2.1.2 | Apache-2.0 | L42 | git://github.com/lovell/detect-libc |
+| dingbat-to-unicode | 1.0.2 | BSD-2-Clause | L43 | https://github.com/mwilliamson/dingbat-to-unicode |
+| docx | 9.13.0 | MIT | L44 | https://github.com/dolanmiu/docx |
+| duck | 0.1.12 | BSD | L45 | https://github.com/mwilliamson/duck.js |
+| dunder-proto | 1.0.1 | MIT | L46 | https://github.com/es-shims/dunder-proto |
+| duplexer2 | 0.1.4 | BSD-3-Clause | L47 | deoxxa/duplexer2 |
+| end-of-stream | 1.4.5 | MIT | L48 | git://github.com/mafintosh/end-of-stream |
+| es-abstract | 1.24.2 | MIT | L41 | git://github.com/ljharb/es-abstract |
+| es-abstract-get | 1.0.0 | MIT | L49 | https://github.com/ljharb/es-abstract-get |
+| es-define-property | 1.0.1 | MIT | L33 | https://github.com/ljharb/es-define-property |
+| es-errors | 1.3.0 | MIT | L33 | https://github.com/ljharb/es-errors |
+| es-object-atoms | 1.1.2 | MIT | L33 | https://github.com/ljharb/es-object-atoms |
+| es-set-tostringtag | 2.1.0 | MIT | L50 | https://github.com/es-shims/es-set-tostringtag |
+| es-to-primitive | 1.3.4 | MIT | L51 | git://github.com/ljharb/es-to-primitive |
+| escape-string-regexp | 4.0.0 | MIT | L52 | sindresorhus/escape-string-regexp |
+| exceljs | 4.4.0 | MIT | L53 | https://github.com/exceljs/exceljs |
 | fast-csv | 4.3.6 | MIT | L1 | https://github.com/C2FO/fast-csv |
-| flatbuffers | 25.9.23 | Apache-2.0 | L55 | https://github.com/google/flatbuffers |
-| for-each | 0.3.5 | MIT | L56 | https://github.com/Raynos/for-each |
-| fs-constants | 1.0.0 | MIT | L57 | https://github.com/mafintosh/fs-constants |
-| fs.realpath | 1.0.0 | ISC | L58 | https://github.com/isaacs/fs.realpath |
-| fstream | 1.0.12 | ISC | L59 | https://github.com/npm/fstream |
-| function-bind | 1.1.2 | MIT | L60 | https://github.com/Raynos/function-bind |
-| function.prototype.name | 1.2.0 | MIT | L61 | git://github.com/es-shims/Function.prototype.name |
-| functions-have-names | 1.2.3 | MIT | L62 | https://github.com/inspect-js/functions-have-names |
-| generator-function | 2.0.1 | MIT | L63 | https://github.com/TimothyGu/generator-function |
-| get-intrinsic | 1.3.0 | MIT | L33 | https://github.com/ljharb/get-intrinsic |
-| get-proto | 1.0.1 | MIT | L64 | https://github.com/ljharb/get-proto |
-| get-symbol-description | 1.1.0 | MIT | L65 | https://github.com/inspect-js/get-symbol-description |
-| glob | 7.2.3 | ISC | L66 | git://github.com/isaacs/node-glob |
-| global-agent | 4.1.3 | BSD-3-Clause | L67 | https://github.com/gajus/global-agent |
-| globalthis | 1.0.4 | MIT | L61 | git://github.com/ljharb/System.global |
-| gopd | 1.2.0 | MIT | L68 | https://github.com/ljharb/gopd |
-| graceful-fs | 4.2.11 | ISC | L69 | https://github.com/isaacs/node-graceful-fs |
-| guid-typescript | 1.0.9 | ISC | L70 | https://github.com/NicolasDeveloper/guid-typescript |
-| has-bigints | 1.1.0 | MIT | L62 | https://github.com/ljharb/has-bigints |
-| has-property-descriptors | 1.0.2 | MIT | L71 | https://github.com/inspect-js/has-property-descriptors |
-| has-proto | 1.2.0 | MIT | L71 | https://github.com/inspect-js/has-proto |
-| has-symbols | 1.1.0 | MIT | L72 | git://github.com/inspect-js/has-symbols |
-| has-tostringtag | 1.0.2 | MIT | L65 | https://github.com/inspect-js/has-tostringtag |
-| hash.js | 1.1.7 | MIT | L73 | git@github.com:indutny/hash.js |
-| hasown | 2.0.4 | MIT | L74 | https://github.com/inspect-js/hasOwn |
-| heic-decode | 2.1.0 | ISC | L75 | https://github.com/catdad-experiments/heic-decode |
-| ieee754 | 1.2.1 | BSD-3-Clause | L76 | git://github.com/feross/ieee754 |
-| immediate | 3.0.6 | MIT | L77 | git://github.com/calvinmetcalf/immediate |
-| inflight | 1.0.6 | ISC | L78 | https://github.com/npm/inflight |
-| inherits | 2.0.4 | ISC | L79 | git://github.com/isaacs/inherits |
-| internal-slot | 1.1.0 | MIT | L62 | https://github.com/ljharb/internal-slot |
-| is-array-buffer | 3.0.5 | MIT | L80 | https://github.com/inspect-js/is-array-buffer |
-| is-async-function | 2.1.1 | MIT | L81 | git://github.com/inspect-js/is-async-function |
-| is-bigint | 1.1.0 | MIT | L82 | https://github.com/inspect-js/is-bigint |
-| is-boolean-object | 1.2.2 | MIT | L52 | git://github.com/inspect-js/is-boolean-object |
-| is-callable | 1.2.7 | MIT | L52 | git://github.com/inspect-js/is-callable |
-| is-data-view | 1.0.2 | MIT | L83 | https://github.com/inspect-js/is-data-view |
-| is-date-object | 1.1.0 | MIT | L52 | git://github.com/inspect-js/is-date-object |
-| is-document.all | 1.0.0 | MIT | L84 | https://github.com/inspect-js/is-document.all |
-| is-finalizationregistry | 1.1.1 | MIT | L20 | https://github.com/inspect-js/is-finalizationregistry |
-| is-generator-function | 1.1.2 | MIT | L85 | git://github.com/inspect-js/is-generator-function |
-| is-map | 2.0.3 | MIT | L86 | https://github.com/inspect-js/is-map |
-| is-negative-zero | 2.0.3 | MIT | L85 | git://github.com/inspect-js/is-negative-zero |
-| is-number-object | 1.1.1 | MIT | L52 | git://github.com/inspect-js/is-number-object |
-| is-regex | 1.2.1 | MIT | L85 | git://github.com/inspect-js/is-regex |
-| is-set | 2.0.3 | MIT | L86 | https://github.com/inspect-js/is-set |
-| is-shared-array-buffer | 1.0.4 | MIT | L65 | https://github.com/inspect-js/is-shared-array-buffer |
-| is-string | 1.1.1 | MIT | L52 | git://github.com/inspect-js/is-string |
-| is-symbol | 1.1.1 | MIT | L52 | git://github.com/inspect-js/is-symbol |
-| is-typed-array | 1.1.15 | MIT | L52 | git://github.com/inspect-js/is-typed-array |
-| is-weakmap | 2.0.2 | MIT | L86 | https://github.com/inspect-js/is-weakmap |
-| is-weakref | 1.1.1 | MIT | L20 | https://github.com/inspect-js/is-weakref |
-| is-weakset | 2.0.4 | MIT | L86 | https://github.com/inspect-js/is-weakset |
-| isarray | 1.0.0 | MIT | L13 | git://github.com/juliangruber/isarray |
-| isarray | 1.0.0 | MIT | L13 | git://github.com/juliangruber/isarray |
-| isarray | 1.0.0 | MIT | L13 | git://github.com/juliangruber/isarray |
-| isarray | 1.0.0 | MIT | L13 | git://github.com/juliangruber/isarray |
-| isarray | 1.0.0 | MIT | L13 | git://github.com/juliangruber/isarray |
-| isarray | 2.0.5 | MIT | L27 | git://github.com/juliangruber/isarray |
-| js-yaml | 5.5.0 | MIT | L87 | nodeca/js-yaml |
-| jszip | 3.10.2 | (MIT OR GPL-3.0-or-later) | L88 | https://github.com/Stuk/jszip |
-| lazystream | 1.0.1 | MIT | L89 | https://github.com/jpommerening/node-lazystream |
-| libheif-js | 1.23.5 | LGPL-3.0 | L90 | https://github.com/catdad-experiments/libheif-js |
-| lie | 3.3.0 | MIT | L91 | https://github.com/calvinmetcalf/lie |
-| listenercount | 1.0.1 | ISC | L92 | git@github.com:jden/node-listenercount |
-| lodash.defaults | 4.2.0 | MIT | L93 | lodash/lodash |
-| lodash.difference | 4.5.0 | MIT | L93 | lodash/lodash |
-| lodash.escaperegexp | 4.1.2 | MIT | L93 | lodash/lodash |
-| lodash.flatten | 4.4.0 | MIT | L93 | lodash/lodash |
-| lodash.groupby | 4.6.0 | MIT | L93 | lodash/lodash |
-| lodash.isboolean | 3.0.3 | MIT | L94 | lodash/lodash |
-| lodash.isequal | 4.5.0 | MIT | L95 | lodash/lodash |
-| lodash.isfunction | 3.0.9 | MIT | L95 | lodash/lodash |
-| lodash.isnil | 4.0.0 | MIT | L94 | lodash/lodash |
-| lodash.isplainobject | 4.0.6 | MIT | L93 | lodash/lodash |
-| lodash.isundefined | 3.0.1 | MIT | L96 | lodash/lodash |
-| lodash.union | 4.6.0 | MIT | L93 | lodash/lodash |
-| lodash.uniq | 4.5.0 | MIT | L93 | lodash/lodash |
-| long | 5.3.2 | Apache-2.0 | L55 | https://github.com/dcodeIO/long.js |
-| lop | 0.4.2 | BSD-2-Clause | L46 | https://github.com/mwilliamson/lop |
-| mammoth | 1.13.0 | BSD-2-Clause | L46 | https://github.com/mwilliamson/mammoth.js |
-| marked | 18.1.1 | MIT | L98 | https://github.com/markedjs/marked |
-| matcher | 4.0.0 | MIT | L53 | sindresorhus/matcher |
-| math-intrinsics | 1.1.0 | MIT | L47 | https://github.com/es-shims/math-intrinsics |
-| minimalistic-assert | 1.0.1 | ISC | L99 | https://github.com/calvinmetcalf/minimalistic-assert |
-| minimatch | 3.1.5 | ISC | L59 | git://github.com/isaacs/minimatch |
-| minimatch | 5.1.9 | ISC | L119 | git://github.com/isaacs/minimatch |
-| minimist | 1.2.8 | MIT | L37 | git://github.com/minimistjs/minimist |
-| mkdirp | 0.5.6 | MIT | L100 | https://github.com/substack/node-mkdirp |
-| nanoid | 6.0.2 | MIT | L101 | ai/nanoid |
-| node-gyp-build | 4.8.4 | MIT | L102 | https://github.com/prebuild/node-gyp-build |
-| normalize-path | 3.0.0 | MIT | L103 | jonschlinkert/normalize-path |
-| object-inspect | 1.13.4 | MIT | L104 | git://github.com/inspect-js/object-inspect |
-| object-keys | 1.1.1 | MIT | L105 | git://github.com/ljharb/object-keys |
-| object.assign | 4.1.7 | MIT | L106 | git://github.com/ljharb/object.assign |
-| once | 1.4.0 | ISC | L59 | git://github.com/isaacs/once |
-| onnxruntime-common | 1.30.0 | MIT | L107 | https://github.com/Microsoft/onnxruntime |
-| onnxruntime-node | 1.30.0 | MIT | L107 | https://github.com/Microsoft/onnxruntime |
-| onnxruntime-web | 1.30.0 | MIT | L107 | https://github.com/Microsoft/onnxruntime |
-| option | 0.2.4 | BSD-2-Clause | L46 | https://github.com/mwilliamson/node-options |
-| own-keys | 1.0.2 | MIT | L34 | https://github.com/ljharb/own-keys |
-| pako | 1.0.11 | (MIT AND Zlib) | L108 | nodeca/pako |
-| papaparse | 5.7.0 | MIT | L109 | https://github.com/mholt/PapaParse |
-| path-is-absolute | 1.0.1 | MIT | L110 | sindresorhus/path-is-absolute |
-| pdf-lib | 1.17.1 | MIT | L111 | https://github.com/Hopding/pdf-lib |
-| pdfjs-dist | 6.4.299 | Apache-2.0 | L112 | https://github.com/mozilla/pdf.js |
-| pend | 1.2.0 | MIT | L113 | git://github.com/andrewrk/node-pend |
-| platform | 1.3.6 | MIT | L114 | bestiejs/platform.js |
-| possible-typed-array-names | 1.1.0 | MIT | L34 | https://github.com/ljharb/possible-typed-array-names |
-| process-nextick-args | 2.0.1 | MIT | L115 | https://github.com/calvinmetcalf/process-nextick-args |
-| protobufjs | 7.6.6 | BSD-3-Clause | L116 | protobufjs/protobuf.js |
-| readable-stream | 2.3.8 | MIT | L14 | git://github.com/nodejs/readable-stream |
-| readable-stream | 2.3.8 | MIT | L14 | git://github.com/nodejs/readable-stream |
-| readable-stream | 2.3.8 | MIT | L14 | git://github.com/nodejs/readable-stream |
-| readable-stream | 2.3.8 | MIT | L14 | git://github.com/nodejs/readable-stream |
-| readable-stream | 2.3.8 | MIT | L14 | git://github.com/nodejs/readable-stream |
-| readable-stream | 3.6.2 | MIT | L14 | git://github.com/nodejs/readable-stream |
-| readdir-glob | 1.1.3 | Apache-2.0 | L118 | git://github.com/Yqnn/node-readdir-glob |
-| reflect.getprototypeof | 1.0.10 | MIT | L120 | https://github.com/es-shims/Reflect.getPrototypeOf |
-| regexp.prototype.flags | 1.5.4 | MIT | L121 | git://github.com/es-shims/RegExp.prototype.flags |
-| rimraf | 2.6.3 | ISC | L59 | git://github.com/isaacs/rimraf |
-| safe-array-concat | 1.1.4 | MIT | L40 | https://github.com/ljharb/safe-array-concat |
-| safe-buffer | 5.1.2 | MIT | L122 | git://github.com/feross/safe-buffer |
-| safe-push-apply | 1.0.0 | MIT | L34 | https://github.com/ljharb/safe-push-apply |
-| safe-regex-test | 1.1.0 | MIT | L68 | https://github.com/ljharb/safe-regex-test |
-| saxes | 5.0.1 | ISC | L123 | https://github.com/lddubeau/saxes |
-| semver | 7.8.5 | ISC | L59 | https://github.com/npm/node-semver |
-| serialize-error | 8.1.0 | MIT | L53 | sindresorhus/serialize-error |
-| set-function-length | 1.2.2 | MIT | L74 | https://github.com/ljharb/set-function-length |
-| set-function-name | 2.0.2 | MIT | L74 | https://github.com/ljharb/set-function-name |
-| set-proto | 1.0.0 | MIT | L34 | https://github.com/ljharb/set-proto |
-| setimmediate | 1.0.5 | MIT | L124 | YuzuJS/setImmediate |
+| flatbuffers | 25.9.23 | Apache-2.0 | L54 | https://github.com/google/flatbuffers |
+| for-each | 0.3.5 | MIT | L55 | https://github.com/Raynos/for-each |
+| fs-constants | 1.0.0 | MIT | L56 | https://github.com/mafintosh/fs-constants |
+| fs.realpath | 1.0.0 | ISC | L57 | https://github.com/isaacs/fs.realpath |
+| fstream | 1.0.12 | ISC | L58 | https://github.com/npm/fstream |
+| function-bind | 1.1.2 | MIT | L59 | https://github.com/Raynos/function-bind |
+| function.prototype.name | 1.2.0 | MIT | L60 | git://github.com/es-shims/Function.prototype.name |
+| functions-have-names | 1.2.3 | MIT | L61 | https://github.com/inspect-js/functions-have-names |
+| generator-function | 2.0.1 | MIT | L62 | https://github.com/TimothyGu/generator-function |
+| get-intrinsic | 1.3.0 | MIT | L32 | https://github.com/ljharb/get-intrinsic |
+| get-proto | 1.0.1 | MIT | L63 | https://github.com/ljharb/get-proto |
+| get-symbol-description | 1.1.0 | MIT | L64 | https://github.com/inspect-js/get-symbol-description |
+| glob | 7.2.3 | ISC | L65 | git://github.com/isaacs/node-glob |
+| globalthis | 1.0.4 | MIT | L60 | git://github.com/ljharb/System.global |
+| gopd | 1.2.0 | MIT | L66 | https://github.com/ljharb/gopd |
+| graceful-fs | 4.2.11 | ISC | L67 | https://github.com/isaacs/node-graceful-fs |
+| guid-typescript | 1.0.9 | ISC | L68 | https://github.com/NicolasDeveloper/guid-typescript |
+| has-bigints | 1.1.0 | MIT | L61 | https://github.com/ljharb/has-bigints |
+| has-property-descriptors | 1.0.2 | MIT | L69 | https://github.com/inspect-js/has-property-descriptors |
+| has-proto | 1.2.0 | MIT | L69 | https://github.com/inspect-js/has-proto |
+| has-symbols | 1.1.0 | MIT | L70 | git://github.com/inspect-js/has-symbols |
+| has-tostringtag | 1.0.2 | MIT | L64 | https://github.com/inspect-js/has-tostringtag |
+| hash.js | 1.1.7 | MIT | L71 | git@github.com:indutny/hash.js |
+| hasown | 2.0.4 | MIT | L72 | https://github.com/inspect-js/hasOwn |
+| heic-decode | 2.1.0 | ISC | L73 | https://github.com/catdad-experiments/heic-decode |
+| ieee754 | 1.2.1 | BSD-3-Clause | L74 | git://github.com/feross/ieee754 |
+| immediate | 3.0.6 | MIT | L75 | git://github.com/calvinmetcalf/immediate |
+| inflight | 1.0.6 | ISC | L76 | https://github.com/npm/inflight |
+| inherits | 2.0.4 | ISC | L77 | git://github.com/isaacs/inherits |
+| internal-slot | 1.1.0 | MIT | L61 | https://github.com/ljharb/internal-slot |
+| is-array-buffer | 3.0.5 | MIT | L78 | https://github.com/inspect-js/is-array-buffer |
+| is-async-function | 2.1.1 | MIT | L79 | git://github.com/inspect-js/is-async-function |
+| is-bigint | 1.1.0 | MIT | L80 | https://github.com/inspect-js/is-bigint |
+| is-boolean-object | 1.2.2 | MIT | L51 | git://github.com/inspect-js/is-boolean-object |
+| is-callable | 1.2.7 | MIT | L51 | git://github.com/inspect-js/is-callable |
+| is-data-view | 1.0.2 | MIT | L81 | https://github.com/inspect-js/is-data-view |
+| is-date-object | 1.1.0 | MIT | L51 | git://github.com/inspect-js/is-date-object |
+| is-document.all | 1.0.0 | MIT | L82 | https://github.com/inspect-js/is-document.all |
+| is-finalizationregistry | 1.1.1 | MIT | L19 | https://github.com/inspect-js/is-finalizationregistry |
+| is-generator-function | 1.1.2 | MIT | L83 | git://github.com/inspect-js/is-generator-function |
+| is-map | 2.0.3 | MIT | L84 | https://github.com/inspect-js/is-map |
+| is-negative-zero | 2.0.3 | MIT | L83 | git://github.com/inspect-js/is-negative-zero |
+| is-number-object | 1.1.1 | MIT | L51 | git://github.com/inspect-js/is-number-object |
+| is-regex | 1.2.1 | MIT | L83 | git://github.com/inspect-js/is-regex |
+| is-set | 2.0.3 | MIT | L84 | https://github.com/inspect-js/is-set |
+| is-shared-array-buffer | 1.0.4 | MIT | L64 | https://github.com/inspect-js/is-shared-array-buffer |
+| is-string | 1.1.1 | MIT | L51 | git://github.com/inspect-js/is-string |
+| is-symbol | 1.1.1 | MIT | L51 | git://github.com/inspect-js/is-symbol |
+| is-typed-array | 1.1.15 | MIT | L51 | git://github.com/inspect-js/is-typed-array |
+| is-weakmap | 2.0.2 | MIT | L84 | https://github.com/inspect-js/is-weakmap |
+| is-weakref | 1.1.1 | MIT | L19 | https://github.com/inspect-js/is-weakref |
+| is-weakset | 2.0.4 | MIT | L84 | https://github.com/inspect-js/is-weakset |
+| isarray | 1.0.0 | MIT | L12 | git://github.com/juliangruber/isarray |
+| isarray | 1.0.0 | MIT | L12 | git://github.com/juliangruber/isarray |
+| isarray | 1.0.0 | MIT | L12 | git://github.com/juliangruber/isarray |
+| isarray | 1.0.0 | MIT | L12 | git://github.com/juliangruber/isarray |
+| isarray | 1.0.0 | MIT | L12 | git://github.com/juliangruber/isarray |
+| isarray | 2.0.5 | MIT | L26 | git://github.com/juliangruber/isarray |
+| js-yaml | 5.5.0 | MIT | L85 | nodeca/js-yaml |
+| jszip | 3.10.2 | (MIT OR GPL-3.0-or-later) | L86 | https://github.com/Stuk/jszip |
+| lazystream | 1.0.1 | MIT | L87 | https://github.com/jpommerening/node-lazystream |
+| libheif-js | 1.23.5 | LGPL-3.0 | L88 | https://github.com/catdad-experiments/libheif-js |
+| lie | 3.3.0 | MIT | L89 | https://github.com/calvinmetcalf/lie |
+| listenercount | 1.0.1 | ISC | L90 | git@github.com:jden/node-listenercount |
+| lodash.defaults | 4.2.0 | MIT | L91 | lodash/lodash |
+| lodash.difference | 4.5.0 | MIT | L91 | lodash/lodash |
+| lodash.escaperegexp | 4.1.2 | MIT | L91 | lodash/lodash |
+| lodash.flatten | 4.4.0 | MIT | L91 | lodash/lodash |
+| lodash.groupby | 4.6.0 | MIT | L91 | lodash/lodash |
+| lodash.isboolean | 3.0.3 | MIT | L92 | lodash/lodash |
+| lodash.isequal | 4.5.0 | MIT | L93 | lodash/lodash |
+| lodash.isfunction | 3.0.9 | MIT | L93 | lodash/lodash |
+| lodash.isnil | 4.0.0 | MIT | L92 | lodash/lodash |
+| lodash.isplainobject | 4.0.6 | MIT | L91 | lodash/lodash |
+| lodash.isundefined | 3.0.1 | MIT | L94 | lodash/lodash |
+| lodash.union | 4.6.0 | MIT | L91 | lodash/lodash |
+| lodash.uniq | 4.5.0 | MIT | L91 | lodash/lodash |
+| long | 5.3.2 | Apache-2.0 | L54 | https://github.com/dcodeIO/long.js |
+| lop | 0.4.2 | BSD-2-Clause | L45 | https://github.com/mwilliamson/lop |
+| mammoth | 1.13.0 | BSD-2-Clause | L45 | https://github.com/mwilliamson/mammoth.js |
+| marked | 18.1.1 | MIT | L96 | https://github.com/markedjs/marked |
+| matcher | 4.0.0 | MIT | L52 | sindresorhus/matcher |
+| math-intrinsics | 1.1.0 | MIT | L46 | https://github.com/es-shims/math-intrinsics |
+| minimalistic-assert | 1.0.1 | ISC | L97 | https://github.com/calvinmetcalf/minimalistic-assert |
+| minimatch | 3.1.5 | ISC | L58 | git://github.com/isaacs/minimatch |
+| minimatch | 5.1.9 | ISC | L117 | git://github.com/isaacs/minimatch |
+| minimist | 1.2.8 | MIT | L36 | git://github.com/minimistjs/minimist |
+| mkdirp | 0.5.6 | MIT | L98 | https://github.com/substack/node-mkdirp |
+| nanoid | 6.0.2 | MIT | L99 | ai/nanoid |
+| node-gyp-build | 4.8.4 | MIT | L100 | https://github.com/prebuild/node-gyp-build |
+| normalize-path | 3.0.0 | MIT | L101 | jonschlinkert/normalize-path |
+| object-inspect | 1.13.4 | MIT | L102 | git://github.com/inspect-js/object-inspect |
+| object-keys | 1.1.1 | MIT | L103 | git://github.com/ljharb/object-keys |
+| object.assign | 4.1.7 | MIT | L104 | git://github.com/ljharb/object.assign |
+| once | 1.4.0 | ISC | L58 | git://github.com/isaacs/once |
+| onnxruntime-common | 1.30.0 | MIT | L105 | https://github.com/Microsoft/onnxruntime |
+| onnxruntime-node | 1.30.0 | MIT | L105 | https://github.com/Microsoft/onnxruntime |
+| onnxruntime-web | 1.30.0 | MIT | L105 | https://github.com/Microsoft/onnxruntime |
+| option | 0.2.4 | BSD-2-Clause | L45 | https://github.com/mwilliamson/node-options |
+| own-keys | 1.0.2 | MIT | L33 | https://github.com/ljharb/own-keys |
+| pako | 1.0.11 | (MIT AND Zlib) | L106 | nodeca/pako |
+| papaparse | 5.7.0 | MIT | L107 | https://github.com/mholt/PapaParse |
+| path-is-absolute | 1.0.1 | MIT | L108 | sindresorhus/path-is-absolute |
+| pdf-lib | 1.17.1 | MIT | L109 | https://github.com/Hopding/pdf-lib |
+| pdfjs-dist | 6.4.299 | Apache-2.0 | L110 | https://github.com/mozilla/pdf.js |
+| pend | 1.2.0 | MIT | L111 | git://github.com/andrewrk/node-pend |
+| platform | 1.3.6 | MIT | L112 | bestiejs/platform.js |
+| possible-typed-array-names | 1.1.0 | MIT | L33 | https://github.com/ljharb/possible-typed-array-names |
+| process-nextick-args | 2.0.1 | MIT | L113 | https://github.com/calvinmetcalf/process-nextick-args |
+| protobufjs | 7.6.6 | BSD-3-Clause | L114 | protobufjs/protobuf.js |
+| readable-stream | 2.3.8 | MIT | L13 | git://github.com/nodejs/readable-stream |
+| readable-stream | 2.3.8 | MIT | L13 | git://github.com/nodejs/readable-stream |
+| readable-stream | 2.3.8 | MIT | L13 | git://github.com/nodejs/readable-stream |
+| readable-stream | 2.3.8 | MIT | L13 | git://github.com/nodejs/readable-stream |
+| readable-stream | 2.3.8 | MIT | L13 | git://github.com/nodejs/readable-stream |
+| readable-stream | 3.6.2 | MIT | L13 | git://github.com/nodejs/readable-stream |
+| readdir-glob | 1.1.3 | Apache-2.0 | L116 | git://github.com/Yqnn/node-readdir-glob |
+| reflect.getprototypeof | 1.0.10 | MIT | L118 | https://github.com/es-shims/Reflect.getPrototypeOf |
+| regexp.prototype.flags | 1.5.4 | MIT | L119 | git://github.com/es-shims/RegExp.prototype.flags |
+| rimraf | 2.6.3 | ISC | L58 | git://github.com/isaacs/rimraf |
+| safe-array-concat | 1.1.4 | MIT | L39 | https://github.com/ljharb/safe-array-concat |
+| safe-buffer | 5.1.2 | MIT | L120 | git://github.com/feross/safe-buffer |
+| safe-push-apply | 1.0.0 | MIT | L33 | https://github.com/ljharb/safe-push-apply |
+| safe-regex-test | 1.1.0 | MIT | L66 | https://github.com/ljharb/safe-regex-test |
+| saxes | 5.0.1 | ISC | L121 | https://github.com/lddubeau/saxes |
+| semver | 7.8.5 | ISC | L58 | https://github.com/npm/node-semver |
+| serialize-error | 8.1.0 | MIT | L52 | sindresorhus/serialize-error |
+| set-function-length | 1.2.2 | MIT | L72 | https://github.com/ljharb/set-function-length |
+| set-function-name | 2.0.2 | MIT | L72 | https://github.com/ljharb/set-function-name |
+| set-proto | 1.0.0 | MIT | L33 | https://github.com/ljharb/set-proto |
+| setimmediate | 1.0.5 | MIT | L122 | YuzuJS/setImmediate |
 | sharp | 0.35.5 | Apache-2.0 | L4 | https://github.com/lovell/sharp |
-| side-channel | 1.1.1 | MIT | L62 | https://github.com/ljharb/side-channel |
-| side-channel-list | 1.0.1 | MIT | L34 | https://github.com/ljharb/side-channel-list |
-| side-channel-map | 1.0.1 | MIT | L34 | https://github.com/ljharb/side-channel-map |
-| side-channel-weakmap | 1.0.2 | MIT | L62 | https://github.com/ljharb/side-channel-weakmap |
-| sprintf-js | 1.0.3 | BSD-3-Clause | L125 | https://github.com/alexei/sprintf.js |
-| stop-iteration-iterator | 1.1.0 | MIT | L40 | https://github.com/ljharb/stop-iteration-iterator |
-| string_decoder | 1.1.1 | MIT | L14 | git://github.com/nodejs/string_decoder |
-| string.prototype.trim | 1.2.11 | MIT | L52 | git://github.com/es-shims/String.prototype.trim |
-| string.prototype.trimend | 1.0.10 | MIT | L126 | git://github.com/es-shims/String.prototype.trimEnd |
-| string.prototype.trimstart | 1.0.8 | MIT | L126 | git://github.com/es-shims/String.prototype.trimStart |
-| tar-stream | 2.2.0 | MIT | L49 | https://github.com/mafintosh/tar-stream |
-| tmp | 0.2.7 | MIT | L127 | https://github.com/raszi/node-tmp |
-| traverse | 0.3.10 | MIT | L128 | git://github.com/ljharb/js-traverse |
-| tslib | 1.14.1 | 0BSD | L129 | https://github.com/Microsoft/tslib |
-| type-fest | 0.20.2 | (MIT OR CC0-1.0) | L130 | sindresorhus/type-fest |
-| typed-array-buffer | 1.0.3 | MIT | L40 | https://github.com/inspect-js/typed-array-buffer |
-| typed-array-byte-length | 1.0.3 | MIT | L20 | https://github.com/inspect-js/typed-array-byte-length |
-| typed-array-byte-offset | 1.0.5 | MIT | L20 | https://github.com/inspect-js/typed-array-byte-offset |
-| typed-array-length | 1.0.8 | MIT | L20 | https://github.com/inspect-js/typed-array-length |
-| typedarray.prototype.slice | 1.0.6 | MIT | L17 | https://github.com/es-shims/TypedArray.prototype.slice |
-| uiohook-napi | 1.5.5 | MIT | L131 | https://github.com/SnosMe/uiohook-napi |
-| unbox-primitive | 1.1.0 | MIT | L62 | https://github.com/ljharb/unbox-primitive |
-| underscore | 1.13.8 | MIT | L132 | git://github.com/jashkenas/underscore |
-| undici-types | 6.21.0 | MIT | L117 | https://github.com/nodejs/undici |
-| undici-types | 8.9.0 | MIT | L117 | https://github.com/nodejs/undici |
-| unzipper | 0.10.14 | MIT | L133 | https://github.com/ZJONSSON/node-unzipper |
-| util-deprecate | 1.0.2 | MIT | L134 | git://github.com/TooTallNate/util-deprecate |
-| uuid | 8.3.2 | MIT | L135 | https://github.com/uuidjs/uuid |
-| which-boxed-primitive | 1.1.1 | MIT | L62 | https://github.com/inspect-js/which-boxed-primitive |
-| which-builtin-type | 1.2.1 | MIT | L136 | https://github.com/inspect-js/which-builtin-type |
-| which-collection | 1.0.2 | MIT | L86 | https://github.com/inspect-js/which-collection |
-| which-typed-array | 1.1.24 | MIT | L52 | git://github.com/inspect-js/which-typed-array |
-| wrappy | 1.0.2 | ISC | L59 | https://github.com/npm/wrappy |
-| xmlbuilder | 10.1.1 | MIT | L137 | git://github.com/oozcitak/xmlbuilder-js |
-| xmlchars | 2.2.0 | MIT | L138 | https://github.com/lddubeau/xmlchars |
-| yauzl | 3.4.0 | MIT | L139 | https://github.com/thejoshwolfe/yauzl |
-| yazl | 3.3.1 | MIT | L139 | https://github.com/thejoshwolfe/yazl |
-| zip-stream | 4.1.1 | MIT | L36 | https://github.com/archiverjs/node-zip-stream |
-| zod | 4.6.7 | MIT | L141 | https://github.com/colinhacks/zod |
+| side-channel | 1.1.1 | MIT | L61 | https://github.com/ljharb/side-channel |
+| side-channel-list | 1.0.1 | MIT | L33 | https://github.com/ljharb/side-channel-list |
+| side-channel-map | 1.0.1 | MIT | L33 | https://github.com/ljharb/side-channel-map |
+| side-channel-weakmap | 1.0.2 | MIT | L61 | https://github.com/ljharb/side-channel-weakmap |
+| sprintf-js | 1.0.3 | BSD-3-Clause | L123 | https://github.com/alexei/sprintf.js |
+| stop-iteration-iterator | 1.1.0 | MIT | L39 | https://github.com/ljharb/stop-iteration-iterator |
+| string_decoder | 1.1.1 | MIT | L13 | git://github.com/nodejs/string_decoder |
+| string.prototype.trim | 1.2.11 | MIT | L51 | git://github.com/es-shims/String.prototype.trim |
+| string.prototype.trimend | 1.0.10 | MIT | L124 | git://github.com/es-shims/String.prototype.trimEnd |
+| string.prototype.trimstart | 1.0.8 | MIT | L124 | git://github.com/es-shims/String.prototype.trimStart |
+| tar-stream | 2.2.0 | MIT | L48 | https://github.com/mafintosh/tar-stream |
+| tmp | 0.2.7 | MIT | L125 | https://github.com/raszi/node-tmp |
+| traverse | 0.3.10 | MIT | L126 | git://github.com/ljharb/js-traverse |
+| tslib | 1.14.1 | 0BSD | L127 | https://github.com/Microsoft/tslib |
+| type-fest | 0.20.2 | (MIT OR CC0-1.0) | L128 | sindresorhus/type-fest |
+| typed-array-buffer | 1.0.3 | MIT | L39 | https://github.com/inspect-js/typed-array-buffer |
+| typed-array-byte-length | 1.0.3 | MIT | L19 | https://github.com/inspect-js/typed-array-byte-length |
+| typed-array-byte-offset | 1.0.5 | MIT | L19 | https://github.com/inspect-js/typed-array-byte-offset |
+| typed-array-length | 1.0.8 | MIT | L19 | https://github.com/inspect-js/typed-array-length |
+| typedarray.prototype.slice | 1.0.6 | MIT | L16 | https://github.com/es-shims/TypedArray.prototype.slice |
+| uiohook-napi | 1.5.5 | MIT | L129 | https://github.com/SnosMe/uiohook-napi |
+| unbox-primitive | 1.1.0 | MIT | L61 | https://github.com/ljharb/unbox-primitive |
+| underscore | 1.13.8 | MIT | L130 | git://github.com/jashkenas/underscore |
+| undici-types | 6.21.0 | MIT | L115 | https://github.com/nodejs/undici |
+| undici-types | 8.9.0 | MIT | L115 | https://github.com/nodejs/undici |
+| unzipper | 0.10.14 | MIT | L131 | https://github.com/ZJONSSON/node-unzipper |
+| util-deprecate | 1.0.2 | MIT | L132 | git://github.com/TooTallNate/util-deprecate |
+| uuid | 8.3.2 | MIT | L133 | https://github.com/uuidjs/uuid |
+| which-boxed-primitive | 1.1.1 | MIT | L61 | https://github.com/inspect-js/which-boxed-primitive |
+| which-builtin-type | 1.2.1 | MIT | L134 | https://github.com/inspect-js/which-builtin-type |
+| which-collection | 1.0.2 | MIT | L84 | https://github.com/inspect-js/which-collection |
+| which-typed-array | 1.1.24 | MIT | L51 | git://github.com/inspect-js/which-typed-array |
+| wrappy | 1.0.2 | ISC | L58 | https://github.com/npm/wrappy |
+| xmlbuilder | 10.1.1 | MIT | L135 | git://github.com/oozcitak/xmlbuilder-js |
+| xmlchars | 2.2.0 | MIT | L136 | https://github.com/lddubeau/xmlchars |
+| yauzl | 3.4.0 | MIT | L137 | https://github.com/thejoshwolfe/yauzl |
+| yazl | 3.3.1 | MIT | L137 | https://github.com/thejoshwolfe/yazl |
+| zip-stream | 4.1.1 | MIT | L35 | https://github.com/archiverjs/node-zip-stream |
+| zod | 4.6.7 | MIT | L139 | https://github.com/colinhacks/zod |
 
 ### npm licence texts
 
@@ -1085,34 +1158,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #### L10
 
-Used by: adm-zip@0.6.1
-
-```text
-MIT License
-
-Copyright (c) 2012 Another-D-Mention Software and other contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-#### L11
-
 Used by: archiver@5.3.2
 
 ```text
@@ -1140,7 +1185,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### L12
+#### L11
 
 Used by: archiver-utils@2.1.0, archiver-utils@3.0.4
 
@@ -1169,7 +1214,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### L13
+#### L12
 
 Used by: isarray@1.0.0
 
@@ -1199,7 +1244,7 @@ SOFTWARE.
 [No licence file in the package: standard MIT text; copyright holder from package.json "author".]
 ```
 
-#### L14
+#### L13
 
 Used by: readable-stream@2.3.8, readable-stream@3.6.2, string_decoder@1.1.1
 
@@ -1253,7 +1298,7 @@ IN THE SOFTWARE.
 """
 ```
 
-#### L15
+#### L14
 
 Used by: argparse@3.0.3
 
@@ -1307,7 +1352,7 @@ agrees to be bound by the terms and conditions of this License
 Agreement.
 ```
 
-#### L16
+#### L15
 
 Used by: array-buffer-byte-length@1.0.2
 
@@ -1335,7 +1380,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L17
+#### L16
 
 Used by: arraybuffer.prototype.slice@1.0.4, typedarray.prototype.slice@1.0.6
 
@@ -1363,7 +1408,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L18
+#### L17
 
 Used by: async@3.2.6
 
@@ -1389,7 +1434,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### L19
+#### L18
 
 Used by: async-function@1.0.0
 
@@ -1417,7 +1462,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L20
+#### L19
 
 Used by: available-typed-arrays@1.0.7, is-finalizationregistry@1.1.1, is-weakref@1.1.1, typed-array-byte-length@1.0.3, typed-array-byte-offset@1.0.5, typed-array-length@1.0.8
 
@@ -1445,7 +1490,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L21
+#### L20
 
 Used by: balanced-match@1.0.2
 
@@ -1473,7 +1518,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L22
+#### L21
 
 Used by: base64-js@1.5.1
 
@@ -1501,7 +1546,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### L23
+#### L22
 
 Used by: big-integer@1.6.52
 
@@ -1532,7 +1577,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 For more information, please refer to <http://unlicense.org>
 ```
 
-#### L24
+#### L23
 
 Used by: binary@0.3.0
 
@@ -1562,7 +1607,7 @@ SOFTWARE.
 [No licence file in the package: standard MIT text; copyright holder from package.json "author".]
 ```
 
-#### L25
+#### L24
 
 Used by: bl@4.1.0
 
@@ -1582,7 +1627,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### L26
+#### L25
 
 Used by: bluebird@3.4.7
 
@@ -1610,7 +1655,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### L27
+#### L26
 
 Used by: brace-expansion@1.1.21, brace-expansion@2.1.7, isarray@2.0.5
 
@@ -1638,7 +1683,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L28
+#### L27
 
 Used by: buffer@5.7.1
 
@@ -1715,7 +1760,7 @@ Used by: buffer@5.7.1
 #### Generated by bin/update-authors.sh.
 ```
 
-#### L29
+#### L28
 
 Used by: buffer@5.7.1
 
@@ -1743,7 +1788,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### L30
+#### L29
 
 Used by: buffer-crc32@0.2.13
 
@@ -1769,7 +1814,7 @@ FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TOR
 ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### L31
+#### L30
 
 Used by: buffer-indexof-polyfill@1.0.2
 
@@ -1797,7 +1842,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L32
+#### L31
 
 Used by: buffers@0.1.1
 
@@ -1805,7 +1850,7 @@ Used by: buffers@0.1.1
 [No licence file in the package and no standard text for "NONE DECLARED". See the main notices.]
 ```
 
-#### L33
+#### L32
 
 Used by: call-bind@1.0.9, get-intrinsic@1.3.0
 
@@ -1833,7 +1878,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L34
+#### L33
 
 Used by: call-bind-apply-helpers@1.0.2, call-bound@1.0.4, data-view-byte-length@1.0.2, data-view-byte-offset@1.0.1, es-define-property@1.0.1, es-errors@1.3.0, es-object-atoms@1.1.2, own-keys@1.0.2, possible-typed-array-names@1.1.0, safe-push-apply@1.0.0, set-proto@1.0.0, side-channel-list@1.0.1, side-channel-map@1.0.1
 
@@ -1861,7 +1906,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L35
+#### L34
 
 Used by: chainsaw@0.1.0
 
@@ -1891,7 +1936,7 @@ SOFTWARE.
 [No licence file in the package: standard MIT/X11 text; copyright holder from package.json "author".]
 ```
 
-#### L36
+#### L35
 
 Used by: compress-commons@4.1.2, crc32-stream@4.0.3, zip-stream@4.1.1
 
@@ -1920,7 +1965,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### L37
+#### L36
 
 Used by: concat-map@0.0.1, minimist@1.2.8
 
@@ -1945,7 +1990,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### L38
+#### L37
 
 Used by: core-util-is@1.0.3
 
@@ -1971,7 +2016,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 ```
 
-#### L39
+#### L38
 
 Used by: crc-32@1.2.2
 
@@ -2179,7 +2224,7 @@ Apache License
    limitations under the License.
 ```
 
-#### L40
+#### L39
 
 Used by: data-view-buffer@1.0.2, define-data-property@1.1.4, safe-array-concat@1.1.4, stop-iteration-iterator@1.1.0, typed-array-buffer@1.0.3
 
@@ -2207,7 +2252,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L41
+#### L40
 
 Used by: dayjs@1.11.23
 
@@ -2235,7 +2280,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L42
+#### L41
 
 Used by: define-properties@1.2.1, es-abstract@1.24.2
 
@@ -2263,7 +2308,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### L43
+#### L42
 
 Used by: detect-libc@2.1.2
 
@@ -2471,7 +2516,7 @@ Apache License
    limitations under the License.
 ```
 
-#### L44
+#### L43
 
 Used by: dingbat-to-unicode@1.0.2
 
@@ -2500,7 +2545,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-#### L45
+#### L44
 
 Used by: docx@9.13.0
 
@@ -2528,7 +2573,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L46
+#### L45
 
 Used by: duck@0.1.12, lop@0.4.2, mammoth@1.13.0, option@0.2.4
 
@@ -2557,7 +2602,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-#### L47
+#### L46
 
 Used by: dunder-proto@1.0.1, math-intrinsics@1.1.0
 
@@ -2585,7 +2630,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L48
+#### L47
 
 Used by: duplexer2@0.1.4
 
@@ -2618,7 +2663,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-#### L49
+#### L48
 
 Used by: end-of-stream@1.4.5, tar-stream@2.2.0
 
@@ -2646,7 +2691,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### L50
+#### L49
 
 Used by: es-abstract-get@1.0.0
 
@@ -2674,7 +2719,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L51
+#### L50
 
 Used by: es-set-tostringtag@2.1.0
 
@@ -2702,7 +2747,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L52
+#### L51
 
 Used by: es-to-primitive@1.3.4, is-boolean-object@1.2.2, is-callable@1.2.7, is-date-object@1.1.0, is-number-object@1.1.1, is-string@1.1.1, is-symbol@1.1.1, is-typed-array@1.1.15, string.prototype.trim@1.2.11, which-typed-array@1.1.24
 
@@ -2730,7 +2775,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L53
+#### L52
 
 Used by: escape-string-regexp@4.0.0, matcher@4.0.0, serialize-error@8.1.0
 
@@ -2746,7 +2791,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### L54
+#### L53
 
 Used by: exceljs@4.4.0
 
@@ -2774,7 +2819,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L55
+#### L54
 
 Used by: flatbuffers@25.9.23, long@5.3.2
 
@@ -2982,7 +3027,7 @@ Apache License
    limitations under the License.
 ```
 
-#### L56
+#### L55
 
 Used by: for-each@0.3.5
 
@@ -3010,7 +3055,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L57
+#### L56
 
 Used by: fs-constants@1.0.0
 
@@ -3038,7 +3083,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### L58
+#### L57
 
 Used by: fs.realpath@1.0.0
 
@@ -3088,7 +3133,7 @@ the licensed code:
   DEALINGS IN THE SOFTWARE.
 ```
 
-#### L59
+#### L58
 
 Used by: fstream@1.0.12, minimatch@3.1.5, once@1.4.0, rimraf@2.6.3, semver@7.8.5, wrappy@1.0.2
 
@@ -3110,7 +3155,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-#### L60
+#### L59
 
 Used by: function-bind@1.1.2
 
@@ -3136,7 +3181,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### L61
+#### L60
 
 Used by: function.prototype.name@1.2.0, globalthis@1.0.4
 
@@ -3164,7 +3209,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L62
+#### L61
 
 Used by: functions-have-names@1.2.3, has-bigints@1.1.0, internal-slot@1.1.0, side-channel-weakmap@1.0.2, side-channel@1.1.1, unbox-primitive@1.1.0, which-boxed-primitive@1.1.1
 
@@ -3192,7 +3237,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L63
+#### L62
 
 Used by: generator-function@2.0.1
 
@@ -3206,7 +3251,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### L64
+#### L63
 
 Used by: get-proto@1.0.1
 
@@ -3234,7 +3279,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L65
+#### L64
 
 Used by: get-symbol-description@1.1.0, has-tostringtag@1.0.2, is-shared-array-buffer@1.0.4
 
@@ -3262,7 +3307,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L66
+#### L65
 
 Used by: glob@7.2.3
 
@@ -3290,38 +3335,7 @@ under a Creative Commons Attribution-ShareAlike 4.0 International License
 https://creativecommons.org/licenses/by-sa/4.0/
 ```
 
-#### L67
-
-Used by: global-agent@4.1.3
-
-```text
-Copyright (c) 2026, Gajus Kuizinas (https://gajus.com/)
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-    * Neither the name of the Gajus Kuizinas (https://gajus.com/) nor the
-      names of its contributors may be used to endorse or promote products
-      derived from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL ANUARY BE LIABLE FOR ANY
-DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-```
-
-#### L68
+#### L66
 
 Used by: gopd@1.2.0, safe-regex-test@1.1.0
 
@@ -3349,7 +3363,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L69
+#### L67
 
 Used by: graceful-fs@4.2.11
 
@@ -3371,7 +3385,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-#### L70
+#### L68
 
 Used by: guid-typescript@1.0.9
 
@@ -3395,7 +3409,7 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 [No licence file in the package: standard ISC text; copyright holder from package.json "author".]
 ```
 
-#### L71
+#### L69
 
 Used by: has-property-descriptors@1.0.2, has-proto@1.2.0
 
@@ -3423,7 +3437,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L72
+#### L70
 
 Used by: has-symbols@1.1.0
 
@@ -3451,7 +3465,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L73
+#### L71
 
 Used by: hash.js@1.1.7
 
@@ -3481,7 +3495,7 @@ SOFTWARE.
 [No licence file in the package: standard MIT text; copyright holder from package.json "author".]
 ```
 
-#### L74
+#### L72
 
 Used by: hasown@2.0.4, set-function-length@1.2.2, set-function-name@2.0.2
 
@@ -3509,7 +3523,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L75
+#### L73
 
 Used by: heic-decode@2.1.0
 
@@ -3533,7 +3547,7 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 [No licence file in the package: standard ISC text; copyright holder from package.json "author".]
 ```
 
-#### L76
+#### L74
 
 Used by: ieee754@1.2.1
 
@@ -3551,7 +3565,7 @@ Redistribution and use in source and binary forms, with or without modification,
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-#### L77
+#### L75
 
 Used by: immediate@3.0.6
 
@@ -3578,7 +3592,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### L78
+#### L76
 
 Used by: inflight@1.0.6
 
@@ -3600,7 +3614,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-#### L79
+#### L77
 
 Used by: inherits@2.0.4
 
@@ -3622,7 +3636,7 @@ OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ```
 
-#### L80
+#### L78
 
 Used by: is-array-buffer@3.0.5
 
@@ -3650,7 +3664,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L81
+#### L79
 
 Used by: is-async-function@2.1.1
 
@@ -3677,7 +3691,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### L82
+#### L80
 
 Used by: is-bigint@1.1.0
 
@@ -3705,7 +3719,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L83
+#### L81
 
 Used by: is-data-view@1.0.2
 
@@ -3733,7 +3747,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L84
+#### L82
 
 Used by: is-document.all@1.0.0
 
@@ -3761,7 +3775,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L85
+#### L83
 
 Used by: is-generator-function@1.1.2, is-negative-zero@2.0.3, is-regex@1.2.1
 
@@ -3788,7 +3802,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### L86
+#### L84
 
 Used by: is-map@2.0.3, is-set@2.0.3, is-weakmap@2.0.2, is-weakset@2.0.4, which-collection@1.0.2
 
@@ -3816,7 +3830,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L87
+#### L85
 
 Used by: js-yaml@5.5.0
 
@@ -3844,7 +3858,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### L88
+#### L86
 
 Used by: jszip@3.10.2
 
@@ -4502,7 +4516,7 @@ copy of the Program in return for a fee.
                      END OF TERMS AND CONDITIONS
 ```
 
-#### L89
+#### L87
 
 Used by: lazystream@1.0.1
 
@@ -4531,7 +4545,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### L90
+#### L88
 
 Used by: libheif-js@1.23.5
 
@@ -4703,7 +4717,7 @@ permanent authorization for you to choose that version for the
 Library.
 ```
 
-#### L91
+#### L89
 
 Used by: lie@3.3.0
 
@@ -4717,7 +4731,7 @@ The above copyright notice and this permission notice shall be included in all c
 **THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.**
 ```
 
-#### L92
+#### L90
 
 Used by: listenercount@1.0.1
 
@@ -4729,7 +4743,7 @@ Permission to use, copy, modify, and/or distribute this software for any purpose
 THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-#### L93
+#### L91
 
 Used by: lodash.defaults@4.2.0, lodash.difference@4.5.0, lodash.escaperegexp@4.1.2, lodash.flatten@4.4.0, lodash.groupby@4.6.0, lodash.isplainobject@4.0.6, lodash.union@4.6.0, lodash.uniq@4.5.0
 
@@ -4783,7 +4797,7 @@ licenses; we recommend you read them, as their terms may differ from the
 terms above.
 ```
 
-#### L94
+#### L92
 
 Used by: lodash.isboolean@3.0.3, lodash.isnil@4.0.0
 
@@ -4812,7 +4826,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### L95
+#### L93
 
 Used by: lodash.isequal@4.5.0, lodash.isfunction@3.0.9
 
@@ -4866,7 +4880,7 @@ licenses; we recommend you read them, as their terms may differ from the
 terms above.
 ```
 
-#### L96
+#### L94
 
 Used by: lodash.isundefined@3.0.1
 
@@ -4895,7 +4909,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### L97
+#### L95
 
 Used by: argparse@1.0.10
 
@@ -4923,7 +4937,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### L98
+#### L96
 
 Used by: marked@18.1.1
 
@@ -4974,7 +4988,7 @@ Redistribution and use in source and binary forms, with or without modification,
 This software is provided by the copyright holders and contributors “as is” and any express or implied warranties, including, but not limited to, the implied warranties of merchantability and fitness for a particular purpose are disclaimed. In no event shall the copyright owner or contributors be liable for any direct, indirect, incidental, special, exemplary, or consequential damages (including, but not limited to, procurement of substitute goods or services; loss of use, data, or profits; or business interruption) however caused and on any theory of liability, whether in contract, strict liability, or tort (including negligence or otherwise) arising in any way out of the use of this software, even if advised of the possibility of such damage.
 ```
 
-#### L99
+#### L97
 
 Used by: minimalistic-assert@1.0.1
 
@@ -4994,7 +5008,7 @@ OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ```
 
-#### L100
+#### L98
 
 Used by: mkdirp@0.5.6
 
@@ -5022,7 +5036,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### L101
+#### L99
 
 Used by: nanoid@6.0.2
 
@@ -5049,7 +5063,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### L102
+#### L100
 
 Used by: node-gyp-build@4.8.4
 
@@ -5077,7 +5091,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### L103
+#### L101
 
 Used by: normalize-path@3.0.0
 
@@ -5105,7 +5119,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### L104
+#### L102
 
 Used by: object-inspect@1.13.4
 
@@ -5133,7 +5147,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L105
+#### L103
 
 Used by: object-keys@1.1.1
 
@@ -5161,7 +5175,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### L106
+#### L104
 
 Used by: object.assign@4.1.7
 
@@ -5189,7 +5203,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L107
+#### L105
 
 Used by: onnxruntime-common@1.30.0, onnxruntime-node@1.30.0, onnxruntime-web@1.30.0
 
@@ -5219,7 +5233,7 @@ SOFTWARE.
 [No licence file in the package: standard MIT text; copyright holder from package.json "author" (corrected by hand).]
 ```
 
-#### L108
+#### L106
 
 Used by: pako@1.0.11
 
@@ -5247,7 +5261,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### L109
+#### L107
 
 Used by: papaparse@5.7.0
 
@@ -5274,7 +5288,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### L110
+#### L108
 
 Used by: path-is-absolute@1.0.1
 
@@ -5302,7 +5316,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### L111
+#### L109
 
 Used by: pdf-lib@1.17.1
 
@@ -5330,7 +5344,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L112
+#### L110
 
 Used by: pdfjs-dist@6.4.299
 
@@ -5513,7 +5527,7 @@ Apache License
    END OF TERMS AND CONDITIONS
 ```
 
-#### L113
+#### L111
 
 Used by: pend@1.2.0
 
@@ -5543,7 +5557,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L114
+#### L112
 
 Used by: platform@1.3.6
 
@@ -5571,7 +5585,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### L115
+#### L113
 
 Used by: process-nextick-args@2.0.1
 
@@ -5597,7 +5611,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.**
 ```
 
-#### L116
+#### L114
 
 Used by: protobufjs@7.6.6
 
@@ -5643,7 +5657,7 @@ standalone and requires a support library to be linked with it. This
 support library is itself covered by the above license.
 ```
 
-#### L117
+#### L115
 
 Used by: undici-types@6.21.0, undici-types@8.9.0
 
@@ -5671,7 +5685,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L118
+#### L116
 
 Used by: readdir-glob@1.1.3
 
@@ -5879,7 +5893,7 @@ Apache License
    limitations under the License.
 ```
 
-#### L119
+#### L117
 
 Used by: minimatch@5.1.9
 
@@ -5901,7 +5915,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-#### L120
+#### L118
 
 Used by: reflect.getprototypeof@1.0.10
 
@@ -5929,7 +5943,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L121
+#### L119
 
 Used by: regexp.prototype.flags@1.5.4
 
@@ -5957,7 +5971,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### L122
+#### L120
 
 Used by: safe-buffer@5.1.2
 
@@ -5985,7 +5999,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### L123
+#### L121
 
 Used by: saxes@5.0.1
 
@@ -6009,7 +6023,7 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 [No licence file in the package: standard ISC text; copyright holder from package.json "author".]
 ```
 
-#### L124
+#### L122
 
 Used by: setimmediate@1.0.5
 
@@ -6036,7 +6050,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### L125
+#### L123
 
 Used by: sprintf-js@1.0.3
 
@@ -6067,7 +6081,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-#### L126
+#### L124
 
 Used by: string.prototype.trimend@1.0.10, string.prototype.trimstart@1.0.8
 
@@ -6095,7 +6109,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L127
+#### L125
 
 Used by: tmp@0.2.7
 
@@ -6123,7 +6137,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L128
+#### L126
 
 Used by: traverse@0.3.10
 
@@ -6151,7 +6165,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L129
+#### L127
 
 Used by: tslib@1.14.1
 
@@ -6170,7 +6184,7 @@ OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ```
 
-#### L130
+#### L128
 
 Used by: type-fest@0.20.2
 
@@ -6186,7 +6200,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### L131
+#### L129
 
 Used by: uiohook-napi@1.5.5
 
@@ -6214,7 +6228,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L132
+#### L130
 
 Used by: underscore@1.13.8
 
@@ -6243,7 +6257,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### L133
+#### L131
 
 Used by: unzipper@0.10.14
 
@@ -6275,7 +6289,7 @@ Commits in this fork are (c) Ziggy Jonsson (ziggy.jonsson.nyc@gmail.com)
 and fall under same licence structure as the original repo (MIT)
 ```
 
-#### L134
+#### L132
 
 Used by: util-deprecate@1.0.2
 
@@ -6306,7 +6320,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### L135
+#### L133
 
 Used by: uuid@8.3.2
 
@@ -6322,7 +6336,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### L136
+#### L134
 
 Used by: which-builtin-type@1.2.1
 
@@ -6350,7 +6364,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L137
+#### L135
 
 Used by: xmlbuilder@10.1.1
 
@@ -6378,7 +6392,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### L138
+#### L136
 
 Used by: xmlchars@2.2.0
 
@@ -6403,7 +6417,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### L139
+#### L137
 
 Used by: yauzl@3.4.0, yazl@3.3.1
 
@@ -6431,7 +6445,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### L140
+#### L138
 
 Used by: buffer-crc32@1.0.0
 
@@ -6457,7 +6471,7 @@ FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TOR
 ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### L141
+#### L139
 
 Used by: zod@4.6.7
 
@@ -6495,7 +6509,7 @@ SOFTWARE.
 |---|---|---|
 | FFmpeg 7.0.2 (Linux) | FFmpeg 7.0.2 source + the source of every library in `FFMPEG-README.txt` at those versions + build scripts | `https://ffmpeg.org/releases/ffmpeg-7.0.2.tar.xz`; library sources from their upstreams; ask the builder for his build scripts (`https://johnvansickle.com/ffmpeg/`) |
 | FFmpeg 6.1.1 (Windows) | FFmpeg at commit `e38092ef93` + the libraries in `FFMPEG-README.txt` + build scripts | `https://github.com/FFmpeg/FFmpeg/commit/e38092ef93`; `https://www.gyan.dev/ffmpeg/builds/` |
-| FFmpeg 9.0.2 (macOS arm64, x64) | FFmpeg 9.0.2 source + the libraries listed by the build server + build scripts | `https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz`; `https://gitlab.com/martinr92/ffmpeg` |
+| FFmpeg 9.0.2 (macOS arm64, x64) | FFmpeg 9.0.2 source + every library of section 3.1 at the versions used in these two builds + the build scripts | `https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz`; library versions: the build server's page for builds `1789931890_9.0.2` (arm64) and `1789931006_9.0.2` (x64); scripts: **not** the public `gitlab.com/martinr92/ffmpeg` branches (they pin FFmpeg 7.1/7.1.1), so ask the author or rebuild ourselves (section 3.1) |
 | libvips stack (sharp-libvips 1.3.4) | sharp-libvips at `ebb95f8…` + the upstream tarballs of the LGPL libraries (libvips, glib, pango, librsvg, libheif, libexif, fribidi, proxy-libintl) | `https://github.com/lovell/sharp-libvips`; upstream sites |
 | libheif + libde265 (libheif-js 1.23.5) | libheif-js at `d8ec4bc…`, libheif v1.23.5, the libde265 version it builds | `https://github.com/catdad-experiments/libheif-js`, `https://github.com/strukturag/libheif`, `https://github.com/strukturag/libde265` |
 | libuiohook (uiohook-napi 1.5.5) | `uiohook-napi-1.5.5.tgz` | `https://registry.npmjs.org/uiohook-napi/-/uiohook-napi-1.5.5.tgz` |
