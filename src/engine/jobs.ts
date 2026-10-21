@@ -91,7 +91,7 @@ const imageEach: EachHandler = async (ctx, item, progress) => {
     })
     const img = await openImage(item.path, item.ext, deps)
     const png = await removeBackground(img, modelPath, ctx.signal, (p, stage) => progress(p < 0 ? -1 : 0.4 + p * 0.6, stage))
-    await stageData(ctx, dir, suffixedName(item.name, '-nobg', 'png'), png)
+    await stageData(ctx, dir, suffixedName(item.name, '-nobg', 'png', { dir }), png)
     return
   }
   const { encodeImageTo, imageOutputExt } = await import('./tools/image')
@@ -100,7 +100,7 @@ const imageEach: EachHandler = async (ctx, item, progress) => {
   const temp = await ctx.out.tempFile(dir, imageOutputExt(ctx.req.optionId, item.ext))
   const res = await encodeImageTo(ctx.req.optionId, item.path, item.ext, deps, temp)
   if (res.note) progress(1, res.note)
-  const name = res.suffix ? suffixedName(item.name, res.suffix, res.ext) : convertedName(item.name, res.ext)
+  const name = res.suffix ? suffixedName(item.name, res.suffix, res.ext, { dir }) : convertedName(item.name, res.ext, { dir })
   ctx.out.stage(temp, dir, name)
 }
 
@@ -112,7 +112,8 @@ async function imagesToPdfJob(ctx: JobContext): Promise<void> {
     ctx.progress(i / n, 'Stacking pages')
   })
   const first = ctx.items[0]!
-  await stageData(ctx, dirname(first.path), n === 1 ? convertedName(first.name, 'pdf') : mergedName(first.name, 'pdf'), pdf)
+  const at = { dir: dirname(first.path) }
+  await stageData(ctx, at.dir, n === 1 ? convertedName(first.name, 'pdf', at) : mergedName(first.name, 'pdf', at), pdf)
 }
 
 // --- video / audio ----------------------------------------------------------------------------
@@ -128,7 +129,7 @@ const mediaEach: EachHandler = async (ctx, item, progress) => {
     progress,
     tempFile: (e) => ctx.out.tempFile(dir, e)
   })
-  const name = ctx.req.optionId === 'compress' ? suffixedName(item.name, '-compressed', ext) : convertedName(item.name, ext)
+  const name = ctx.req.optionId === 'compress' ? suffixedName(item.name, '-compressed', ext, { dir }) : convertedName(item.name, ext, { dir })
   ctx.out.stage(temp, dir, name)
 }
 
@@ -146,7 +147,7 @@ const pdfEach: EachHandler = async (ctx, item, progress) => {
   if (ctx.req.optionId === 'to-txt') {
     progress(-1, 'Reading')
     const text = await pdf.pdfToText(item.path, ctx.signal, (p) => progress(p, 'Reading'))
-    await stageData(ctx, dir, convertedName(item.name, 'txt'), text)
+    await stageData(ctx, dir, convertedName(item.name, 'txt', { dir }), text)
     return
   }
   const ext = ctx.req.optionId === 'pdf-to-jpg' ? 'jpg' : 'png'
@@ -163,9 +164,9 @@ const pdfEach: EachHandler = async (ctx, item, progress) => {
   if (total === 0) throw new EngineError('INPUT_INVALID', 'This PDF has no pages.')
   if (total === 1) {
     ctx.out.track(lastFile)
-    ctx.out.stage(lastFile, dir, convertedName(item.name, ext))
+    ctx.out.stage(lastFile, dir, convertedName(item.name, ext, { dir }))
   } else {
-    ctx.out.stage(folder, dir, pagesFolderName(item.name), 'dir')
+    ctx.out.stage(folder, dir, pagesFolderName(item.name, { dir }), 'dir')
   }
 }
 
@@ -178,7 +179,7 @@ async function pdfMergeJob(ctx: JobContext): Promise<void> {
     (i) => ctx.progress(i / n, 'Stacking pages')
   )
   const first = ctx.items[0]!
-  await stageData(ctx, dirname(first.path), mergedName(first.name, 'pdf'), bytes)
+  await stageData(ctx, dirname(first.path), mergedName(first.name, 'pdf', { dir: dirname(first.path) }), bytes)
 }
 
 // --- document / text --------------------------------------------------------------------------
@@ -196,7 +197,7 @@ async function docOrTextToBytes(ctx: JobContext, item: DroppedItem, optionId: Op
 const docEach: EachHandler = async (ctx, item, progress) => {
   progress(-1, 'Chewing')
   const res = await docOrTextToBytes(ctx, item, ctx.req.optionId)
-  await stageData(ctx, dirname(item.path), convertedName(item.name, res.ext), res.data)
+  await stageData(ctx, dirname(item.path), convertedName(item.name, res.ext, { dir: dirname(item.path) }), res.data)
 }
 
 /** to-pdf is a 'merge' option: several documents become one PDF. */
@@ -223,7 +224,7 @@ async function docsToPdfJob(ctx: JobContext): Promise<void> {
       throw aboutFile(err, item.name)
     }
   }
-  await stageData(ctx, dirname(first.path), mergedName(first.name, 'pdf'), await merged.save())
+  await stageData(ctx, dirname(first.path), mergedName(first.name, 'pdf', { dir: dirname(first.path) }), await merged.save())
 }
 
 // --- data -------------------------------------------------------------------------------------
@@ -232,7 +233,7 @@ const dataEach: EachHandler = async (ctx, item, progress) => {
   const { convertData } = await import('./tools/data')
   progress(-1, 'Crunching numbers')
   const res = await convertData(ctx.req.optionId, item.path, item.ext, ctx.signal)
-  await stageData(ctx, dirname(item.path), convertedName(item.name, res.ext), res.data)
+  await stageData(ctx, dirname(item.path), convertedName(item.name, res.ext, { dir: dirname(item.path) }), res.data)
 }
 
 // --- archive ----------------------------------------------------------------------------------
@@ -242,7 +243,7 @@ const unzipEach: EachHandler = async (ctx, item, progress) => {
   const dir = dirname(item.path)
   const folder = await ctx.out.tempDir(dir)
   await unzipTo(item.path, folder, ctx.signal, (p) => progress(p, 'Unpacking'))
-  ctx.out.stage(folder, dir, unzipFolderName(item.name), 'dir')
+  ctx.out.stage(folder, dir, unzipFolderName(item.name, { dir }), 'dir')
 }
 
 async function zipJob(ctx: JobContext): Promise<void> {
@@ -251,7 +252,7 @@ async function zipJob(ctx: JobContext): Promise<void> {
   const dir = dirname(first.path)
   const temp = await ctx.out.tempFile(dir, 'zip')
   await zipTo(ctx.items, temp, ctx.signal, (p) => ctx.progress(p, 'Packing'))
-  ctx.out.stage(temp, dir, zipName(ctx.items.map((i) => i.name), first.isDirectory))
+  ctx.out.stage(temp, dir, zipName(ctx.items.map((i) => i.name), first.isDirectory, { dir }))
 }
 
 // --- dispatch ---------------------------------------------------------------------------------
