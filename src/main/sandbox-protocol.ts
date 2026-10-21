@@ -45,9 +45,26 @@ export function isSandboxUrl(url: string, host: string): boolean {
   }
 }
 
+/** File-name characters the pdf.js data files use (letters, digits, `.`, `_`, `-`). */
+const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+/** Windows device names: `C:\…\cmaps\COM1.bcmap` opens the serial port, not a file. */
+const WINDOWS_DEVICE_NAME = /^(?:CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])$/i
+
+/**
+ * Is `segment` a plain file/folder name that means the same file on every OS? Rejects anything
+ * outside SAFE_SEGMENT (`:` would address an NTFS alternate data stream, `\` a separator,
+ * spaces/`%` are never needed), a trailing `.` (Windows drops it, so two names would map to one
+ * file) and Windows device names with or without an extension (`NUL`, `com1.bcmap`).
+ */
+export function isSafeSandboxSegment(segment: string): boolean {
+  if (!SAFE_SEGMENT.test(segment) || segment.endsWith('.')) return false
+  return !WINDOWS_DEVICE_NAME.test(segment.split('.')[0] ?? '')
+}
+
 /**
  * Map a request path onto a relative file path below one of the allowed prefixes, or null.
- * Rejects traversal (`..`, encoded or not), backslashes, NUL and empty segments.
+ * Rejects traversal (`..`, encoded or not), backslashes, NUL, empty segments and any segment
+ * that is not a plain, portable file name (isSafeSandboxSegment).
  */
 export function mapSandboxPath(pathname: string, prefixes: readonly string[]): { prefix: string; rel: string } | null {
   let decoded: string
@@ -61,7 +78,7 @@ export function mapSandboxPath(pathname: string, prefixes: readonly string[]): {
     if (!decoded.startsWith(prefix)) continue
     const rel = decoded.slice(prefix.length)
     const parts = rel.split('/')
-    if (rel === '' || parts.some((p) => p === '' || p === '.' || p === '..')) return null
+    if (rel === '' || parts.some((p) => p === '' || p === '.' || p === '..' || !isSafeSandboxSegment(p))) return null
     return { prefix, rel }
   }
   return null

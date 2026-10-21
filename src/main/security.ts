@@ -65,6 +65,10 @@ const REMOTE_PROTOCOLS = new Set(['http:', 'https:', 'ws:', 'wss:', 'ftp:'])
  * Pure decision for the default session's request filter (SEC-150): cancel every remote request
  * (http, https, ws, wss, ftp). `devOrigin` (only passed when the app is not packaged) is the
  * loopback electron-vite dev server, which is allowed.
+ * Also cancelled: `file:` URLs that name a server (`file://server/share/…`, or the
+ * `file:////server/…` spelling). On Windows Chromium opens those as UNC paths over SMB, which
+ * sends the user's NTLM credentials to that server; our pages are local files (`file:///…`, no
+ * host) and never need one.
  */
 export function isBlockedAppRequest(url: string, devOrigin?: string): boolean {
   let u: URL
@@ -73,6 +77,7 @@ export function isBlockedAppRequest(url: string, devOrigin?: string): boolean {
   } catch {
     return true
   }
+  if (u.protocol === 'file:') return u.host !== '' || /^\/(?:[\\/]|%5c|%2f)/i.test(u.pathname)
   if (!REMOTE_PROTOCOLS.has(u.protocol)) return false
   if (devOrigin) {
     const ws = devOrigin.replace(/^http/, 'ws')

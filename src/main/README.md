@@ -4,21 +4,22 @@ Owner: Backend dev, Platform (docs/PLAN.md section 7). The preload lives in `src
 
 | File | What it does |
 |---|---|
-| `index.ts` | Registers the `lud-sandbox:` scheme, single-instance lock, then `startApp()` (never overrides userData, TPM D5) |
+| `index.ts` | Registers the `lud-sandbox:` scheme, single-instance lock, then `startApp()` (never overrides userData, TPM D5). Launching the app again opens Settings: `second-instance` on Windows/Linux, `activate` (LaunchServices "reopen") on macOS |
 | `e2e-mode.ts` | Pure: E2E mode = `LUD_E2E=1` AND not packaged (TPM D12, SEC-18) |
 | `app.ts` | Wiring: windows, tray, engine host, gesture, IPC, settings side effects, quit cleanup |
 | `paths.ts` | Pure: renderer page / preload / worker / resources / tray icon paths; `rendererPageOf()` (which of our pages a URL is); dev server URL ignored when packaged (F-09) |
-| `security.ts` | Secure `webPreferences` (callers cannot weaken them), navigation / window.open / webview blocking for every webContents, deny-all permission / display-capture / download handlers, remote-request blocking for the app session (SEC-150) |
+| `security.ts` | Secure `webPreferences` (callers cannot weaken them), navigation / window.open / webview blocking for every webContents, deny-all permission / display-capture / download handlers, remote-request blocking for the app session (SEC-150), including `file:` URLs that name a server (Windows UNC → SMB/NTLM) |
 | `windows/overlay.ts` | Overlay window + sensor/engage flow (PLAN §3.5); `overlay-session.ts` is the pure state machine + safety timeouts; `overlay-geometry.ts` is the pure placement math |
 | `windows/feed.ts`, `windows/settings.ts` | Single-instance Feed and Settings windows (`singleton.ts`) |
 | `platform/trigger-logic.ts` | Pure trigger state machine (drag + key); `trigger.ts` adapts uiohook-napi; `gesture.ts` owns start/stop/pause + `PlatformStatus`; `gesture-env.ts` is the pure "may the hook start?" decision; `permissions.ts` handles macOS Accessibility |
 | `engine-host.ts` | Host side of `src/engine/api.ts` (init + `hostAdapters`, queueing until ready, crash → INTERNAL + bounded restart, watchdog: kill + restart when a cancelled job is still running after 5 s or a job runs past 32 min) |
 | `html-to-pdf.ts` | `htmlToPdf` adapter: a hidden, JS-less, sandboxed window without preload in an in-memory session; the document is served from memory on `lud-sandbox://print/<uuid>.html` (never `file://`); every other request is cancelled; CSP injected by `pdf-csp.ts`; 64 MB cap; 30 s timeout; window destroyed after each job (SEC-82) |
 | `pdf-render.ts`, `pdf-render-plan.ts` | `renderPdfPages` adapter: pdf.js in one hidden, sandboxed window without preload, in an in-memory session that serves only pdf.js files + the current PDF on `lud-sandbox://pdf/`. See below. |
-| `sandbox-protocol.ts` | Pure helpers for the `lud-sandbox:` scheme used by the two helper windows |
+| `worker-env.ts` | Pure: environment for the engine utilityProcess. Packaged: every `LUD_*` key removed, case-insensitively (F-16, TPM D18), so `LUD_FFMPEG_PATH` / `LUD_MODEL_PATH` only work in unpackaged runs. Unpackaged: inherit `process.env` |
+| `sandbox-protocol.ts` | Pure helpers for the `lud-sandbox:` scheme used by the two helper windows; served file names must be plain, portable names (no Windows device names such as `COM1.bcmap`, no `:` streams, no trailing dot) |
 | `ipc.ts`, `ipc-validation.ts`, `ipc-policy.ts` | All `ipcMain.handle` handlers; strict zod payloads; sender must be the main frame of one of our windows, still showing the page main loaded into it, and that page must be on the channel's allowlist (`IPC_ALLOWLIST`) |
-| `settings-store.ts` | Settings JSON in userData, validated field by field, atomic writes |
-| `autostart.ts` | Linux XDG autostart entry (macOS/Windows use `app.setLoginItemSettings`) |
+| `settings-store.ts` | Settings JSON in userData, validated field by field, atomic writes (the rename is retried briefly on EPERM/EACCES/EBUSY, which Windows reports while antivirus or indexers hold the file) |
+| `autostart.ts` | Linux XDG autostart entry; `loginItemSettings()` builds the macOS/Windows `app.setLoginItemSettings` argument (Windows portable exe; electron.exe + project dir in development) |
 | `job-registry.ts` | Paths produced by finished jobs (only those can be revealed) + recorded events for E2E |
 | `test-hooks.ts` | `globalThis.__ludTest` (E2E only; loaded with a dynamic import) |
 

@@ -28,6 +28,13 @@ if (!app.requestSingleInstanceLock()) {
     if (running) void running.openSettingsWindow()
     else showSettingsWhenReady = true
   })
+  // macOS: launching the app again from Finder/Launchpad/Spotlight does NOT start a second
+  // process (so no 'second-instance'): LaunchServices sends the running app a "reopen" event,
+  // which Electron reports as 'activate'. Treat it like a second launch. Ignored while we are
+  // still starting up (the first-run onboarding window opens on its own then).
+  app.on('activate', () => {
+    if (running) void running.openSettingsWindow()
+  })
   app
     .whenReady()
     .then(async () => {
