@@ -31,9 +31,18 @@ jobs:
           set -u
           mkdir -p probe ci-logs && cd probe
           log=../ci-logs/probe.log
-          url="https://ffmpeg.martin-riedl.de/redirect/latest/macos/${{ matrix.arch }}/release/ffmpeg.zip"
-          final=$(curl -sSL -o ffmpeg.zip -w '%{url_effective}' "$url") || { echo "download failed: $url" | tee -a $log; exit 0; }
-          { echo "requested: $url"; echo "final url: $final"; echo "sha256(zip): $(shasum -a 256 ffmpeg.zip | cut -d' ' -f1)"; echo "size: $(stat -f%z ffmpeg.zip)"; } | tee -a $log
+          curl -sSL -A "let-us-drag-ci" -o index.html https://ffmpeg.martin-riedl.de/ || true
+          echo "--- download links for macos/${{ matrix.arch }} on the homepage:" | tee -a $log
+          grep -oE "/download/macos/${{ matrix.arch }}/[0-9]+_[^/\"']+/ffmpeg\.zip" index.html | sort -u | tee links.txt | tee -a $log
+          echo "--- redirect probe (headers):" | tee -a $log
+          curl -sSI -A "let-us-drag-ci" "https://ffmpeg.martin-riedl.de/redirect/latest/macos/${{ matrix.arch }}/release/ffmpeg.zip" | head -12 | tee -a $log
+          # Prefer a release (version-numbered) build: path segment "<timestamp>_<digits.digits...>".
+          path=$(grep -E "_[0-9]+\.[0-9]+(\.[0-9]+)?/ffmpeg\.zip$" links.txt | sort -t/ -k5 -r | head -1)
+          [ -n "$path" ] || path=$(head -1 links.txt)
+          [ -n "$path" ] || { echo "no download link found" | tee -a $log; exit 0; }
+          url="https://ffmpeg.martin-riedl.de$path"
+          curl -sSL -A "let-us-drag-ci" -o ffmpeg.zip "$url"
+          { echo "chosen url: $url"; echo "sha256(zip): $(shasum -a 256 ffmpeg.zip | cut -d' ' -f1)"; echo "size: $(stat -f%z ffmpeg.zip)"; } | tee -a $log
           unzip -o -q ffmpeg.zip && ls -la | tee -a $log
           chmod +x ffmpeg
           { echo "sha256(binary): $(shasum -a 256 ffmpeg | cut -d' ' -f1)"; file ffmpeg; ./ffmpeg -hide_banner -version | head -3;
@@ -42,6 +51,7 @@ jobs:
             echo "--- otool -L (dynamic deps)"; otool -L ffmpeg | head -20;
             echo "--- encoders"; ./ffmpeg -hide_banner -encoders > enc.txt;
             for e in libx264 libvpx-vp9 libopus libmp3lame libvorbis aac flac pcm_s16le gif png mjpeg bmp; do grep -q " $e " enc.txt && echo "ok $e" || echo "MISSING $e"; done;
+            echo "--- demuxers"; ./ffmpeg -hide_banner -demuxers | grep -cE "^ D" ;
             echo "--- codesign"; codesign -dv ffmpeg 2>&1 | head -5; } 2>&1 | tee -a $log
       - name: Report
         if: always()

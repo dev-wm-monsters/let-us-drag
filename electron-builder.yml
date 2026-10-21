@@ -16,6 +16,18 @@ files:
   - node_modules/uiohook-napi/prebuilds/${platform}-${arch}/**
   - '!node_modules/uiohook-napi/libuiohook/**'
   - '!node_modules/uiohook-napi/src/**'
+  # @napi-rs/canvas cannot run inside Electron (V8 memory cage); PDF pages render in a Chromium window instead.
+  - '!node_modules/@napi-rs/**'
+  # musl variants are never used by Electron's glibc builds.
+  - '!node_modules/@img/*linuxmusl*/**'
+  # onnxruntime-web is only the Remove-BG fallback where onnxruntime-node has no binary (macOS Intel):
+  # keep just its Node entry point and the plain SIMD-threaded wasm.
+  - '!node_modules/onnxruntime-web/**'
+  - node_modules/onnxruntime-web/package.json
+  - node_modules/onnxruntime-web/dist/ort.node.min.js
+  - node_modules/onnxruntime-web/dist/ort.node.min.mjs
+  - node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.mjs
+  - node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm
 asar: true
 # All native deps are N-API prebuilds (ABI-stable); never rebuild them from source.
 npmRebuild: false
@@ -24,13 +36,26 @@ asarUnpack:
   - node_modules/@img/**
   - node_modules/uiohook-napi/**
   - node_modules/onnxruntime-node/**
-  - node_modules/onnxruntime-web/dist/*.wasm
+  - node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.*
   - node_modules/@napi-rs/**
 extraResources:
   - from: resources/bin/${platform}-${arch}
     to: bin
+  - from: resources/tray
+    to: tray
+  - from: resources/icon.png
+    to: icon.png
   - from: THIRD_PARTY_NOTICES.md
     to: THIRD_PARTY_NOTICES.md
+# Electron fuses: disable features this app never uses. (ASAR integrity validation is left off in v0.1:
+# it cannot be verified on real macOS/Windows from CI before the first manual test.)
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: false
+  onlyLoadAppFromAsar: false
 mac:
   target: dmg
   category: public.app-category.utilities
