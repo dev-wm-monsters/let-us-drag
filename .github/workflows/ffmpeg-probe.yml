@@ -26,33 +26,33 @@ jobs:
         with:
           persist-credentials: false
       - name: Probe Martin Riedl release build
-        shell: bash
+        shell: bash {0}
         run: |
-          set -u
           mkdir -p probe ci-logs && cd probe
           log=../ci-logs/probe.log
-          curl -sSL -A "let-us-drag-ci" -o index.html https://ffmpeg.martin-riedl.de/ || true
-          echo "--- download links for macos/${{ matrix.arch }} on the homepage:" | tee -a $log
-          grep -oE "/download/macos/${{ matrix.arch }}/[0-9]+_[^/\"']+/ffmpeg\.zip" index.html | sort -u | tee links.txt | tee -a $log
-          echo "--- redirect probe (headers):" | tee -a $log
-          curl -sSI -A "let-us-drag-ci" "https://ffmpeg.martin-riedl.de/redirect/latest/macos/${{ matrix.arch }}/release/ffmpeg.zip" | head -12 | tee -a $log
-          # Prefer a release (version-numbered) build: path segment "<timestamp>_<digits.digits...>".
-          path=$(grep -E "_[0-9]+\.[0-9]+(\.[0-9]+)?/ffmpeg\.zip$" links.txt | sort -t/ -k5 -r | head -1)
+          curl -sSL -A "Mozilla/5.0 let-us-drag-ci" -o index.html -w "homepage http=%{http_code} bytes=%{size_download}\n" https://ffmpeg.martin-riedl.de/ | tee -a $log
+          echo "--- all hrefs mentioning macos (first 40):" | tee -a $log
+          grep -oiE 'href="[^"]*macos[^"]*"' index.html | sort -u | head -40 | tee -a $log
+          grep -oE '/download/macos/${{ matrix.arch }}/[^"]*ffmpeg[^"]*\.zip' index.html | sort -u > links.txt
+          echo "--- zip links:" | tee -a $log; cat links.txt | tee -a $log
+          path=$(grep -E "_[0-9]+\.[0-9]+(\.[0-9]+)?/" links.txt | sort -r | head -1)
           [ -n "$path" ] || path=$(head -1 links.txt)
+          if [ -z "$path" ] && [ "${{ matrix.arch }}" = "amd64" ]; then path=/download/macos/amd64/1789931006_9.0.2/ffmpeg.zip; echo "using known pinned amd64 path" | tee -a $log; fi
           [ -n "$path" ] || { echo "no download link found" | tee -a $log; exit 0; }
           url="https://ffmpeg.martin-riedl.de$path"
-          curl -sSL -A "let-us-drag-ci" -o ffmpeg.zip "$url"
-          { echo "chosen url: $url"; echo "sha256(zip): $(shasum -a 256 ffmpeg.zip | cut -d' ' -f1)"; echo "size: $(stat -f%z ffmpeg.zip)"; } | tee -a $log
-          unzip -o -q ffmpeg.zip && ls -la | tee -a $log
+          curl -sSL -A "Mozilla/5.0 let-us-drag-ci" -o ffmpeg.zip -w "zip http=%{http_code} bytes=%{size_download}\n" "$url" | tee -a $log
+          { echo "chosen url: $url"; echo "sha256(zip): $(shasum -a 256 ffmpeg.zip | cut -d' ' -f1)"; } | tee -a $log
+          unzip -o -q ffmpeg.zip 2>&1 | tee -a $log; ls -la | tee -a $log
+          [ -f ffmpeg ] || { echo "no ffmpeg in zip" | tee -a $log; exit 0; }
           chmod +x ffmpeg
           { echo "sha256(binary): $(shasum -a 256 ffmpeg | cut -d' ' -f1)"; file ffmpeg; ./ffmpeg -hide_banner -version | head -3;
             echo "--- -L (first 5 lines)"; ./ffmpeg -hide_banner -L | head -5;
-            echo "--- buildconf nonfree?"; ./ffmpeg -hide_banner -buildconf | grep -iE "nonfree|enable-gpl|version3" || true;
+            echo "--- buildconf nonfree/gpl:"; ./ffmpeg -hide_banner -buildconf | grep -iE "nonfree|enable-gpl|version3";
             echo "--- otool -L (dynamic deps)"; otool -L ffmpeg | head -20;
             echo "--- encoders"; ./ffmpeg -hide_banner -encoders > enc.txt;
             for e in libx264 libvpx-vp9 libopus libmp3lame libvorbis aac flac pcm_s16le gif png mjpeg bmp; do grep -q " $e " enc.txt && echo "ok $e" || echo "MISSING $e"; done;
-            echo "--- demuxers"; ./ffmpeg -hide_banner -demuxers | grep -cE "^ D" ;
             echo "--- codesign"; codesign -dv ffmpeg 2>&1 | head -5; } 2>&1 | tee -a $log
+          exit 0
       - name: Report
         if: always()
         run: node scripts/ci-report.mjs notice "ffmpeg probe ${{ matrix.arch }}" ci-logs/probe.log 120
