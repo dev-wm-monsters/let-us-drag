@@ -295,154 +295,154 @@ export const UncleSvg = forwardRef(function UncleSvg(
 
           {/* ——— face (parallax layers: deeper parts move less; the group foreshortens on a turn) ——— */}
           <g ref={r('face')} {...A.face}>
-          <g ref={r('cheeks')} {...A.cheeks}>
-            <path
-              d="M -30,26 Q -46,36 -52,52 M 30,26 Q 46,36 52,52"
-              stroke={C.skinDeep}
-              strokeWidth={3}
-              fill="none"
-              strokeLinecap="round"
-            />
-            <ellipse ref={r('blushL')} {...A.blushL} cx={0} cy={0} rx={21} ry={13} fill={C.blush} />
-            <ellipse ref={r('blushR')} {...A.blushR} cx={0} cy={0} rx={21} ry={13} fill={C.blush} />
-          </g>
+            <g ref={r('cheeks')} {...A.cheeks}>
+              <path
+                d="M -30,26 Q -46,36 -52,52 M 30,26 Q 46,36 52,52"
+                stroke={C.skinDeep}
+                strokeWidth={3}
+                fill="none"
+                strokeLinecap="round"
+              />
+              <ellipse ref={r('blushL')} {...A.blushL} cx={0} cy={0} rx={21} ry={13} fill={C.blush} />
+              <ellipse ref={r('blushR')} {...A.blushR} cx={0} cy={0} rx={21} ry={13} fill={C.blush} />
+            </g>
 
-          <g ref={r('mouth')} {...A.mouth}>
-            <path ref={r('mouthFill')} {...A.mouthFill} fill={C.throat} />
-            <g clipPath={url('mouth')}>
-              <ellipse ref={r('throat')} cx={0} {...A.throat} fill={C.throatDeep} />
-              <g ref={r('uvula')} {...A.uvula}>
-                <path d="M -5,0 C -5,8 -4,14 0,15 C 4,14 5,8 5,0 Z" fill="#c23a4b" />
+            <g ref={r('mouth')} {...A.mouth}>
+              <path ref={r('mouthFill')} {...A.mouthFill} fill={C.throat} />
+              <g clipPath={url('mouth')}>
+                <ellipse ref={r('throat')} cx={0} {...A.throat} fill={C.throatDeep} />
+                <g ref={r('uvula')} {...A.uvula}>
+                  <path d="M -5,0 C -5,8 -4,14 0,15 C 4,14 5,8 5,0 Z" fill="#c23a4b" />
+                </g>
+                <g ref={r('tongue')} {...A.tongue}>
+                  <path d="M -44,8 C -44,-16 -18,-24 0,-15 C 18,-24 44,-16 44,8 Z" fill={C.tongue} />
+                  <path d="M 0,-13 Q 2,-6 0,0" stroke={C.tongueShade} strokeWidth={3} fill="none" strokeLinecap="round" />
+                  <path d="M -30,-12 Q -36,-6 -36,2" stroke="#ff9aa5" strokeWidth={3} fill="none" strokeLinecap="round" />
+                </g>
+                <g ref={r('lowerTeeth')} {...A.lowerTeeth}>
+                  <path
+                    d="M -30,2 L -30,-8 Q -24,-12 -18,-8 L -18,2 Z M 14,2 L 14,-9 Q 20,-13 26,-9 L 26,2 Z"
+                    fill={C.teeth}
+                    stroke={C.ink}
+                    strokeWidth={1.6}
+                  />
+                </g>
+                <g ref={r('upperTeeth')} {...A.upperTeeth}>
+                  <path d="M -46,-6 L 46,-6 L 44,16 Q 0,24 -44,16 Z" fill={C.teeth} stroke={C.ink} strokeWidth={2} />
+                  <path d="M 8,-4 L 22,-4 L 21,18 Q 15,20 9,19 Z" fill={C.gold} stroke={C.ink} strokeWidth={1.6} />
+                  <path d="M -24,0 L -24,18 M -8,0 L -8,20 M 36,0 L 35,16" stroke={C.ink} strokeWidth={1.6} />
+                  <path d="M 11,2 L 13,12" stroke="#fff4c4" strokeWidth={2} strokeLinecap="round" />
+                </g>
               </g>
-              <g ref={r('tongue')} {...A.tongue}>
-                <path d="M -44,8 C -44,-16 -18,-24 0,-15 C 18,-24 44,-16 44,8 Z" fill={C.tongue} />
-                <path d="M 0,-13 Q 2,-6 0,0" stroke={C.tongueShade} strokeWidth={3} fill="none" strokeLinecap="round" />
-                <path d="M -30,-12 Q -36,-6 -36,2" stroke="#ff9aa5" strokeWidth={3} fill="none" strokeLinecap="round" />
+              <path
+                ref={r('mouthLine')}
+                {...A.mouthLine}
+                fill="none"
+                stroke={C.ink}
+                strokeWidth={5}
+                strokeLinejoin="round"
+              />
+              <path ref={r('lip')} {...A.lip} stroke={C.skinDeep} strokeWidth={3.2} fill="none" strokeLinecap="round" />
+            </g>
+
+            <g ref={r('chin')} {...A.chin}>
+              <path d="M -9,0 Q 0,5 9,0" stroke={C.skinDeep} strokeWidth={3} fill="none" strokeLinecap="round" />
+            </g>
+
+            <g ref={r('moustache')} {...A.moustache}>
+              <g transform="translate(0 -2)">
+                <Inked d={MOUSTACHE} fill={C.hair} w={8} />
+              <path d={MOUSTACHE_STRANDS} stroke={C.hairLight} strokeWidth={3} fill="none" strokeLinecap="round" />
+              <path d={MOUSTACHE_DARK} stroke={C.hairDark} strokeWidth={2.6} fill="none" strokeLinecap="round" />
               </g>
-              <g ref={r('lowerTeeth')} {...A.lowerTeeth}>
-                <path
-                  d="M -30,2 L -30,-8 Q -24,-12 -18,-8 L -18,2 Z M 14,2 L 14,-9 Q 20,-13 26,-9 L 26,2 Z"
-                  fill={C.teeth}
-                  stroke={C.ink}
-                  strokeWidth={1.6}
-                />
+            </g>
+
+            <g ref={r('nose')} {...A.nose}>
+              <Inked d={NOSE} fill={C.nose} w={8} />
+              <path d={NOSE_SHADE} fill={C.noseShade} />
+              <ellipse cx={-12} cy={6} rx={8} ry={5.5} transform="rotate(-20 -12 6)" fill="#ffe4d2" />
+              <circle cx={-4} cy={-8} r={2.4} fill="#ffe4d2" />
+              <path d="M -15,26 Q -10,31 -5,28 M 5,28 Q 10,31 15,26" stroke={C.ink} strokeWidth={2.6} fill="none" strokeLinecap="round" />
+            </g>
+
+            {/* the signature mole: on the cheek beside the nose, with its one proud hair */}
+            <g ref={r('mole')} {...A.mole}>
+              <ellipse cx={MOLE.x} cy={MOLE.y} rx={MOLE.r + 0.9} ry={MOLE.r * 0.92 + 0.9} fill={C.ink} transform="translate(1 1.5)" />
+              <ellipse cx={MOLE.x} cy={MOLE.y} rx={MOLE.r} ry={MOLE.r * 0.92} fill={C.mole} />
+              <path d={MOLE_SHADE} fill={C.moleShade} />
+              <ellipse cx={MOLE.x - 2.8} cy={MOLE.y - 3} rx={2.6} ry={1.9} fill={C.moleLight} transform={`rotate(-30 ${MOLE.x - 2.8} ${MOLE.y - 3})`} />
+              <circle cx={MOLE.x + 2.6} cy={MOLE.y - 3.6} r={0.9} fill={C.moleLight} />
+              <g ref={r('moleHair')} {...A.moleHair}>
+                <path d={MOLE_HAIR} stroke={C.ink} strokeWidth={3.4} fill="none" strokeLinecap="round" />
               </g>
-              <g ref={r('upperTeeth')} {...A.upperTeeth}>
-                <path d="M -46,-6 L 46,-6 L 44,16 Q 0,24 -44,16 Z" fill={C.teeth} stroke={C.ink} strokeWidth={2} />
-                <path d="M 8,-4 L 22,-4 L 21,18 Q 15,20 9,19 Z" fill={C.gold} stroke={C.ink} strokeWidth={1.6} />
-                <path d="M -24,0 L -24,18 M -8,0 L -8,20 M 36,0 L 35,16" stroke={C.ink} strokeWidth={1.6} />
-                <path d="M 11,2 L 13,12" stroke="#fff4c4" strokeWidth={2} strokeLinecap="round" />
+            </g>
+
+            <g ref={r('eyes')} {...A.eyes}>
+              {/* temples of the glasses (behind the rims): the far one shortens on a turn */}
+              <g ref={r('templeL')} {...A.templeL}>
+                <path d="M -72,-34 L -105,-28" stroke={C.frame} strokeWidth={5} strokeLinecap="round" />
               </g>
-            </g>
-            <path
-              ref={r('mouthLine')}
-              {...A.mouthLine}
-              fill="none"
-              stroke={C.ink}
-              strokeWidth={5}
-              strokeLinejoin="round"
-            />
-            <path ref={r('lip')} {...A.lip} stroke={C.skinDeep} strokeWidth={3.2} fill="none" strokeLinecap="round" />
-          </g>
-
-          <g ref={r('chin')} {...A.chin}>
-            <path d="M -9,0 Q 0,5 9,0" stroke={C.skinDeep} strokeWidth={3} fill="none" strokeLinecap="round" />
-          </g>
-
-          <g ref={r('moustache')} {...A.moustache}>
-            <g transform="translate(0 -2)">
-              <Inked d={MOUSTACHE} fill={C.hair} w={8} />
-            <path d={MOUSTACHE_STRANDS} stroke={C.hairLight} strokeWidth={3} fill="none" strokeLinecap="round" />
-            <path d={MOUSTACHE_DARK} stroke={C.hairDark} strokeWidth={2.6} fill="none" strokeLinecap="round" />
-            </g>
-          </g>
-
-          <g ref={r('nose')} {...A.nose}>
-            <Inked d={NOSE} fill={C.nose} w={8} />
-            <path d={NOSE_SHADE} fill={C.noseShade} />
-            <ellipse cx={-12} cy={6} rx={8} ry={5.5} transform="rotate(-20 -12 6)" fill="#ffe4d2" />
-            <circle cx={-4} cy={-8} r={2.4} fill="#ffe4d2" />
-            <path d="M -15,26 Q -10,31 -5,28 M 5,28 Q 10,31 15,26" stroke={C.ink} strokeWidth={2.6} fill="none" strokeLinecap="round" />
-          </g>
-
-          {/* the signature mole: on the cheek beside the nose, with its one proud hair */}
-          <g ref={r('mole')} {...A.mole}>
-            <ellipse cx={MOLE.x} cy={MOLE.y} rx={MOLE.r + 0.9} ry={MOLE.r * 0.92 + 0.9} fill={C.ink} transform="translate(1 1.5)" />
-            <ellipse cx={MOLE.x} cy={MOLE.y} rx={MOLE.r} ry={MOLE.r * 0.92} fill={C.mole} />
-            <path d={MOLE_SHADE} fill={C.moleShade} />
-            <ellipse cx={MOLE.x - 2.8} cy={MOLE.y - 3} rx={2.6} ry={1.9} fill={C.moleLight} transform={`rotate(-30 ${MOLE.x - 2.8} ${MOLE.y - 3})`} />
-            <circle cx={MOLE.x + 2.6} cy={MOLE.y - 3.6} r={0.9} fill={C.moleLight} />
-            <g ref={r('moleHair')} {...A.moleHair}>
-              <path d={MOLE_HAIR} stroke={C.ink} strokeWidth={3.4} fill="none" strokeLinecap="round" />
-            </g>
-          </g>
-
-          <g ref={r('eyes')} {...A.eyes}>
-            {/* temples of the glasses (behind the rims): the far one shortens on a turn */}
-            <g ref={r('templeL')} {...A.templeL}>
-              <path d="M -72,-34 L -105,-28" stroke={C.frame} strokeWidth={5} strokeLinecap="round" />
-            </g>
-            <g ref={r('templeR')} {...A.templeR}>
-              <path d="M 72,-34 L 105,-28" stroke={C.frame} strokeWidth={5} strokeLinecap="round" />
-            </g>
-            {(['L', 'R'] as const).map((s) => {
-              const cx = s === 'L' ? -40 : 40
-              return (
-                <g key={s} ref={r(s === 'L' ? 'eyeL' : 'eyeR')} {...(s === 'L' ? A.eyeL : A.eyeR)}>
-                  <g ref={r(s === 'L' ? 'scleraL' : 'scleraR')} {...(s === 'L' ? A.scleraL : A.scleraR)}>
-                    <ellipse cx={cx} cy={-30} rx={20} ry={22} fill={C.sclera} />
-                    <g clipPath={url(s === 'L' ? 'eyeL' : 'eyeR')}>
-                      <g ref={r(s === 'L' ? 'pupilL' : 'pupilR')} {...(s === 'L' ? A.pupilL : A.pupilR)}>
-                        <circle cx={cx} cy={-29} r={9} fill={C.ink} />
-                        <circle cx={cx - 3} cy={-32.5} r={3} fill="#fff" />
-                        <circle cx={cx + 3} cy={-26} r={1.3} fill="#fff" />
+              <g ref={r('templeR')} {...A.templeR}>
+                <path d="M 72,-34 L 105,-28" stroke={C.frame} strokeWidth={5} strokeLinecap="round" />
+              </g>
+              {(['L', 'R'] as const).map((s) => {
+                const cx = s === 'L' ? -40 : 40
+                return (
+                  <g key={s} ref={r(s === 'L' ? 'eyeL' : 'eyeR')} {...(s === 'L' ? A.eyeL : A.eyeR)}>
+                    <g ref={r(s === 'L' ? 'scleraL' : 'scleraR')} {...(s === 'L' ? A.scleraL : A.scleraR)}>
+                      <ellipse cx={cx} cy={-30} rx={20} ry={22} fill={C.sclera} />
+                      <g clipPath={url(s === 'L' ? 'eyeL' : 'eyeR')}>
+                        <g ref={r(s === 'L' ? 'pupilL' : 'pupilR')} {...(s === 'L' ? A.pupilL : A.pupilR)}>
+                          <circle cx={cx} cy={-29} r={9} fill={C.ink} />
+                          <circle cx={cx - 3} cy={-32.5} r={3} fill="#fff" />
+                          <circle cx={cx + 3} cy={-26} r={1.3} fill="#fff" />
+                        </g>
+                        <path ref={r(s === 'L' ? 'lidL' : 'lidR')} {...(s === 'L' ? A.lidL : A.lidR)} fill={C.skin} />
+                        <path
+                          ref={r(s === 'L' ? 'lidLineL' : 'lidLineR')}
+                          {...(s === 'L' ? A.lidLineL : A.lidLineR)}
+                          stroke={C.ink}
+                          strokeWidth={3.2}
+                          fill="none"
+                          strokeLinecap="round"
+                        />
                       </g>
-                      <path ref={r(s === 'L' ? 'lidL' : 'lidR')} {...(s === 'L' ? A.lidL : A.lidR)} fill={C.skin} />
+                      <ellipse cx={cx} cy={-30} rx={20} ry={22} fill="none" stroke={C.ink} strokeWidth={2.4} />
+                    </g>
+                    <g ref={r(s === 'L' ? 'happyL' : 'happyR')} {...(s === 'L' ? A.happyL : A.happyR)}>
                       <path
-                        ref={r(s === 'L' ? 'lidLineL' : 'lidLineR')}
-                        {...(s === 'L' ? A.lidLineL : A.lidLineR)}
+                        d={`M ${cx - 15},-24 Q ${cx},-46 ${cx + 15},-24`}
                         stroke={C.ink}
-                        strokeWidth={3.2}
+                        strokeWidth={5.5}
                         fill="none"
                         strokeLinecap="round"
                       />
                     </g>
-                    <ellipse cx={cx} cy={-30} rx={20} ry={22} fill="none" stroke={C.ink} strokeWidth={2.4} />
+                    {/* tired-uncle eye bag */}
+                    <path d={EYE_BAG[s]} stroke={C.skinDeep} strokeWidth={2.6} fill="none" strokeLinecap="round" />
+                    {/* round glasses: lens tint, ink rim, frame rim, glints */}
+                    <circle cx={cx} cy={-30} r={28} fill={C.lens} opacity={0.22} />
+                    <path d={RIM[s]} fill={C.ink} fillRule="evenodd" transform="translate(1.2 1.6)" />
+                    <path d={RIM[s]} fill={C.frame} fillRule="evenodd" />
+                    <path d={GLINT[s]} stroke="#fff" strokeWidth={3.6} fill="none" strokeLinecap="round" opacity={0.85} />
+                    <circle cx={cx - 19} cy={-35} r={2} fill="#fff" opacity={0.85} />
                   </g>
-                  <g ref={r(s === 'L' ? 'happyL' : 'happyR')} {...(s === 'L' ? A.happyL : A.happyR)}>
-                    <path
-                      d={`M ${cx - 15},-24 Q ${cx},-46 ${cx + 15},-24`}
-                      stroke={C.ink}
-                      strokeWidth={5.5}
-                      fill="none"
-                      strokeLinecap="round"
-                    />
-                  </g>
-                  {/* tired-uncle eye bag */}
-                  <path d={EYE_BAG[s]} stroke={C.skinDeep} strokeWidth={2.6} fill="none" strokeLinecap="round" />
-                  {/* round glasses: lens tint, ink rim, frame rim, glints */}
-                  <circle cx={cx} cy={-30} r={28} fill={C.lens} opacity={0.22} />
-                  <path d={RIM[s]} fill={C.ink} fillRule="evenodd" transform="translate(1.2 1.6)" />
-                  <path d={RIM[s]} fill={C.frame} fillRule="evenodd" />
-                  <path d={GLINT[s]} stroke="#fff" strokeWidth={3.6} fill="none" strokeLinecap="round" opacity={0.85} />
-                  <circle cx={cx - 19} cy={-35} r={2} fill="#fff" opacity={0.85} />
-                </g>
-              )
-            })}
-            {/* bridge */}
-            <path d="M -12,-38 Q 0,-48 12,-38" stroke={C.frame} strokeWidth={5.5} fill="none" strokeLinecap="round" />
-          </g>
+                )
+              })}
+              {/* bridge */}
+              <path d="M -12,-38 Q 0,-48 12,-38" stroke={C.frame} strokeWidth={5.5} fill="none" strokeLinecap="round" />
+            </g>
 
-          <g ref={r('brows')} {...A.brows}>
-            <g ref={r('browR')} {...A.browR}>
-              <Inked d={BROW_R} fill={C.hair} w={7} />
-              <path d={BROW_STRANDS_R} stroke={C.hairLight} strokeWidth={2.6} fill="none" strokeLinecap="round" />
+            <g ref={r('brows')} {...A.brows}>
+              <g ref={r('browR')} {...A.browR}>
+                <Inked d={BROW_R} fill={C.hair} w={7} />
+                <path d={BROW_STRANDS_R} stroke={C.hairLight} strokeWidth={2.6} fill="none" strokeLinecap="round" />
+              </g>
+              <g ref={r('browL')} {...A.browL}>
+                <Inked d={mirrorPath(BROW_R)} fill={C.hair} w={7} off="translate(-0.6 1.9)" />
+                <path d={mirrorPath(BROW_STRANDS_R)} stroke={C.hairLight} strokeWidth={2.6} fill="none" strokeLinecap="round" />
+              </g>
             </g>
-            <g ref={r('browL')} {...A.browL}>
-              <Inked d={mirrorPath(BROW_R)} fill={C.hair} w={7} off="translate(-0.6 1.9)" />
-              <path d={mirrorPath(BROW_STRANDS_R)} stroke={C.hairLight} strokeWidth={2.6} fill="none" strokeLinecap="round" />
-            </g>
-          </g>
           </g>
         </g>
 
