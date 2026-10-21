@@ -155,6 +155,35 @@ describe('worker protocol', () => {
     expect(h.sent[2]).toMatchObject({ type: 'event', event: { type: 'error', error: { code: 'CANCELLED' } } })
   })
 
+  it('offers renderPdfPages only when the host declares it, and proxies it', async () => {
+    const sent: WorkerToHost[] = []
+    let deliver: (m: HostToWorker) => void = () => undefined
+    const seen: (boolean | Promise<Uint8Array[]>)[] = []
+    createWorkerHandler({ post: (m) => sent.push(m), onMessage: (cb) => (deliver = cb) }, (adapters) => {
+      seen.push(typeof adapters.renderPdfPages === 'function')
+      return {
+        run: async () => {
+          if (adapters.renderPdfPages) seen.push(adapters.renderPdfPages(Uint8Array.from([1]), { scale: 2, maxSide: 10, maxPixels: 100 }))
+        }
+      }
+    })
+    deliver({ type: 'init', options: { cacheDir: dir }, hostAdapters: ['renderPdfPages'] })
+    expect(seen[0]).toBe(true)
+    deliver({ type: 'run', req: { id: 'r', optionId: 'pdf-to-png', inputPaths: ['/a.pdf'] } })
+    await new Promise((r) => setTimeout(r, 0))
+    const req = sent.find((m) => m.type === 'renderPdf') as Extract<WorkerToHost, { type: 'renderPdf' }>
+    expect(req.options).toEqual({ scale: 2, maxSide: 10, maxPixels: 100 })
+    deliver({ type: 'renderPdf:result', requestId: req.requestId, pages: [Uint8Array.from([9])] })
+    await expect(seen[1]).resolves.toEqual([Uint8Array.from([9])])
+
+    const seen2: boolean[] = []
+    createWorkerHandler({ post: () => undefined, onMessage: (cb) => cb({ type: 'init', options: { cacheDir: dir } }) }, (adapters) => {
+      seen2.push(typeof adapters.renderPdfPages === 'function')
+      return { run: async () => undefined }
+    })
+    expect(seen2).toEqual([false])
+  })
+
   it('proxies htmlToPdf to the host and times out', async () => {
     let adapterResult: Promise<Uint8Array> | undefined
     const sent: WorkerToHost[] = []

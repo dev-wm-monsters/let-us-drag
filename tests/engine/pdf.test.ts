@@ -76,6 +76,27 @@ describe('pdf options', () => {
     expect(res.error?.code).toBe('UNSUPPORTED')
   })
 
+  it('uses the host renderPdfPages adapter when provided (how the Electron app rasterises)', async () => {
+    const src = await pdfFile(join(dir, 'hosted.pdf'), 2)
+    const calls: { bytes: number; scale: number }[] = []
+    const page = await sharp({ create: { width: 10, height: 20, channels: 3, background: '#123456' } }).png().toBuffer()
+    const adapters = {
+      htmlToPdf: () => Promise.reject(new Error('unused')),
+      renderPdfPages: async (pdf: Uint8Array, opts: { scale: number }) => {
+        calls.push({ bytes: pdf.byteLength, scale: opts.scale })
+        return [page, page]
+      }
+    }
+    const [out] = await convertOk('pdf-to-jpg', [src], { adapters })
+    expect(calls).toEqual([{ bytes: (await readFile(src)).byteLength, scale: 2 }])
+    expect(basename(out!)).toBe('hosted (pages)')
+    const files = (await readdir(out!)).sort()
+    expect(files).toEqual(['page-01.jpg', 'page-02.jpg'])
+    expect((await sharp(join(out!, 'page-02.jpg')).metadata()).format).toBe('jpeg')
+    const bad = { ...adapters, renderPdfPages: async () => [new Uint8Array([1, 2, 3])] }
+    expect((await runOption('pdf-to-png', [src], { adapters: bad })).error?.code).toBe('TOOL_FAILED')
+  })
+
   it('a damaged PDF → INPUT_INVALID', async () => {
     const bad = join(dir, 'bad.pdf')
     await writeFile(bad, '%PDF-1.7\nthis is garbage')

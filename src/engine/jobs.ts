@@ -132,7 +132,7 @@ const pdfEach: EachHandler = async (ctx, item, progress) => {
     lastFile = join(folder, pageFileName(page.index, count, ext))
     await writeFile(lastFile, data)
     progress(page.index / count, `Page ${page.index} of ${count}`)
-  })
+  }, ctx.adapters.renderPdfPages?.bind(ctx.adapters))
   if (total === 0) throw new EngineError('INPUT_INVALID', 'This PDF has no pages.')
   if (total === 1) {
     ctx.out.track(lastFile)

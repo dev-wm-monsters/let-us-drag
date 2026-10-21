@@ -1,10 +1,19 @@
-// PDF tools: pages → PNG/JPG (pdfjs-dist legacy build + @napi-rs/canvas), text extraction,
-// merging (pdf-lib). pdfjs runs in-process (Node has no web workers): we pre-load its worker
-// module into globalThis.pdfjsWorker, which pdfjs uses as the "fake worker" handler.
+// PDF tools: pages → PNG/JPG, text extraction (pdfjs-dist legacy build), merging (pdf-lib).
+// pdfjs runs in-process (Node has no web workers): we pre-load its worker module into
+// globalThis.pdfjsWorker, which pdfjs uses as the "fake worker" handler.
+//
+// Electron caveats (verified with Electron 45 on Linux):
+//  - @napi-rs/canvas crashes the process on require() (V8 memory cage / external buffers), so
+//    inside Electron pages are rasterised by the host through EngineAdapters.renderPdfPages.
+//  - pdfjs decides "am I Node?" once at import time and answers "no" in a utilityProcess
+//    (process.type === 'utility'), then expects a DOM. We import it while presenting Node mode
+//    and with @napi-rs/canvas blocked, which is enough for text extraction.
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import type { EngineAdapters, PdfRenderOptions } from '../api'
 import { EngineError, errMessage, invalidInput, throwIfAborted } from '../errors'
 import { packageDir } from '../resolve'
+import { isPng } from './ico'
 
 type Pdfjs = typeof import('pdfjs-dist/legacy/build/pdf.mjs')
 type PdfDoc = Awaited<ReturnType<Pdfjs['getDocument']>['promise']>
@@ -16,14 +25,55 @@ export const RENDER_SCALE = 2
 export const MAX_CANVAS_SIDE = 16_384
 export const MAX_CANVAS_PIXELS = 50_000_000
 
+export const PDF_RENDER_OPTIONS: PdfRenderOptions = { scale: RENDER_SCALE, maxSide: MAX_CANVAS_SIDE, maxPixels: MAX_CANVAS_PIXELS }
+
+/** True inside any Electron process (main, utility, renderer). */
+export function inElectron(): boolean {
+  return typeof process.versions['electron'] === 'string'
+}
+
 let pdfjsPromise: Promise<Pdfjs> | undefined
 
+async function importPdfjs(): Promise<Pdfjs> {
+  const g = globalThis as { pdfjsWorker?: unknown }
+  if (!g.pdfjsWorker) g.pdfjsWorker = await import('pdfjs-dist/legacy/build/pdf.worker.mjs')
+  return import('pdfjs-dist/legacy/build/pdf.mjs')
+}
+
+/** Import pdfjs in "Node mode" inside an Electron utilityProcess without loading @napi-rs/canvas. */
+async function importPdfjsInElectron(): Promise<Pdfjs> {
+  const typeDesc = Object.getOwnPropertyDescriptor(process, 'type')
+  const getBuiltin = process.getBuiltinModule
+  const consoleLog = console.log
+  try {
+    if (typeDesc?.configurable) Object.defineProperty(process, 'type', { value: 'browser', configurable: true, enumerable: typeDesc.enumerable ?? true })
+    process.getBuiltinModule = ((id: string) => {
+      const mod = getBuiltin.call(process, id)
+      if (id !== 'module' && id !== 'node:module') return mod
+      const real = mod as typeof import('node:module')
+      return {
+        ...real,
+        createRequire(from: string | URL) {
+          const req = real.createRequire(from)
+          const guarded = ((request: string) => {
+            if (request === '@napi-rs/canvas') throw new Error('@napi-rs/canvas is disabled inside Electron')
+            return req(request)
+          }) as NodeJS.Require
+          return Object.assign(guarded, { resolve: req.resolve, cache: req.cache, main: req.main, extensions: req.extensions })
+        }
+      }
+    }) as typeof process.getBuiltinModule
+    console.log = () => undefined // pdfjs warns about the missing canvas polyfills at import time
+    return await importPdfjs()
+  } finally {
+    console.log = consoleLog
+    process.getBuiltinModule = getBuiltin
+    if (typeDesc) Object.defineProperty(process, 'type', typeDesc)
+  }
+}
+
 async function loadPdfjs(): Promise<Pdfjs> {
-  pdfjsPromise ??= (async () => {
-    const g = globalThis as { pdfjsWorker?: unknown }
-    if (!g.pdfjsWorker) g.pdfjsWorker = await import('pdfjs-dist/legacy/build/pdf.worker.mjs')
-    return import('pdfjs-dist/legacy/build/pdf.mjs')
-  })()
+  pdfjsPromise ??= inElectron() ? importPdfjsInElectron() : importPdfjs()
   return pdfjsPromise
 }
 
@@ -74,8 +124,13 @@ export interface RenderedPage {
 export async function renderPdfPages(
   path: string,
   signal: AbortSignal,
-  onPage: (page: RenderedPage, total: number) => Promise<void>
+  onPage: (page: RenderedPage, total: number) => Promise<void>,
+  hostRender?: EngineAdapters['renderPdfPages']
 ): Promise<number> {
+  if (hostRender) return renderWithHost(path, signal, onPage, hostRender)
+  if (inElectron()) {
+    throw new EngineError('TOOL_MISSING', "Turning PDF pages into pictures isn't available in this version yet.", 'no renderPdfPages adapter inside Electron')
+  }
   const { createCanvas } = await import('@napi-rs/canvas')
   const doc = await openPdf(path)
   try {
@@ -106,6 +161,29 @@ export async function renderPdfPages(
   } finally {
     await doc.loadingTask.destroy().catch(() => undefined)
   }
+}
+
+async function renderWithHost(
+  path: string,
+  signal: AbortSignal,
+  onPage: (page: RenderedPage, total: number) => Promise<void>,
+  hostRender: NonNullable<EngineAdapters['renderPdfPages']>
+): Promise<number> {
+  const bytes = new Uint8Array(await readFile(path))
+  if (!/^%PDF-/.test(Buffer.from(bytes.subarray(0, 1024)).toString('latin1').trimStart())) {
+    throw invalidInput("I couldn't open this PDF. It may be damaged.")
+  }
+  const pages = await hostRender(bytes, PDF_RENDER_OPTIONS)
+  throwIfAborted(signal)
+  if (!Array.isArray(pages) || pages.length === 0 || !pages.every((p) => p instanceof Uint8Array && isPng(p))) {
+    throw new EngineError('TOOL_FAILED', "I couldn't draw the pages of this PDF.", 'renderPdfPages returned no PNG pages')
+  }
+  for (let i = 0; i < pages.length; i++) {
+    throwIfAborted(signal)
+    const p = pages[i]!
+    await onPage({ index: i + 1, png: Buffer.from(p.buffer, p.byteOffset, p.byteLength) }, pages.length)
+  }
+  return pages.length
 }
 
 /** Extract text, one block per page separated by a blank line. */
