@@ -14,8 +14,10 @@ files:
   - node_modules/onnxruntime-node/bin/napi-v6/${platform}/${arch}/**
   - '!node_modules/uiohook-napi/prebuilds/**'
   - node_modules/uiohook-napi/prebuilds/${platform}-${arch}/**
-  - '!node_modules/uiohook-napi/libuiohook/**'
-  - '!node_modules/uiohook-napi/src/**'
+  # onnxruntime-node install-time helpers are never used at runtime.
+  - '!node_modules/onnxruntime-node/script/**'
+  - '!node_modules/adm-zip/**'
+  - '!node_modules/global-agent/**'
   # @napi-rs/canvas cannot run inside Electron (V8 memory cage); PDF pages render in a Chromium window instead.
   - '!node_modules/@napi-rs/**'
   # musl variants are never used by Electron's glibc builds.
@@ -38,6 +40,8 @@ asarUnpack:
   - node_modules/onnxruntime-node/**
   - node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.*
   - node_modules/@napi-rs/**
+  # LGPL: keep libheif-js replaceable outside the integrity-checked app.asar.
+  - node_modules/libheif-js/**
 extraResources:
   - from: resources/bin/${platform}-${arch}
     to: bin
@@ -47,16 +51,25 @@ extraResources:
     to: icon.png
   - from: THIRD_PARTY_NOTICES.md
     to: THIRD_PARTY_NOTICES.md
-# Electron fuses: disable features this app never uses. (ASAR integrity validation is left off in v0.1:
-# it cannot be verified on real macOS/Windows from CI before the first manual test.)
+  - from: docs/security/licenses
+    to: licenses
+# Electron fuses: disable features this app never uses; validate app.asar integrity (macOS/Windows).
+# The package workflow smoke-starts the packaged app on every OS to prove it still boots.
+# grantFileProtocolExtraPrivileges stays enabled (pages load from file:// with module scripts; waived).
 electronFuses:
   runAsNode: false
   enableCookieEncryption: true
   enableNodeOptionsEnvironmentVariable: false
   enableNodeCliInspectArguments: false
-  enableEmbeddedAsarIntegrityValidation: false
-  onlyLoadAppFromAsar: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
 mac:
+  extraResources:
+    # electron-builder removes these from the .app; ship them for licence compliance.
+    - from: node_modules/electron/dist/LICENSE
+      to: LICENSE.electron.txt
+    - from: node_modules/electron/dist/LICENSES.chromium.html
+      to: LICENSES.chromium.html
   target: dmg
   category: public.app-category.utilities
   icon: resources/icon.png
