@@ -1,4 +1,11 @@
-// Scaffold placeholder. Owned by the Frontend dev (docs/PLAN.md §7).
+import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import '../common/styles.css'
+import '../common/windows.css'
+import { SettingsApp } from './App'
 
-createRoot(document.getElementById('root')!).render(<h1>Let us drag! — settings</h1>)
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <SettingsApp />
+  </StrictMode>
+)

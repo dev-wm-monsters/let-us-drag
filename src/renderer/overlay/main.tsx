@@ -1,4 +1,11 @@
-// Scaffold placeholder. Owned by the Frontend dev (docs/PLAN.md §7).
+import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import '../common/styles.css'
+import { OverlayApp } from './App'
 
-createRoot(document.getElementById('root')!).render(<h1>Let us drag! — overlay</h1>)
+document.documentElement.classList.add('lud-overlay')
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <OverlayApp />
+  </StrictMode>
+)

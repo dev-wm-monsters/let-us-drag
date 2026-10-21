@@ -1,5 +1,6 @@
 // IPC channel names and the preload API (window.lud). Contract owner: TPM.
 import type { DroppedItem, JobEvent, JobRequest, OptionId, PlatformStatus, Settings } from './types'
+import type { TestDropPayload } from './test-hooks'
 
 export const IPC = {
   // renderer → main (invoke)
@@ -14,6 +15,7 @@ export const IPC = {
   overlayInteractive: 'lud:overlay-interactive', // (interactive: boolean) => void (focus/click for feedMe)
   overlayDone: 'lud:overlay-done', // () => void  renderer finished its leave animation
   openFeedWindow: 'lud:open-feed-window', // () => void
+  overlayEngaged: 'lud:overlay-engaged', // () => void  renderer saw a real file dragenter; overlay is now visible (stop following the cursor)
   // main → renderer (send)
   jobEvent: 'lud:job-event', // JobEvent
   overlayArm: 'lud:overlay-arm', // (info: OverlayArmInfo)
@@ -48,6 +50,13 @@ export interface LudApi {
   onOverlayDisarm(cb: () => void): () => void
   onCursor(cb: (p: { x: number; y: number }) => void): () => void
   onSettingsChanged(cb: (s: Settings) => void): () => void
+  /** Overlay renderer received a file dragenter and shows the Uncle (main: stop moving the sensor). */
+  overlayEngaged(): Promise<void>
+  /**
+   * E2E only: main forwards TEST_DROP_CHANNEL (src/shared/test-hooks.ts) here when LUD_E2E=1.
+   * Outside E2E the preload may return a no-op unsubscribe and never call cb.
+   */
+  onTestDrop(cb: (p: TestDropPayload) => void): () => void
 }
 
 export type { OptionId }
