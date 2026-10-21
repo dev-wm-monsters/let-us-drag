@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { IPC } from '../../../src/shared/api'
 import { isE2E } from '../../../src/main/e2e-mode'
 import { IPC_ALLOWLIST, isAllowedChannel, isTrustedSender } from '../../../src/main/ipc-policy'
-import { absolutePathSchema, isDeviceNamespacePath, jobRequestSchema } from '../../../src/main/ipc-validation'
+import { absolutePathSchema, isDeviceNamespacePath, isFullyQualifiedPath, jobRequestSchema } from '../../../src/main/ipc-validation'
 import { devServerOrigin, rendererPageOf, rendererTarget, type RuntimeLayout } from '../../../src/main/paths'
 import { isAllowedPrintRequest } from '../../../src/main/pdf-csp'
 import {
@@ -116,7 +116,19 @@ describe('IPC payload validation (SEC-13, SEC-14)', () => {
     expect(absolutePathSchema.safeParse('\\\\.\\PhysicalDrive0').success).toBe(false)
     expect(absolutePathSchema.safeParse('/a/b\0c').success).toBe(false)
     expect(absolutePathSchema.safeParse('relative/x').success).toBe(false)
-    expect(absolutePathSchema.safeParse('/a/../b').data).toBe(resolve('/b'))
+    const abs = (...parts: string[]) => resolve(process.platform === 'win32' ? 'C:\\' : '/', ...parts)
+    expect(absolutePathSchema.safeParse(abs('a', '..', 'b')).data).toBe(abs('b'))
+  })
+
+  it('accepts only fully qualified Windows paths (drive or UNC), POSIX absolute elsewhere', () => {
+    expect(isFullyQualifiedPath('C:\\Users\\x.png', 'win32')).toBe(true)
+    expect(isFullyQualifiedPath('d:/data/x.png', 'win32')).toBe(true)
+    expect(isFullyQualifiedPath('\\\\server\\share\\x.png', 'win32')).toBe(true)
+    expect(isFullyQualifiedPath('\\Users\\x.png', 'win32')).toBe(false) // drive-less rooted
+    expect(isFullyQualifiedPath('/tmp/x.png', 'win32')).toBe(false)
+    expect(isFullyQualifiedPath('C:x.png', 'win32')).toBe(false) // drive-relative
+    expect(isFullyQualifiedPath('/tmp/x.png', 'linux')).toBe(true)
+    expect(isFullyQualifiedPath('relative/x.png', 'darwin')).toBe(false)
   })
 
   it('job requests and settings patches are strict', () => {
@@ -270,11 +282,12 @@ describe('test hooks (TPM D2/D3)', () => {
   it('dropFilesOnFeed validates and forwards; cancelActive forwards', async () => {
     const log: string[] = []
     const hooks = createTestHooks(deps(log))
-    await hooks.dropFilesOnFeed(['/tmp/a.png'], 'to-jpg')
-    await hooks.dropFilesOnFeed(['/tmp/a.png'], null)
+    const png = process.platform === 'win32' ? 'C:\\tmp\\a.png' : '/tmp/a.png'
+    await hooks.dropFilesOnFeed([png], 'to-jpg')
+    await hooks.dropFilesOnFeed([png], null)
     await expect(hooks.dropFilesOnFeed(['relative.png'], 'to-jpg')).rejects.toThrow()
-    await expect(hooks.dropFilesOnFeed(['/tmp/a.png'], 'nope' as never)).rejects.toThrow()
+    await expect(hooks.dropFilesOnFeed([png], 'nope' as never)).rejects.toThrow()
     await hooks.cancelActive()
-    expect(log).toEqual(['feedDrop:/tmp/a.png:to-jpg', 'feedDrop:/tmp/a.png:null', 'cancel'])
+    expect(log).toEqual([`feedDrop:${png}:to-jpg`, `feedDrop:${png}:null`, 'cancel'])
   })
 })

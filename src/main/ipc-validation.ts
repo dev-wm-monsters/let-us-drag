@@ -25,13 +25,23 @@ export function isDeviceNamespacePath(p: string): boolean {
   return /^[\\/]{2}[.?][\\/]/.test(p)
 }
 
+/**
+ * Windows: a path is only "fully qualified" with a drive (`C:\...`) or as UNC (`\\server\share`).
+ * Drive-less rooted paths (`\Users\x`) resolve against the current drive, so they are refused.
+ * Real drops always carry fully qualified paths.
+ */
+export function isFullyQualifiedPath(p: string, platform: NodeJS.Platform = process.platform): boolean {
+  if (platform !== 'win32') return isAbsolute(p)
+  return /^[A-Za-z]:[\\/]/.test(p) || /^[\\/]{2}[^\\/.?][^\\/]*[\\/][^\\/]+/.test(p)
+}
+
 export const absolutePathSchema = z
   .string()
   .min(1)
   .max(MAX_PATH_LENGTH)
   .refine((p) => !p.includes('\0'), 'Invalid path')
   .refine((p) => !isDeviceNamespacePath(p), 'Invalid path')
-  .refine((p) => isAbsolute(p), 'Path must be absolute')
+  .refine((p) => isFullyQualifiedPath(p), 'Path must be absolute')
   .transform((p) => normalize(p))
   .refine((p) => !isDeviceNamespacePath(p), 'Invalid path')
 
