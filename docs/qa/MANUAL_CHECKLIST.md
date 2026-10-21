@@ -1,125 +1,149 @@
-# Let us drag! — Manual checklist for the product owner (v0.1)
+# Let us drag! v0.1 — hands-on checklist for the product owner
 
-Hi! This is the hands-on run on real computers: the parts our robots can't check (real Finder/Explorer
-drags, macOS permissions, SmartScreen, sounds, how the Uncle *feels*). Plan about **45 minutes per OS**.
+Hi! This is the run on real computers: the parts our robots cannot do (real Finder/Explorer drags,
+permissions, SmartScreen, sounds, how the Uncle *feels*). About **40 minutes per OS**.
 
-**How to fill it in.** Mark each step ✅ (as described) or ❌ (anything else), and jot a short note:
-what you saw, plus a screenshot or a 10-second screen recording for every ❌. Unsure? Mark ❌ and describe
-it, that's still useful. When you're done, send the filled-in file back to QA. Each ❌ becomes a bug in
-`docs/qa/BUGS.md`.
+**How to fill it in:** tick `[x]` when you saw what the "Expect" line says. Anything else: leave it
+unticked, write one line under it, and take a screenshot or a 10-second screen recording. Unsure? Leave it
+unticked and describe it, that still helps. Send the file back to QA when done (see [Section C](#c-when-something-goes-wrong)).
 
-Run it once on **macOS** (Part A) and once on **Windows 10 or 11** (Part B). Use a normal user account
-(on Windows, not an administrator account if you have one).
-
----
-
-## 0. Before you start (both OSes)
-
-1. Download the installers from the draft GitHub release:
-   - macOS: `LetUsDrag-0.1.0-mac-arm64.dmg` for Apple silicon (M1/M2/M3/M4), or `LetUsDrag-0.1.0-mac-x64.dmg` for Intel.
-   - Windows: `LetUsDrag-0.1.0-win-x64-setup.exe` (installer). The portable `.exe` is optional, see B.20.
-2. Make a folder **`LUD test`** on your Desktop and put these in it (any content is fine):
-
-   | File | Tip |
-   |---|---|
-   | `photo.png`, plus 3 more pictures (`.jpg`/`.png`) | screenshots work |
-   | `photo.heic` *(Mac only, optional)* | AirDrop one from an iPhone |
-   | `document.pdf` with 2+ pages | |
-   | `clip.mp4`, 10–30 s **with sound** | a phone video |
-   | `long.mp4`, 2+ minutes | for the cancel test |
-   | `big.mov` or `big.mp4`, **larger than 200 MB** | |
-   | `report.docx`, `notes.md` (or `.txt`), `data.csv` | |
-   | `archive.zip` | zip any 2–3 files |
-   | a folder `My stuff` with a few files | |
-   | `setup.exe`: a text file renamed to `.exe` | it is never run, only refused |
-
-3. Write down: computer model, OS version, display setup (one or two screens, scaling).
-
-| Computer / OS / displays | |
-|---|---|
-| macOS: | |
-| Windows: | |
+> **Known issues (already reported, no need to file them again, but do tick/untick so we know what you saw)**
+> - **Remove BG fails every second time** in one app session ("The converter stopped unexpectedly"). The next
+>   try works again. (QA3-01; may be fixed in your build: then step A.17/B.15 just passes.)
+> - **Esc does not stop the chewing** when you dropped straight on a bubble: use the red **×** "Spit it out" button. (QA3-05)
+> - The **Remove BG** hint can be cut off at the left edge, and a long error card can be cut off at the bottom. (QA3-03, QA3-04)
+> - The first Remove BG download shows only the progress ring, no "downloading" text. (QA3-02)
 
 ---
 
-## Part A — macOS
+## 0. Before you start (both computers)
 
-| # | Do this | You should see | ✅/❌ | Notes |
-|---|---|---|---|---|
-| A.1 | Open the `.dmg`, drag **Let us drag!** into **Applications**, then double-click it in Applications. | macOS blocks it ("cannot be opened", "Apple could not verify…" or similar). That's expected for a free app without an Apple certificate. | | |
-| A.2 | **Right-click** (or Control-click) the app → **Open** → **Open**. On macOS 15 Sequoia or later, if there is no Open button: click **Done**, go to **System Settings → Privacy & Security**, scroll down, click **Open Anyway** for Let us drag!, confirm with your password. | The app starts. A small Uncle icon appears in the **menu bar** (top right). **No icon in the Dock.** A welcome window explains the trick. | | If macOS says the app "is damaged", mark ❌ and send a screenshot. |
-| A.3 | In the welcome window, read the Accessibility explanation and click **Grant**. | **System Settings → Privacy & Security → Accessibility** opens and lists **Let us drag!** | | |
-| A.4 | Switch it **on** (password if asked) and go back to the app's Settings window. | It says access is granted / the drag gesture is ready (or clearly asks you to restart the app; then restart it and note that). | | |
-| A.5 | In **Finder**, open `LUD test`. Start dragging `photo.png` and, while dragging, **hold Shift**. | The Uncle pops up at the mouse pointer, mouth wide open, format bubbles (JPG, WEBP, PDF…) around him. | | |
-| A.6 | Keep dragging slowly around him, then hover over a bubble. | His **eyes and head follow the file** smoothly; over a bubble he looks at it and the bubble grows with a label. He blinks and breathes, and you can see his **mole with one hair**. | | |
-| A.7 | Drop the PNG on **JPG**. | He gulps, chews (with a progress ring), then tosses a card "Saved next to original". `photo.jpg` appears next to `photo.png`. He leaves after a moment. | | |
-| A.8 | Do A.7 again. Then click the card while it's visible. | Now `photo (1).jpg`; `photo.jpg` is untouched. Clicking the card shows the file in Finder. | | |
-| A.9 | Hold **Shift first**, then start dragging a picture. | Same as A.5. | | |
-| A.10 | Drag from the **Desktop** (not a Finder window): drag `clip.mp4` + Shift → **GIF**. Then `clip.mp4` → **MP3**. | `clip.gif` (moves) and `clip.mp3` (plays with sound) next to the video. | | |
-| A.11 | Each with Shift-drag: `document.pdf` → **PNG**, `report.docx` → **PDF**, `notes.md` → **PDF**, `data.csv` → **XLSX**, `archive.zip` → **Unzip**, the `My stuff` folder → **ZIP**, `photo.heic` → **JPG** (if you have one). | Each result appears next to the original and opens in Preview / Numbers / Finder. PDF pages land in a folder `document (pages)`. | | Note any that fail. |
-| A.12 | Select **3 or more pictures**, Shift-drag them all → **PDF**. | Extra-puffy "hamster" cheeks while he chews; one PDF with all pages. | | |
-| A.13 | Shift-drag `big.mov` (> 200 MB) → **MP4** or **Compress**. | He sweats and chews slower; when done, a burp (if sounds are on). The pointer and other apps stay smooth. | | |
-| A.14 | Shift-drag `long.mp4` → **WEBM**. While he chews, click **Spit it out** on the ring. Repeat, and this time press **Esc** instead. | He spits the file back ("Fine, keep it.") and leaves. **No** `long.webm` (or half file) appears. | | |
-| A.15 | Shift-drag `setup.exe` onto him (and once onto a bubble, if any). | He crosses his arms, shakes his head: "Nope, not eating that." Nothing is created. | | |
-| A.16 | Shift-drag selected **text** from TextEdit or Safari; Shift-drag a **window** by its title bar; **Shift-click** several files in Finder (no drag). | **No Uncle** in any of these. | | |
-| A.17 | Start a Shift-drag of a file and drop it on the **Desktop** instead of the Uncle. | Normal Finder move/copy; the Uncle (if he appeared) goes away. Nothing stuck on screen. | | |
-| A.18 | Type in Notes, Shift-drag a file across the screen and release it anywhere, then keep typing. | Your typing still goes into Notes. | | |
-| A.19 | *(If you have two screens)* Shift-drag a file near each corner of each screen. | The Uncle is always fully visible on the screen under the pointer. | | |
-| A.20 | Menu-bar icon → **Open Feed Window**. Drag `photo.png` (no Shift needed) onto the window, choose **WEBP**. Drop `setup.exe` on it too. | The Uncle in the window eats and spits `photo.webp` next to the PNG; `setup.exe` is refused. The window stays open. | | |
-| A.21 | Menu-bar icon → **Settings…**: change the trigger key to **Option**, then Shift-drag a file, then Option-drag a file. | Shift no longer summons him; **Option** does. | | |
-| A.22 | Turn **Sounds** off and do a conversion; turn it back on and do one more (use **Test sound** if you like). | Silent when off. When on: pop, gulp, crunchy chewing, whoosh, nothing harsh or too loud. | | |
-| A.23 | Turn **Hungry Mode** on and convert a small picture. | He gulps it instantly (no slow chewing). | | |
-| A.24 | Turn **Plain Mode** on and convert a picture. | No character, just a simple animated ring of options; still works. Turn Plain Mode off again. | | |
-| A.25 | Turn **Launch at login** on, log out and back in. | The app starts by itself (menu-bar icon). | | |
-| A.26 | Turn Wi-Fi off and repeat two conversions from A.11. | Everything still works offline. | | |
-| A.27 | Menu-bar icon → **Quit**. Check **Activity Monitor** for "Let us drag" or "ffmpeg". | The app closes completely; no leftover processes. | | |
-| A.28 | *(Optional)* System Settings → Accessibility: switch Let us drag! **off**, start the app. | No crash; the app says it needs Accessibility and offers the Feed Window, which still works. | | |
-| A.29 | Uninstall: drag the app from Applications to the Trash; remove it from the Accessibility list. | Gone; nothing left running. | | |
-
-**Overall impression of the Uncle on macOS** (cartoon look, liveliness, the mole, head/eye following — 1 to 5 and why):
-
-> 
+1. [ ] Download from the draft GitHub release:
+   macOS **Apple silicon** (M1–M4): `LetUsDrag-0.1.0-mac-arm64.dmg` · macOS **Intel**: `LetUsDrag-0.1.0-mac-x64.dmg` ·
+   Windows: `LetUsDrag-0.1.0-win-x64-setup.exe` (and optionally `…-portable.exe`).
+2. [ ] Make a folder **`LUD test`** on the Desktop with:
+   `photo.png` + 3 more pictures · a portrait photo (person/pet) for Remove BG · `photo.heic` (Mac, AirDrop from an iPhone, optional) ·
+   `document.pdf` (2+ pages) · `clip.mp4` (10–30 s, with sound) · `long.mp4` (2+ min) · `big.mp4` or `.mov` (**> 200 MB**) ·
+   `report.docx` · `notes.md` · `data.csv` · `archive.zip` · a folder `My stuff` · `setup.exe` (a text file renamed to `.exe`, it is never run).
+3. Note your setup: model, OS version, screens and scaling: ______________________
 
 ---
 
-## Part B — Windows 10 / 11
+## A. macOS
 
-| # | Do this | You should see | ✅/❌ | Notes |
-|---|---|---|---|---|
-| B.1 | Run `LetUsDrag-0.1.0-win-x64-setup.exe`. | Blue **"Windows protected your PC"** screen (SmartScreen). Expected: the app has no paid certificate. | | |
-| B.2 | Click **More info** → **Run anyway**. Go through the installer (keep the defaults). | Installs **without** asking for admin rights; a Start-menu entry "Let us drag!" exists. | | |
-| B.3 | Start it from the Start menu. | A tray icon appears (look in the **^** overflow near the clock). A welcome window explains the trick. | | |
-| B.4 | Right-click the tray icon. | Menu: Open Feed Window, Settings…, Pause gesture, Quit. | | |
-| B.5 | In **File Explorer**, open `LUD test`. Start dragging `photo.png` and, while dragging, **hold Shift**. | The Uncle pops up at the pointer, mouth open, format bubbles around him. | | |
-| B.6 | Move around him and hover a bubble. | **Eyes and head follow the file** smoothly; he looks at the hovered bubble; he blinks, breathes, mole with one hair visible. | | |
-| B.7 | Drop on **JPG**; then do it again. | `photo.jpg` next to the PNG, then `photo (1).jpg`; the first one untouched. Card "Saved next to original"; clicking it opens Explorer at the file. | | |
-| B.8 | Drag from the **Desktop**: `clip.mp4` + Shift → **GIF**, then → **MP3**. | `clip.gif` and `clip.mp3` next to the video; both play. | | |
-| B.9 | Each with Shift-drag: `document.pdf` → **PNG**, `report.docx` → **PDF**, `notes.md` → **PDF**, `data.csv` → **XLSX**, `archive.zip` → **Unzip**, `My stuff` folder → **ZIP**. | Each result next to the original, opens in its usual app. PDF pages in a folder `document (pages)`. | | |
-| B.10 | Select 3+ pictures, Shift-drag them → **PDF**. | Hamster cheeks while chewing; one PDF with all pages. | | |
-| B.11 | Shift-drag `big.mp4` (> 200 MB) → **Compress**. | Sweating, slower chew, burp at the end; Windows stays responsive. | | |
-| B.12 | Shift-drag `long.mp4` → **WEBM**; click **Spit it out** while he chews. Repeat with **Esc**. | He gives the file back ("Fine, keep it.") and leaves; no `long.webm`. Task Manager shows no leftover `ffmpeg.exe`. | | |
-| B.13 | Shift-drag `setup.exe` onto him. | "Nope, not eating that." Nothing created, nothing run. | | |
-| B.14 | Shift-drag text from Notepad or a browser; Shift-click several files in Explorer (no drag). | **No Uncle.** | | |
-| B.15 | *(If you use display scaling 125 %/150 %, or two screens)* Shift-drag a file near each corner of each screen. | The Uncle is centred on the pointer and fully visible. | | |
-| B.16 | Tray → **Open Feed Window**; drop `photo.png` on it → **WEBP**; drop `setup.exe`. | Converts next to the PNG; `.exe` refused; window stays open. | | |
-| B.17 | Tray → **Settings…**: trigger key **Alt**; Shift-drag (nothing), Alt-drag (Uncle). Sounds off/on, Hungry Mode, Plain Mode as in A.22–A.24. | Each setting works right away. | | |
-| B.18 | Quit from the tray, start again from the Start menu. | All your settings are still there. | | |
-| B.19 | Turn **Launch at login** on and restart Windows. | The tray icon is there after login. | | |
-| B.20 | *(Optional)* Run the portable `LetUsDrag-0.1.0-win-x64-portable.exe` from Downloads (SmartScreen again → More info → Run anyway). | Starts without installing; works like the installed app. Quit it afterwards. | | |
-| B.21 | Tray → **Quit**; check Task Manager. | Fully closed, no "Let us drag!" or `ffmpeg.exe` left. | | |
-| B.22 | **Settings → Apps → Installed apps → Let us drag! → Uninstall.** | Removed; Start-menu entry gone; nothing left running. | | |
+**Install and first launch**
 
-**Overall impression of the Uncle on Windows** (1 to 5 and why):
+1. [ ] Open the `.dmg`, drag **Let us drag!** to **Applications**, double-click it there.
+   Expect: macOS blocks it ("cannot be opened" / "Apple could not verify…"). That is normal for a free app without an Apple certificate.
+2. [ ] Open it anyway. **macOS 14 or older:** right-click (Control-click) the app → **Open** → **Open**.
+   **macOS 15 or newer:** click **Done**, then **System Settings → Privacy & Security**, scroll down, **Open Anyway**, confirm with your password, then **Open**.
+   Expect: a small Uncle icon in the **menu bar**, **no Dock icon**, a welcome window. (If macOS says the app "is damaged": untick and send a screenshot.)
+3. [ ] In the welcome window click **Grant** → System Settings → Accessibility opens with **Let us drag!** listed. Switch it on.
+   Expect: back in the app, Settings says the gesture is ready **without restarting the app**. (If it asks for a restart, note it.)
+4. [ ] Check **System Settings → Privacy & Security → Input Monitoring**. Expect: Let us drag! is **not** needed there.
 
-> 
+**The gesture (Finder)**
+
+5. [ ] In Finder, start dragging `photo.png`, then **hold Shift**. Expect: the Uncle pops up at the pointer, mouth open, bubbles around him.
+6. [ ] Move around him, hover a bubble. Expect: **head and eyes follow the file**, he looks at the hovered bubble, the bubble grows with a hint; he blinks and breathes; the **mole with one hair** is visible.
+7. [ ] Drop on **JPG**. Expect: gulp → chewing with a ring → card "Saved next to original"; `photo.jpg` next to the PNG; he leaves after ~2.5 s.
+   Also expect: **Finder stays the active app** while you drop (its title bar does not grey out).
+8. [ ] Repeat 7, then click the card. Expect: `photo (1).jpg` (the first file untouched); Finder shows the file.
+9. [ ] After 7, type something in Finder's search field right away. Expect: the typing goes to Finder (the Uncle did not keep the keyboard).
+10. [ ] Hold **Shift first**, then drag. Expect: same as 5.
+11. [ ] Shift-drag selected text from Safari, a window by its title bar, and Shift-click files without dragging. Expect: **no Uncle** each time.
+12. [ ] Shift-drag a file and drop it on the Desktop instead. Expect: normal Finder move; nothing stays on screen.
+
+**Conversions** (Shift-drag each onto the named bubble; results appear next to the original and open in Preview/QuickTime/Numbers)
+
+13. [ ] `clip.mp4` → **GIF**, then `clip.mp4` → **MP3** (from the Desktop, not a Finder window). Expect: a moving GIF, an MP3 with sound.
+14. [ ] `document.pdf` → **PNG** (folder `document (pages)`), `document.pdf` → **TXT**, `report.docx` → **PDF**, `notes.md` → **PDF**, `data.csv` → **XLSX**, `archive.zip` → **Unzip**, `My stuff` → **ZIP**, `photo.heic` → **JPG**. Expect: all work.
+15. [ ] Select 3+ pictures → **PDF**. Expect: puffed "hamster" cheeks ("nom ×3"), one PDF with all pages.
+16. [ ] `big.mp4` (> 200 MB) → **Compress**. Expect: he sweats and chews slower; the Mac stays smooth; burp at the end (sounds on).
+    While he chews, try to click something on the desktop **right under/next to him**: note whether the click works. (QA3-06)
+17. [ ] **Remove BG, first time:** your portrait photo → **Remove BG**. Expect: the hint mentions a one-time 179 MB download; chewing takes longer the first time; `…-nobg.png` with a transparent background.
+    **Intel Mac:** this uses the slower built-in engine, expect up to ~30 s. Then do Remove BG on a **second** photo (see Known issues).
+18. [ ] `long.mp4` → **WEBM**, click the red **×** ("Spit it out") while he chews. Expect: "Fine, keep it.", he leaves, **no** `long.webm`.
+    Then Shift-drag `photo.png` and drop it on his **mouth** (not on a bubble): he holds it ("Pick an option · Esc to cancel"). Press **Esc**. Expect: he lets go and leaves, nothing created.
+19. [ ] `setup.exe` onto him and onto a bubble. Expect: arms crossed, "Nope, not eating that.", nothing created.
+
+**Windows of the app and the menu bar**
+
+20. [ ] Over a **full-screen** app (e.g. Safari in full screen, or Keynote presenting): Shift-drag a file from a Finder window there. Expect: the Uncle appears **above** the full-screen app.
+21. [ ] Two screens? Shift-drag near each corner of each screen. Expect: he is always fully visible on the screen under the pointer.
+22. [ ] Menu bar icon → **Open Feed Window**, and → **Settings…**, while another app is in front. Expect: each window **comes to the front**.
+23. [ ] Feed Window: drop `photo.png` on it (no Shift) → **WEBP**; drop `setup.exe`. Drop a file on the Uncle, then press **Esc**. Expect: converts; `.exe` refused; Esc puts the held file back; window stays open.
+24. [ ] With the app running, double-click it again in **Finder/Applications**. Expect: the **Settings** window opens (no second icon).
+25. [ ] Settings: trigger key **Option**; Shift-drag (nothing), Option-drag (Uncle). Sounds off/on (pop, gulp, crunch, whoosh; nothing harsh). **Hungry Mode** (instant gulp). **Plain Mode** (simple ring, no character, still converts). Turn Plain/Hungry off again.
+26. [ ] Quit from the menu bar, start again. Expect: all settings kept.
+27. [ ] **Launch at login** on → log out and in. Expect: the menu-bar icon is back; **System Settings → General → Login Items** lists it.
+28. [ ] Wi-Fi off: repeat two conversions from 14. Expect: they work offline.
+29. [ ] Accessibility **off** in System Settings while the app runs. Expect: no crash; Settings says it needs Accessibility; the Feed Window still works. Switch it back **on**: the gesture works again without restarting the app.
+30. [ ] *(Next update only)* After installing a newer build over this one, does the gesture still work? If not: remove Let us drag! from the Accessibility list (–), add it again, switch on. Note what you had to do.
+31. [ ] Quit, check **Activity Monitor** for "Let us drag" / "ffmpeg". Expect: nothing left.
+
+**Uncle on macOS, 1–5 and why** (cartoon look, liveliness, mole, head turn): ______
 
 ---
 
-## Anything else?
+## B. Windows 10 / 11
 
-Bugs, surprises, ideas: anything goes. For anything that looked wrong, a screen recording helps most
-(the app keeps no log files in normal use).
+**Install and first launch**
 
-> 
+1. [ ] Run `LetUsDrag-0.1.0-win-x64-setup.exe`. Expect: blue **"Windows protected your PC"** (SmartScreen). Normal for a free app without a paid certificate.
+2. [ ] **More info → Run anyway**, keep the defaults. Expect: installs **without** an admin prompt; Start-menu entry "Let us drag!".
+3. [ ] Start it. Expect: tray icon (check the **^** overflow near the clock), welcome window. The tray icon looks **sharp**, not blurry (also at 125/150 % scaling).
+4. [ ] Right-click the tray icon. Expect: Open Feed Window, Settings…, Pause gesture, Quit. Each window opens **in front** of other apps.
+
+**The gesture (Explorer)**
+
+5. [ ] In Explorer, drag `photo.png` and **hold Shift**. Expect: Uncle at the pointer, bubbles around him.
+6. [ ] Hover a bubble. Expect: head and eyes follow; mole with one hair visible.
+7. [ ] Drop on **JPG**, then again. Expect: `photo.jpg`, then `photo (1).jpg`; clicking the card opens Explorer at the file. Typing right after goes to the app you were in.
+8. [ ] Shift-drag text from Notepad/a browser; Shift-click files without dragging. Expect: no Uncle.
+9. [ ] Drag a file over an app started **as administrator** (e.g. an admin Command Prompt or Task Manager). Expect: the Uncle may **not** react while the pointer is over that window (Windows blocks it); everything works again over normal windows. Just note what you saw.
+10. [ ] **Mixed scaling / two screens** (e.g. laptop 150 % + monitor 100 %): Shift-drag near each corner of each screen. Expect: Uncle centred on the pointer, sharp, fully visible.
+
+**Conversions** (results next to the original; they open in their usual apps)
+
+11. [ ] `clip.mp4` → **GIF** and → **MP3** (from the Desktop).
+12. [ ] **In the installed app:** `document.pdf` → **PNG** (folder `document (pages)`) and → **TXT**. Expect: both work (these failed on Windows before).
+13. [ ] `report.docx` → **PDF**, `notes.md` → **PDF**, `data.csv` → **XLSX**, `archive.zip` → **Unzip**, `My stuff` → **ZIP**.
+14. [ ] 3+ pictures → **PDF** (hamster cheeks, one PDF); `big.mp4` → **Compress** (sweating, Windows stays responsive; try clicking right next to him meanwhile, note if it works).
+15. [ ] **Remove BG, first time** on your portrait photo. Expect: one-time 179 MB download, then `…-nobg.png` with a transparent background. Then a **second** photo (see Known issues).
+16. [ ] `long.mp4` → **WEBM**, click **×** "Spit it out" while chewing. Expect: "Fine, keep it.", no `long.webm`, no `ffmpeg.exe` left in Task Manager.
+17. [ ] `setup.exe` onto him. Expect: "Nope, not eating that.", nothing created, nothing run.
+
+**Settings and lifecycle**
+
+18. [ ] Feed Window: drop `photo.png` → **WEBP**; drop `setup.exe`. Expect: converts; refused; window stays open.
+19. [ ] Settings: trigger key **Alt** (Shift-drag nothing, Alt-drag Uncle); Sounds, Hungry Mode, Plain Mode as in A.25.
+20. [ ] Start the app again from the Start menu while it runs. Expect: the Settings window opens.
+21. [ ] Quit from the tray, start again. Expect: settings kept.
+22. [ ] **Launch at login** on → restart Windows. Expect: tray icon after login.
+23. [ ] *(Optional)* Portable `.exe` from Downloads (SmartScreen again → More info → Run anyway). Expect: works like the installed app.
+24. [ ] Quit; Task Manager shows no "Let us drag!" / `ffmpeg.exe`. Then **Settings → Apps → Installed apps → Let us drag! → Uninstall**. Expect: removed.
+
+**Uncle on Windows, 1–5 and why:** ______
+
+---
+
+## C. When something goes wrong
+
+**Logs.** The app writes no log files on its own. To capture one, quit the app (tray/menu bar → Quit), then start it from a terminal, repeat the problem, quit, and attach the file:
+
+- **macOS** (Terminal):
+  `LUD_DEBUG=1 "/Applications/Let us drag!.app/Contents/MacOS/Let us drag!" > ~/Desktop/lud-log.txt 2>&1`
+- **Windows** (Command Prompt; right-click the Start-menu entry → *Open file location* to find the folder):
+  `set LUD_DEBUG=1` then `"Let us drag!.exe" > "%USERPROFILE%\Desktop\lud-log.txt" 2>&1`
+  (If the file stays empty on Windows, just send the screen recording.)
+
+Settings live in `~/Library/Application Support/Let us drag!/settings.json` (macOS) and
+`%APPDATA%\Let us drag!\settings.json` (Windows); the Remove BG model is in the `models` folder next to it.
+
+**Reporting a bug.** One line per problem under the step, plus:
+1. what you did (step number + file type), 2. what you expected, 3. what happened (exact message on the Uncle's card),
+4. screenshot or 10-second recording, 5. the log file if you made one, 6. computer + OS version + screens/scaling.
+Send the filled-in checklist to QA; each unticked step becomes an entry in `docs/qa/BUGS.md`.
 
 Thank you!
