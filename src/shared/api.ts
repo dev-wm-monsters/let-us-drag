@@ -61,6 +61,18 @@ export interface LudApi {
    * In normal runs this never calls back and returns a no-op unsubscribe.
    */
   onTestDrop(cb: (p: TestDropPayload) => void): () => void
+  /**
+   * E2E only (LUD_E2E=1): simulated drops on the Feed Window (`LudTestHooks.dropFilesOnFeed`).
+   * The feed renderer handles them exactly like `onTestDrop` (optionId null = drop on the mouth).
+   * Optional so the preload can add it independently; the renderer treats a missing method as a no-op.
+   */
+  onTestFeedDrop?(cb: (p: TestDropPayload) => void): () => void
+  /**
+   * E2E only (LUD_E2E=1): `LudTestHooks.cancelActive()` asks the renderer that owns the running job
+   * to cancel it through the same code path as the "Spit it out" button / Esc (calls cancelJob and
+   * plays the spit-back). Renderers that are not busy ignore it. Optional, like onTestFeedDrop.
+   */
+  onTestCancel?(cb: () => void): () => void
 }
 
 export type { OptionId }

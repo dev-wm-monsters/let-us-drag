@@ -253,6 +253,37 @@ const scenarios = {
     await shot(page, 'overlay-16-plain-chew')
     await ctx.close()
   },
+  async 'overlay-18-cancel'() {
+    // D3: "Spit it out" on the progress ring while chewing → spit-back + "Fine, keep it." → leave.
+    const { page, ctx } = await open({ view: 'overlay' })
+    const c = await center(page)
+    await enterAt(page, c.x, c.y, [MP4])
+    await sleep(450)
+    const p = await optionPoint(page, 'to-gif')
+    await dropAt(page, p.x, p.y, [MP4])
+    await sleep(900)
+    await emit(page, { type: 'progress', progress: 0.35 })
+    await sleep(400)
+    await expectState(page, 'chew')
+    const btn = page.locator('[data-testid="cancel-job"]')
+    await btn.hover()
+    await sleep(350)
+    await shot(page, 'overlay-18-cancel-button')
+    await btn.click()
+    // Grab raw frames first (palette encoding is slow and would eat into the 1.4 s spit-back).
+    await sleep(240)
+    await expectState(page, 'cancel')
+    const spit = await page.screenshot()
+    await sleep(420)
+    await expectState(page, 'cancel')
+    const fine = await page.screenshot()
+    await save(spit, 'overlay-19-cancel-spit-back')
+    await save(fine, 'overlay-20-cancel-fine-keep-it')
+    const cancelled = await H(page, () => window.__harness.calls.filter((c) => c.name === 'cancelJob').length)
+    if (cancelled !== 1) throw new Error(`expected 1 cancelJob call, got ${cancelled}`)
+    await page.waitForFunction(() => window.__harness.state() === 'hidden', null, { timeout: 4000 })
+    await ctx.close()
+  },
   async 'overlay-17-reduced-motion'() {
     const { page, ctx } = await open({ view: 'overlay' }, { reducedMotion: 'reduce' })
     const c = await center(page)

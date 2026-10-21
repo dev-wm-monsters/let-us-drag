@@ -3,7 +3,7 @@
 // down-right) under the colour copy — which gives a brush-like line that is thin top-left and heavy
 // bottom-right. Animated parts receive their attributes from poseAttrs(); this file is static markup.
 import { forwardRef, type ReactNode, type Ref } from 'react'
-import type { Attrs, PartKey } from './attrs'
+import { type Attrs, MOLE, type PartKey } from './attrs'
 
 export const VIEWBOX = { x: -175, y: -200, w: 350, h: 450 } as const
 /** Head centre in viewBox units (the point the options ring is centred on). */
@@ -36,7 +36,10 @@ export const C = {
   shirt: '#dfeaf6',
   shirtShade: '#b9cde2',
   bow: '#d9443a',
-  sweat: '#8fd3f4'
+  sweat: '#8fd3f4',
+  mole: '#8a4a32',
+  moleShade: '#5e2d1d',
+  moleLight: '#d39a76'
 } as const
 
 const INK_OFF = 'translate(1.4 1.9)'
@@ -107,6 +110,18 @@ const HAND =
   'M -9,3 C -14,-6 -15,-14 -12,-19 C -13,-27 -6,-31 -3,-24 C -3,-33 6,-34 6,-25 C 8,-32 16,-30 14,-21 C 18,-25 22,-19 18,-13 C 17,-5 13,2 7,4 Z'
 const THUMB = 'M -10,-7 C -20,-12 -25,-5 -20,-1 C -17,2 -12,1 -9,-1 Z'
 const HAND_LINES = 'M -3,-23 L -3,-15 M 6,-24 L 5.5,-15'
+
+// Glasses rims (outer ring minus inner ring, even-odd), eye bags and lens glints per eye.
+const RIM = {
+  L: 'M -40,-61 A 31,31 0 1 0 -39.99,-61 Z M -40,-55.5 A 25.5,25.5 0 1 1 -40.01,-55.5 Z',
+  R: 'M 40,-61 A 31,31 0 1 0 40.01,-61 Z M 40,-55.5 A 25.5,25.5 0 1 1 39.99,-55.5 Z'
+} as const
+const EYE_BAG = { L: 'M -56,-2 Q -40,6 -24,-2', R: 'M 24,-1 Q 40,8 57,-1' } as const
+const GLINT = { L: 'M -58,-42 Q -54,-50 -46,-52', R: 'M 22,-42 Q 26,-50 34,-52' } as const
+
+// The mole: a lower shading crescent and its single curly hair (rooted at the mole's upper left).
+const MOLE_SHADE = `M ${MOLE.x - MOLE.r * 0.8},${MOLE.y + 2.5} Q ${MOLE.x},${MOLE.y + MOLE.r * 1.15} ${MOLE.x + MOLE.r * 0.8},${MOLE.y + 2.5} Q ${MOLE.x},${MOLE.y + MOLE.r * 0.5} ${MOLE.x - MOLE.r * 0.8},${MOLE.y + 2.5} Z`
+const MOLE_HAIR = `M ${MOLE.x - 6},${MOLE.y - 4} C ${MOLE.x - 12},${MOLE.y - 11} ${MOLE.x - 18},${MOLE.y - 6} ${MOLE.x - 23},${MOLE.y - 12} C ${MOLE.x - 27},${MOLE.y - 17} ${MOLE.x - 24},${MOLE.y - 22} ${MOLE.x - 19},${MOLE.y - 20}`
 
 const DROP = 'M 0,-9 C 4,-3 7,1 7,5 A 7,7 0 1 1 -7,5 C -7,1 -4,-3 0,-9 Z'
 
@@ -193,10 +208,13 @@ export const UncleSvg = forwardRef(function UncleSvg(
             <path d={TUFT_STRANDS_R} stroke={C.hairLight} strokeWidth={3} fill="none" strokeLinecap="round" />
             <path d={TUFT_STRANDS_L} stroke={C.hairLight} strokeWidth={3} fill="none" strokeLinecap="round" />
           </g>
-          <g ref={r('ears')} {...A.ears}>
+          {/* ears: each slides/squashes on its own so the far ear tucks behind the skull on a turn */}
+          <g ref={r('earR')} {...A.earR}>
             <Inked d={EAR_R} fill={C.skin} w={8} />
             <path d={EAR_R_SHADE} fill={C.skinShade} />
             <path d={EAR_R_INNER} stroke={C.ink} strokeWidth={3} fill="none" strokeLinecap="round" />
+          </g>
+          <g ref={r('earL')} {...A.earL}>
             <Inked d={mirrorPath(EAR_R)} fill={C.skin} w={8} off="translate(-0.6 1.9)" />
             <path d={mirrorPath(EAR_R_SHADE)} fill={C.skinShade} />
             <path d={mirrorPath(EAR_R_INNER)} stroke={C.ink} strokeWidth={3} fill="none" strokeLinecap="round" />
@@ -275,7 +293,8 @@ export const UncleSvg = forwardRef(function UncleSvg(
             </g>
           </g>
 
-          {/* ——— face (parallax layers: deeper parts move less) ——— */}
+          {/* ——— face (parallax layers: deeper parts move less; the group foreshortens on a turn) ——— */}
+          <g ref={r('face')} {...A.face}>
           <g ref={r('cheeks')} {...A.cheeks}>
             <path
               d="M -30,26 Q -46,36 -52,52 M 30,26 Q 46,36 52,52"
@@ -346,27 +365,30 @@ export const UncleSvg = forwardRef(function UncleSvg(
             <path d="M -15,26 Q -10,31 -5,28 M 5,28 Q 10,31 15,26" stroke={C.ink} strokeWidth={2.6} fill="none" strokeLinecap="round" />
           </g>
 
+          {/* the signature mole: on the cheek beside the nose, with its one proud hair */}
           <g ref={r('mole')} {...A.mole}>
+            <ellipse cx={MOLE.x} cy={MOLE.y} rx={MOLE.r + 0.9} ry={MOLE.r * 0.92 + 0.9} fill={C.ink} transform="translate(1 1.5)" />
+            <ellipse cx={MOLE.x} cy={MOLE.y} rx={MOLE.r} ry={MOLE.r * 0.92} fill={C.mole} />
+            <path d={MOLE_SHADE} fill={C.moleShade} />
+            <ellipse cx={MOLE.x - 2.8} cy={MOLE.y - 3} rx={2.6} ry={1.9} fill={C.moleLight} transform={`rotate(-30 ${MOLE.x - 2.8} ${MOLE.y - 3})`} />
+            <circle cx={MOLE.x + 2.6} cy={MOLE.y - 3.6} r={0.9} fill={C.moleLight} />
             <g ref={r('moleHair')} {...A.moleHair}>
-              <path
-                d="M -45,11 C -47,1 -38,-1 -41,-9 C -42,-14 -36,-16 -34,-12"
-                stroke={C.ink}
-                strokeWidth={2.2}
-                fill="none"
-                strokeLinecap="round"
-              />
+              <path d={MOLE_HAIR} stroke={C.ink} strokeWidth={3.4} fill="none" strokeLinecap="round" />
             </g>
-            <ellipse cx={-44} cy={17} rx={7.4} ry={6.8} fill={C.ink} transform="translate(1 1.4)" />
-            <ellipse cx={-44} cy={17} rx={6.6} ry={6} fill="#6e3b26" />
-            <ellipse cx={-42} cy={19} rx={3.4} ry={2.6} fill="#55291a" />
-            <circle cx={-46.4} cy={14.6} r={1.8} fill="#c08560" />
           </g>
 
           <g ref={r('eyes')} {...A.eyes}>
+            {/* temples of the glasses (behind the rims): the far one shortens on a turn */}
+            <g ref={r('templeL')} {...A.templeL}>
+              <path d="M -72,-34 L -105,-28" stroke={C.frame} strokeWidth={5} strokeLinecap="round" />
+            </g>
+            <g ref={r('templeR')} {...A.templeR}>
+              <path d="M 72,-34 L 105,-28" stroke={C.frame} strokeWidth={5} strokeLinecap="round" />
+            </g>
             {(['L', 'R'] as const).map((s) => {
               const cx = s === 'L' ? -40 : 40
               return (
-                <g key={s}>
+                <g key={s} ref={r(s === 'L' ? 'eyeL' : 'eyeR')} {...(s === 'L' ? A.eyeL : A.eyeR)}>
                   <g ref={r(s === 'L' ? 'scleraL' : 'scleraR')} {...(s === 'L' ? A.scleraL : A.scleraR)}>
                     <ellipse cx={cx} cy={-30} rx={20} ry={22} fill={C.sclera} />
                     <g clipPath={url(s === 'L' ? 'eyeL' : 'eyeR')}>
@@ -396,50 +418,19 @@ export const UncleSvg = forwardRef(function UncleSvg(
                       strokeLinecap="round"
                     />
                   </g>
+                  {/* tired-uncle eye bag */}
+                  <path d={EYE_BAG[s]} stroke={C.skinDeep} strokeWidth={2.6} fill="none" strokeLinecap="round" />
+                  {/* round glasses: lens tint, ink rim, frame rim, glints */}
+                  <circle cx={cx} cy={-30} r={28} fill={C.lens} opacity={0.22} />
+                  <path d={RIM[s]} fill={C.ink} fillRule="evenodd" transform="translate(1.2 1.6)" />
+                  <path d={RIM[s]} fill={C.frame} fillRule="evenodd" />
+                  <path d={GLINT[s]} stroke="#fff" strokeWidth={3.6} fill="none" strokeLinecap="round" opacity={0.85} />
+                  <circle cx={cx - 19} cy={-35} r={2} fill="#fff" opacity={0.85} />
                 </g>
               )
             })}
-            {/* tired-uncle eye bags */}
-            <path
-              d="M -56,-2 Q -40,6 -24,-2 M 24,-1 Q 40,8 57,-1"
-              stroke={C.skinDeep}
-              strokeWidth={2.6}
-              fill="none"
-              strokeLinecap="round"
-            />
-            {/* round glasses */}
-            <g>
-              <path
-                d="M -72,-34 L -105,-28 M 72,-34 L 105,-28"
-                stroke={C.frame}
-                strokeWidth={5}
-                strokeLinecap="round"
-              />
-              <circle cx={-40} cy={-30} r={28} fill={C.lens} opacity={0.22} />
-              <circle cx={40} cy={-30} r={28} fill={C.lens} opacity={0.22} />
-              <path
-                d="M -40,-61 A 31,31 0 1 0 -39.99,-61 Z M -40,-55.5 A 25.5,25.5 0 1 1 -40.01,-55.5 Z M 40,-61 A 31,31 0 1 0 40.01,-61 Z M 40,-55.5 A 25.5,25.5 0 1 1 39.99,-55.5 Z"
-                fill={C.ink}
-                fillRule="evenodd"
-                transform="translate(1.2 1.6)"
-              />
-              <path
-                d="M -40,-61 A 31,31 0 1 0 -39.99,-61 Z M -40,-55.5 A 25.5,25.5 0 1 1 -40.01,-55.5 Z M 40,-61 A 31,31 0 1 0 40.01,-61 Z M 40,-55.5 A 25.5,25.5 0 1 1 39.99,-55.5 Z"
-                fill={C.frame}
-                fillRule="evenodd"
-              />
-              <path d="M -12,-38 Q 0,-48 12,-38" stroke={C.frame} strokeWidth={5.5} fill="none" strokeLinecap="round" />
-              <path
-                d="M -58,-42 Q -54,-50 -46,-52 M 22,-42 Q 26,-50 34,-52"
-                stroke="#fff"
-                strokeWidth={3.6}
-                fill="none"
-                strokeLinecap="round"
-                opacity={0.85}
-              />
-              <circle cx={-59} cy={-35} r={2} fill="#fff" opacity={0.85} />
-              <circle cx={21} cy={-35} r={2} fill="#fff" opacity={0.85} />
-            </g>
+            {/* bridge */}
+            <path d="M -12,-38 Q 0,-48 12,-38" stroke={C.frame} strokeWidth={5.5} fill="none" strokeLinecap="round" />
           </g>
 
           <g ref={r('brows')} {...A.brows}>
@@ -451,6 +442,7 @@ export const UncleSvg = forwardRef(function UncleSvg(
               <Inked d={mirrorPath(BROW_R)} fill={C.hair} w={7} off="translate(-0.6 1.9)" />
               <path d={mirrorPath(BROW_STRANDS_R)} stroke={C.hairLight} strokeWidth={2.6} fill="none" strokeLinecap="round" />
             </g>
+          </g>
           </g>
         </g>
 

@@ -37,7 +37,7 @@ export async function callStrict<K extends keyof LudApi>(
 }
 
 type Subscriptions = {
-  [K in keyof LudApi as K extends `on${string}` ? K : never]: LudApi[K]
+  [K in keyof LudApi as K extends `on${string}` ? K : never]-?: NonNullable<LudApi[K]>
 }
 
 /** Subscribe to a main → renderer channel; returns an unsubscribe function (no-op when unavailable). */

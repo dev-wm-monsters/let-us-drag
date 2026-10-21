@@ -1,13 +1,18 @@
 // Pose → SVG attribute values for every animated part (pure).
 // Used for the initial React render (and static/SSR renders) and by the rAF loop, so both always agree.
 import { armPath, headPath, JAW_DROP, lidLinePath, lidPath, mouthPath, mouthShape } from './paths'
-import { DEPTH, EYE_L, EYE_R, type Pose, SHOULDER_L, SHOULDER_R } from './pose'
+import { DEPTH, EYE_L, EYE_R, HEAD_PIVOT, type Pose, SHOULDER_L, SHOULDER_R, SQUASH_PIVOT_Y, turnRig } from './pose'
 
 export type Attrs = Record<string, string>
 
 const n = (x: number): string => (Math.round(x * 100) / 100).toString()
 const tr = (x: number, y: number): string => `translate(${n(x)} ${n(y)})`
 const layer = (p: Pose, d: { x: number; y: number }): string => tr(p.lx * d.x, p.ly * d.y)
+/** Horizontal scale about x = cx (and y = cy). */
+const scaleXAbout = (k: number, cx: number, cy = 0): string => `translate(${n(cx)} ${n(cy)}) scale(${n(k)} 1) translate(${n(-cx)} ${n(-cy)})`
+
+/** Mole position (cheek, left of the nose) — also the pivot of its one hair. */
+export const MOLE = { x: -63, y: 8, r: 10 } as const
 
 /** Chewing cheek pouches: grow out of the jowls (scale 0 = hidden). */
 function pouch(side: -1 | 1, puff: number, J: number): string {
@@ -30,7 +35,9 @@ export const PART_KEYS = [
   'pouchInkR',
   'pouchL',
   'pouchR',
-  'ears',
+  'earL',
+  'earR',
+  'face',
   'hair',
   'combover',
   'shine',
@@ -39,6 +46,10 @@ export const PART_KEYS = [
   'browL',
   'browR',
   'eyes',
+  'eyeL',
+  'eyeR',
+  'templeL',
+  'templeR',
   'pupilL',
   'pupilR',
   'lidL',
@@ -98,6 +109,7 @@ export function poseAttrs(p: Pose): Record<PartKey, Attrs> {
   const sR = { x: SHOULDER_R.x, y: SHOULDER_R.y + bodyDy }
   const armL = armPath(sL, { x: p.handL.x, y: p.handL.y }, 0.6)
   const armR = armPath(sR, { x: p.handR.x, y: p.handR.y }, -0.6)
+  const rig = turnRig(p.lx)
   return {
     root: {
       transform: `rotate(${n(p.rootRot)}) scale(${n(p.rootScale)})`,
@@ -105,7 +117,7 @@ export function poseAttrs(p: Pose): Record<PartKey, Attrs> {
     },
     body: { transform: tr(0, bodyDy) },
     head: {
-      transform: `${tr(p.headX, p.headY)} rotate(${n(p.headRot)} 0 110) translate(0 132) scale(${n(p.sx)} ${n(p.sy)}) translate(0 -132)`
+      transform: `${tr(p.headX, p.headY)} rotate(${n(p.headRot)} ${HEAD_PIVOT.x} ${HEAD_PIVOT.y}) translate(0 ${SQUASH_PIVOT_Y}) scale(${n(p.sx)} ${n(p.sy)}) translate(0 ${-SQUASH_PIVOT_Y})`
     },
     headInk: { d: head },
     headFill: { d: head },
@@ -115,7 +127,9 @@ export function poseAttrs(p: Pose): Record<PartKey, Attrs> {
     pouchInkR: { transform: pouch(1, puff, J) },
     pouchL: { transform: pouch(-1, puff, J) },
     pouchR: { transform: pouch(1, puff, J) },
-    ears: { transform: layer(p, DEPTH.ears) },
+    earL: { transform: `${layer(p, DEPTH.ears)} translate(${n(rig.earL.dx)} 0) ${scaleXAbout(rig.earL.sx, -104)}` },
+    earR: { transform: `${layer(p, DEPTH.ears)} translate(${n(rig.earR.dx)} 0) ${scaleXAbout(rig.earR.sx, 104)}` },
+    face: { transform: scaleXAbout(rig.faceSx, rig.faceCx) },
     hair: { transform: layer(p, DEPTH.hair) },
     combover: { transform: `rotate(${n(p.hairRot)} 6 -128)` },
     shine: { transform: layer(p, DEPTH.shine) },
@@ -127,6 +141,10 @@ export function poseAttrs(p: Pose): Record<PartKey, Attrs> {
     browL: { transform: `rotate(${n(-browAngle)} -78 -66)` },
     browR: { transform: `rotate(${n(browAngle)} 78 -66)` },
     eyes: { transform: layer(p, DEPTH.eyes) },
+    eyeL: { transform: scaleXAbout(rig.eyeSxL, EYE_L.x, EYE_L.y) },
+    eyeR: { transform: scaleXAbout(rig.eyeSxR, EYE_R.x, EYE_R.y) },
+    templeL: { transform: scaleXAbout(rig.templeSxL, -72, -34) },
+    templeR: { transform: scaleXAbout(rig.templeSxR, 72, -34) },
     pupilL: { transform: tr(p.pupilL.x, p.pupilL.y) },
     pupilR: { transform: tr(p.pupilR.x, p.pupilR.y) },
     lidL: { d: lidPath(EYE_L.x, EYE_L.y, EYE_RX, EYE_RY, p.lid) },
@@ -148,7 +166,7 @@ export function poseAttrs(p: Pose): Record<PartKey, Attrs> {
       opacity: n(0.25 + p.blush * 0.5)
     },
     mole: { transform: layer(p, DEPTH.mole) },
-    moleHair: { transform: `rotate(${n(p.moleHairRot)} -44 11)` },
+    moleHair: { transform: `rotate(${n(p.moleHairRot)} ${MOLE.x - 6} ${MOLE.y - 4})` },
     moustache: {
       transform: `${layer(p, DEPTH.moustache)} translate(0 ${n(-p.jaw * 6 - Math.max(0, p.smile) * 2)})`
     },

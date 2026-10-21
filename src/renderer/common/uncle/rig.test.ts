@@ -2,9 +2,24 @@ import { describe, expect, it } from 'vitest'
 import { mulberry32 } from '../prng'
 import { PART_KEYS, poseAttrs } from './attrs'
 import { armPath, headPath, JAW_DROP, lidPath, mouthPath, mouthShape } from './paths'
-import { createBrain, type Mood, moodTargets, PUPIL_MAX, rootTransform, settle, step } from './pose'
+import {
+  createBrain,
+  EYE_L,
+  EYE_R,
+  eyeLocalToHead,
+  headForward,
+  headInverse,
+  type Mood,
+  moodTargets,
+  type Pose,
+  PUPIL_MAX,
+  rootTransform,
+  settle,
+  step,
+  turnRig
+} from './pose'
 
-const MOODS: Mood[] = ['hidden', 'idle', 'appear', 'hover', 'feedMe', 'eat', 'chew', 'spit', 'choke', 'refuse', 'leave']
+const MOODS: Mood[] = ['hidden', 'idle', 'appear', 'hover', 'feedMe', 'eat', 'chew', 'spit', 'choke', 'refuse', 'leave', 'cancel']
 const noMods = { hamster: false, struggle: false }
 const NUM = /-?\d+(\.\d+)?/g
 
@@ -68,6 +83,65 @@ describe('pose brain', () => {
     expect(right.pupilL.x).toBeGreaterThan(5)
     expect(left.pupilR.x).toBeLessThan(-5)
     expect(right.headRot).toBeGreaterThan(0)
+  })
+
+  it('the head turn is clearly visible: ~±10° roll, strong parallax, far eye foreshortened (F1)', () => {
+    const right = settle('hover', 1.5, { x: 300, y: -60 })
+    const left = settle('hover', 1.5, { x: -300, y: -60 })
+    expect(right.headRot).toBeGreaterThan(8)
+    expect(right.headRot).toBeLessThan(12.5)
+    expect(left.headRot).toBeLessThan(-8)
+    // Nose (front) moves much more than the skull: a 3D turn, not a slide.
+    const attrs = poseAttrs(right)
+    const noseX = Number(/translate\((-?[\d.]+)/.exec(attrs.nose.transform ?? '')?.[1] ?? 'NaN')
+    expect(noseX).toBeGreaterThan(25)
+    expect(noseX).toBeGreaterThan(right.headX * 2)
+    // Turning right: the right eye is the far one and is narrower than the left one.
+    const rig = turnRig(right.lx)
+    expect(rig.eyeSxR).toBeLessThan(0.8)
+    expect(rig.eyeSxL).toBeGreaterThanOrEqual(1)
+    expect(turnRig(0)).toMatchObject({ eyeSxL: 1, eyeSxR: 1, faceSx: 1 })
+  })
+
+  it('head transform inverse/forward round-trip', () => {
+    const h = { headX: 7, headY: -3, headRot: 9.5, sx: 0.97, sy: 1.02 }
+    for (const p of [
+      { x: 0, y: 0 },
+      { x: -40, y: -30 },
+      { x: 300, y: -200 }
+    ]) {
+      const q = headForward(h, headInverse(h, p))
+      expect(q.x).toBeCloseTo(p.x, 6)
+      expect(q.y).toBeCloseTo(p.y, 6)
+    }
+  })
+
+  it('pupils point exactly at the target through the whole rig (roll, parallax, foreshortening)', () => {
+    const worldPupil = (pose: Pose, side: 'L' | 'R') => {
+      const e = side === 'L' ? EYE_L : EYE_R
+      const off = side === 'L' ? pose.pupilL : pose.pupilR
+      const rig = turnRig(pose.lx)
+      const h = { headX: pose.headX, headY: pose.headY, headRot: pose.headRot, sx: pose.sx, sy: pose.sy }
+      const centre = headForward(h, eyeLocalToHead(side, e, pose.lx, pose.ly, rig))
+      const pupil = headForward(h, eyeLocalToHead(side, { x: e.x + off.x, y: e.y + off.y }, pose.lx, pose.ly, rig))
+      return { centre, pupil }
+    }
+    for (const target of [
+      { x: 260, y: -220 },
+      { x: -260, y: -220 },
+      { x: -260, y: 200 },
+      { x: 260, y: 200 },
+      { x: 30, y: -300 }
+    ]) {
+      const pose = settle('hover', 2, target)
+      for (const side of ['L', 'R'] as const) {
+        const { centre, pupil } = worldPupil(pose, side)
+        const want = Math.atan2(target.y - centre.y, target.x - centre.x)
+        const got = Math.atan2(pupil.y - centre.y, pupil.x - centre.x)
+        const diff = Math.abs(Math.atan2(Math.sin(want - got), Math.cos(want - got)))
+        expect(diff).toBeLessThan((4 * Math.PI) / 180)
+      }
+    }
   })
 
   it('blinks within a few seconds (deterministic schedule)', () => {
@@ -149,6 +223,9 @@ describe('pose brain', () => {
     expect(t('refuse').knit).toBe(1) // angry brows
     expect(t('refuse').handL.x).toBeGreaterThan(0) // arms crossed
     expect(t('spit').happy).toBe(1)
+    expect(t('cancel', 0.15).jaw).toBeGreaterThan(0.6) // "ptoo!"
+    expect(t('cancel', 1).smile).toBeLessThan(0) // "fine, keep it."
+    expect(t('cancel', 1).handR.x).toBeGreaterThan(100) // shrug
     expect(moodTargets('chew', 1, 0, { hamster: true, struggle: false }).cheek).toBeGreaterThan(t('chew').cheek)
     expect(moodTargets('chew', 1, 0, { hamster: false, struggle: true }).sweat).toBeGreaterThan(0)
   })

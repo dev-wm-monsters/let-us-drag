@@ -58,6 +58,8 @@ export interface UncleSession {
   setCardHovered(on: boolean): void
   /** Feed Window "choose file" button: same path as a drop on the mouth. */
   feedFiles(files: File[]): void
+  /** Cancel the running job ("Spit it out" button, Esc while busy, E2E cancelActive). */
+  cancelJob(): void
 }
 
 export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
@@ -166,6 +168,22 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
     [dispatch, engage, resolveDrop]
   )
 
+  // ——— cancel ("Spit it out" button, Esc while busy, E2E cancelActive: one code path) ———
+  // startJob is validated asynchronously in main, so a cancel sent right after it could reach main
+  // before the job is registered and be lost. We therefore send cancelJob only after the startJob
+  // invoke has settled (IPC replies arrive after main registered the job).
+  const jobStarts = useRef(new Map<string, Promise<unknown>>())
+  const cancelJob = useCallback(() => {
+    const m = modelRef.current
+    if (!isBusy(m) || !m.job) return
+    const id = m.job.id
+    dispatch({ type: 'CANCEL' })
+    // The job may already have finished (min-chew wait): then the reducer shows the result instead.
+    if (modelRef.current.state !== 'cancel') return
+    const started = jobStarts.current.get(id) ?? Promise.resolve()
+    void started.catch(() => undefined).then(() => call('cancelJob', undefined, id))
+  }, [dispatch])
+
   // ——— HTML5 drag & drop (window-level: the whole overlay window is the sensor) ———
   useEffect(() => {
     const onDragEnter = (e: DragEvent) => {
@@ -244,21 +262,29 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
     }
   }, [host, updateLook])
 
-  // Esc cancels (and cancels a running job).
+  // Esc dismisses the Uncle, or cancels a running job (he spits the file back).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
-      const m = modelRef.current
-      if (isBusy(m) && m.job) void call('cancelJob', undefined, m.job.id)
-      dispatch({ type: 'ESC' })
+      if (isBusy(modelRef.current)) cancelJob()
+      else dispatch({ type: 'ESC' })
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [dispatch])
+  }, [cancelJob, dispatch])
 
   // ——— main → renderer channels ———
   useEffect(() => {
     let alive = true
+    // E2E simulated drop: same path as a real drop once the paths are known.
+    const testDrop = (p: TestDropPayload) => {
+      if (!p || !Array.isArray(p.paths) || isBusy(modelRef.current)) return
+      measure()
+      if (isResting(modelRef.current)) engage({ mimeTypes: [], count: p.paths.length })
+      dispatch({ type: 'DROP_START' })
+      dropPointRef.current = (p.optionId ? optionCenter(p.optionId) : null) ?? { ...stageCenter.current }
+      void resolveDrop(p.paths, p.optionId ?? 'mouth')
+    }
     void call('getSettings', null as unknown as Settings).then((s) => {
       if (alive && s) dispatch({ type: 'SETTINGS', settings: s })
     })
@@ -280,20 +306,16 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
         cursorRef.current = p
         updateLook()
       }),
-      subscribe('onTestDrop', (p: TestDropPayload) => {
-        if (!p || !Array.isArray(p.paths) || isBusy(modelRef.current)) return
-        measure()
-        if (isResting(modelRef.current)) engage({ mimeTypes: [], count: p.paths.length })
-        dispatch({ type: 'DROP_START' })
-        dropPointRef.current = p.optionId ? optionCenter(p.optionId) : { ...stageCenter.current }
-        void resolveDrop(p.paths, p.optionId ?? 'mouth')
-      })
+      subscribe('onTestDrop', testDrop),
+      // E2E: drops on the Feed Window (dropFilesOnFeed) — only the feed renderer handles them.
+      host === 'feed' ? subscribe('onTestFeedDrop', testDrop) : () => undefined,
+      subscribe('onTestCancel', () => cancelJob())
     ]
     return () => {
       alive = false
       for (const off of offs) off()
     }
-  }, [dispatch, engage, host, measure, optionCenter, resolveDrop, updateLook])
+  }, [cancelJob, dispatch, engage, host, measure, optionCenter, resolveDrop, updateLook])
 
   // ——— state-entry effects: sounds, job start, timers ———
   const cardHovered = useRef(false)
@@ -331,7 +353,10 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
         sounds.play('gulp')
         const job = m.job
         if (job) {
-          void callStrict('startJob', { id: job.id, optionId: job.optionId, inputPaths: job.inputPaths }).catch(() =>
+          const started = callStrict('startJob', { id: job.id, optionId: job.optionId, inputPaths: job.inputPaths })
+          jobStarts.current.clear()
+          jobStarts.current.set(job.id, started)
+          started.catch(() =>
             dispatch({
               type: 'JOB_EVENT',
               event: { type: 'error', jobId: job.id, error: { code: 'INTERNAL', message: '' } }
@@ -348,6 +373,10 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
         sounds.play('whoosh')
         if (m.struggle) later(450, () => sounds.play('burp'))
         scheduleLeave(host === 'feed' ? TIMING.feedResultMs : TIMING.resultMs)
+        break
+      case 'cancel':
+        sounds.play('whoosh')
+        scheduleLeave(TIMING.cancelMs)
         break
       case 'choke':
         sounds.play('cough')
@@ -368,7 +397,7 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
   }, [state, session, jobId, dispatch, host, scheduleLeave, sounds])
 
   useEffect(() => {
-    if (state !== 'spit' && state !== 'choke' && state !== 'refuse' && leaveTimer.current) {
+    if (state !== 'spit' && state !== 'choke' && state !== 'refuse' && state !== 'cancel' && leaveTimer.current) {
       clearTimeout(leaveTimer.current)
       leaveTimer.current = null
     }
@@ -410,5 +439,18 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
     cardHovered.current = on
   }, [])
 
-  return { model, dispatch, lookRef, dropPointRef, stageRef, sounds, choose, hoverOption, reveal, setCardHovered, feedFiles }
+  return {
+    model,
+    dispatch,
+    lookRef,
+    dropPointRef,
+    stageRef,
+    sounds,
+    choose,
+    hoverOption,
+    reveal,
+    setCardHovered,
+    feedFiles,
+    cancelJob
+  }
 }

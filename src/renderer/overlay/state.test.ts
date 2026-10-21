@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import type { DroppedItem, JobEvent, Settings } from '../../shared/types'
 import { DEFAULT_SETTINGS } from '../../shared/types'
-import { type Action, initialModel, isBusy, type Model, reducer, speech, visibleOptions, wantsInteractive } from './state'
+import {
+  type Action,
+  initialModel,
+  isBusy,
+  type Model,
+  reducer,
+  speech,
+  uncleMoodAttr,
+  visibleOptions,
+  wantsInteractive
+} from './state'
 
 const item = (name: string, extra: Partial<DroppedItem> = {}): DroppedItem => {
   const dot = name.lastIndexOf('.')
@@ -206,7 +216,7 @@ describe('overlay state machine', () => {
     expect(run(initialModel('overlay'), { type: 'DISARM' }).state).toBe('hidden')
   })
 
-  it('Esc while chewing leaves (controller cancels the job); late events are ignored', () => {
+  it('Esc while chewing spits the file back (D3: controller cancels the job); late events are ignored', () => {
     let m = run(
       initialModel('overlay'),
       png,
@@ -214,9 +224,67 @@ describe('overlay state machine', () => {
       { type: 'EAT_DONE' },
       { type: 'ESC' }
     )
-    expect(m.state).toBe('leave')
+    expect(m.state).toBe('cancel')
+    expect(speech(m)).toBe('Fine, keep it.')
+    expect(isBusy(m)).toBe(false)
     m = reducer(m, ev({ type: 'error', jobId: 'j', error: { code: 'CANCELLED', message: '' } }))
-    expect(m.state).toBe('leave')
+    expect(m.state).toBe('cancel')
+    m = reducer(m, ev({ type: 'done', jobId: 'j', outputPaths: ['/home/u/a.jpg'] }))
+    expect(m.state).toBe('cancel')
+    m = run(m, { type: 'LEAVE' }, { type: 'LEAVE_DONE' })
+    expect(m.state).toBe('hidden')
+  })
+
+  it('CANCEL (button / test hook) works while eating or chewing, and is a no-op otherwise', () => {
+    const eating = run(initialModel('overlay'), png, {
+      type: 'DROP_RESOLVED',
+      items: [item('a.png')],
+      target: 'to-jpg',
+      jobId: 'j'
+    })
+    expect(reducer(eating, { type: 'CANCEL' }).state).toBe('cancel')
+    expect(reducer(reducer(eating, { type: 'EAT_DONE' }), { type: 'CANCEL' }).state).toBe('cancel')
+    const appear = run(initialModel('overlay'), png)
+    expect(reducer(appear, { type: 'CANCEL' })).toBe(appear)
+    expect(reducer(initialModel('feed'), { type: 'CANCEL' }).state).toBe('idle')
+    // Not interactive: the overlay never steals focus for the spit-back.
+    expect(wantsInteractive(reducer(eating, { type: 'CANCEL' }))).toBe(false)
+  })
+
+  it('a CANCELLED error from the engine spits the file back instead of choking (no min-chew wait)', () => {
+    const m = run(
+      initialModel('feed'),
+      { type: 'DROP_RESOLVED', items: [item('a.mov')], target: 'to-mp4', jobId: 'j' },
+      { type: 'EAT_DONE' },
+      ev({ type: 'error', jobId: 'j', error: { code: 'CANCELLED', message: 'Cancelled.' } })
+    )
+    expect(m.state).toBe('cancel')
+    expect(m.message).toBeNull()
+  })
+
+  it('cancelling after the job already finished (min-chew wait) shows the result instead', () => {
+    const m = run(
+      initialModel('overlay'),
+      png,
+      { type: 'DROP_RESOLVED', items: [item('a.png')], target: 'to-jpg', jobId: 'j' },
+      { type: 'EAT_DONE' },
+      ev({ type: 'done', jobId: 'j', outputPaths: ['/home/u/a.jpg'] }),
+      { type: 'CANCEL' }
+    )
+    expect(m.state).toBe('spit')
+    expect(m.outputPaths).toEqual(['/home/u/a.jpg'])
+  })
+
+  it('a new drag can engage while the spit-back is playing', () => {
+    const m = run(
+      initialModel('overlay'),
+      png,
+      { type: 'DROP_RESOLVED', items: [item('a.png')], target: 'to-jpg', jobId: 'j' },
+      { type: 'CANCEL' },
+      png
+    )
+    expect(m.state).toBe('appear')
+    expect(m.session).toBe(2)
   })
 
   it('arm never interrupts a meal, but resets a finished session', () => {
@@ -241,6 +309,17 @@ describe('overlay state machine', () => {
     m = reducer(m, { type: 'DROP_RESOLVED', items: [item('song.wav')], target: 'to-mp3', jobId: 'k' })
     expect(m.state).toBe('eat')
     expect(m.session).toBe(2)
+  })
+
+  it('data-uncle-mood: hamster for 3+ files, struggle for > 200 MB (struggle wins), none otherwise', () => {
+    const drop = (items: DroppedItem[]) =>
+      run(initialModel('overlay'), { type: 'DROP_RESOLVED', items, target: 'zip', jobId: 'j' })
+    expect(uncleMoodAttr(initialModel('overlay'))).toBe('none')
+    expect(uncleMoodAttr(drop([item('a.png')]))).toBe('none')
+    expect(uncleMoodAttr(drop([item('a.png'), item('b.png'), item('c.png')]))).toBe('hamster')
+    const big = item('big.mov', { sizeBytes: 300 * 1024 * 1024 })
+    expect(uncleMoodAttr(drop([big]))).toBe('struggle')
+    expect(uncleMoodAttr(drop([big, item('b.mov'), item('c.mov')]))).toBe('struggle')
   })
 
   it('progress events clamp to [0,1] or -1', () => {

@@ -16,6 +16,7 @@ export type Mood =
   | 'choke'
   | 'refuse'
   | 'leave'
+  | 'cancel'
 
 export interface Modifiers {
   hamster: boolean
@@ -63,21 +64,125 @@ export interface Pose {
 export const EYE_L: Point = { x: -40, y: -30 }
 export const EYE_R: Point = { x: 40, y: -30 }
 export const PUPIL_MAX = 9.5
-/** Parallax depth per layer (multiplies the normalised look vector, in viewBox units). */
+/**
+ * Parallax depth per layer (multiplies the normalised look vector, in viewBox units).
+ * Front features (nose, moustache) move most, the skull less, ears/hair (behind the face) move the
+ * other way: together with the head roll this reads as a 3D head turn.
+ */
 export const DEPTH = {
-  head: { x: 7, y: 5 },
-  ears: { x: -8, y: -2 },
-  hair: { x: -4, y: -2 },
-  shine: { x: 12, y: 8 },
-  wrinkles: { x: 9, y: 7 },
-  brows: { x: 13, y: 10 },
-  eyes: { x: 14, y: 10 },
-  nose: { x: 21, y: 13 },
-  cheeks: { x: 10, y: 7 },
-  mole: { x: 15, y: 9 },
-  moustache: { x: 18, y: 11 },
-  mouth: { x: 15, y: 9 }
+  head: { x: 11, y: 7 },
+  ears: { x: -12, y: -4 },
+  hair: { x: -8, y: -4 },
+  shine: { x: 20, y: 13 },
+  wrinkles: { x: 16, y: 12 },
+  brows: { x: 25, y: 17 },
+  eyes: { x: 25, y: 16 },
+  nose: { x: 38, y: 22 },
+  cheeks: { x: 19, y: 12 },
+  mole: { x: 26, y: 15 },
+  moustache: { x: 33, y: 19 },
+  mouth: { x: 27, y: 15 }
 } as const
+
+/** Head roll toward the look target at full turn (deg). */
+export const HEAD_TURN_DEG = 11
+/** Pivot of the head roll (the neck) and of the squash & stretch, in face coordinates. */
+export const HEAD_PIVOT: Point = { x: 0, y: 110 }
+export const SQUASH_PIVOT_Y = 132
+
+/**
+ * Foreshortening for a head turn of `lx` (-1..1, + = turning to the viewer's right): the features
+ * compress a little, the far eye narrows, the near eye widens. Shared by attrs (SVG) and the pupil
+ * solver, so the eyes keep pointing exactly at the target whatever the turn.
+ */
+export interface TurnRig {
+  /** Face-features group: horizontal scale about x = faceCx. */
+  faceCx: number
+  faceSx: number
+  /** Per-eye horizontal scale about the eye centre. */
+  eyeSxL: number
+  eyeSxR: number
+  /** Far-side temple of the glasses shortens (goes behind the head), near side lengthens. */
+  templeSxL: number
+  templeSxR: number
+  /** Ears: inward shift + horizontal squash (the far ear tucks behind the skull). */
+  earL: { dx: number; sx: number }
+  earR: { dx: number; sx: number }
+}
+
+export function turnRig(lx: number): TurnRig {
+  const u = clamp(lx, -1, 1)
+  const a = Math.abs(u)
+  const farR = u >= 0
+  const far = { eye: 1 - 0.36 * a, temple: 1 - 0.8 * a, ear: { dx: 0, sx: 1 - 0.45 * a } }
+  const near = { eye: 1 + 0.05 * a, temple: 1 + 0.25 * a, ear: { dx: 0, sx: 1 + 0.08 * a } }
+  // Both ears slide against the turn (they sit behind the face plane); the far one more.
+  const farEarDx = -u * 16
+  const nearEarDx = -u * 4
+  return {
+    faceCx: u * 30,
+    faceSx: 1 - 0.1 * a,
+    eyeSxL: farR ? near.eye : far.eye,
+    eyeSxR: farR ? far.eye : near.eye,
+    templeSxL: farR ? near.temple : far.temple,
+    templeSxR: farR ? far.temple : near.temple,
+    earL: farR ? { dx: nearEarDx, sx: near.ear.sx } : { dx: farEarDx, sx: far.ear.sx },
+    earR: farR ? { dx: farEarDx, sx: far.ear.sx } : { dx: nearEarDx, sx: near.ear.sx }
+  }
+}
+
+/** Head group transform parameters (see attrs.ts `head`). */
+export interface HeadXf {
+  headX: number
+  headY: number
+  headRot: number
+  sx: number
+  sy: number
+}
+
+/** Map a point from the overlay (viewBox) space into head-local (face) coordinates. */
+export function headInverse(h: HeadXf, w: Point): Point {
+  // Inverse of: translate(hx hy) rotate(rot, pivot) translate(0 S) scale(sx sy) translate(0 -S)
+  const px = w.x - h.headX - HEAD_PIVOT.x
+  const py = w.y - h.headY - HEAD_PIVOT.y
+  const r = (-h.headRot * Math.PI) / 180
+  const rx = px * Math.cos(r) - py * Math.sin(r) + HEAD_PIVOT.x
+  const ry = px * Math.sin(r) + py * Math.cos(r) + HEAD_PIVOT.y
+  return { x: rx / (h.sx || 1), y: (ry - SQUASH_PIVOT_Y) / (h.sy || 1) + SQUASH_PIVOT_Y }
+}
+
+/** Forward mapping of a head-local point into viewBox space (inverse of headInverse). */
+export function headForward(h: HeadXf, p: Point): Point {
+  const x = p.x * h.sx
+  const y = (p.y - SQUASH_PIVOT_Y) * h.sy + SQUASH_PIVOT_Y
+  const r = (h.headRot * Math.PI) / 180
+  const dx = x - HEAD_PIVOT.x
+  const dy = y - HEAD_PIVOT.y
+  return {
+    x: dx * Math.cos(r) - dy * Math.sin(r) + HEAD_PIVOT.x + h.headX,
+    y: dx * Math.sin(r) + dy * Math.cos(r) + HEAD_PIVOT.y + h.headY
+  }
+}
+
+/**
+ * Where an eye-local point (inside the eye's scale wrapper, before the pupil offset) ends up in
+ * head-local coordinates, and back. Used to aim the pupils through the whole rig.
+ */
+export function eyeLocalToHead(side: 'L' | 'R', p: Point, lx: number, ly: number, rig: TurnRig): Point {
+  const e = side === 'L' ? EYE_L : EYE_R
+  const k = side === 'L' ? rig.eyeSxL : rig.eyeSxR
+  const x1 = (p.x - e.x) * k + e.x + lx * DEPTH.eyes.x
+  const y1 = p.y + ly * DEPTH.eyes.y
+  return { x: (x1 - rig.faceCx) * rig.faceSx + rig.faceCx, y: y1 }
+}
+
+function headToEyeLocal(side: 'L' | 'R', p: Point, lx: number, ly: number, rig: TurnRig): Point {
+  const e = side === 'L' ? EYE_L : EYE_R
+  const k = side === 'L' ? rig.eyeSxL : rig.eyeSxR
+  const x0 = (p.x - rig.faceCx) / rig.faceSx + rig.faceCx - lx * DEPTH.eyes.x
+  const y0 = p.y - ly * DEPTH.eyes.y
+  return { x: (x0 - e.x) / k + e.x, y: y0 }
+}
 
 const SHOULDER_L: Point = { x: -66, y: 132 }
 const SHOULDER_R: Point = { x: 66, y: 132 }
@@ -340,6 +445,27 @@ export function moodTargets(mood: Mood, moodT: number, t: number, mods: Modifier
         follow: 0.15
       }
     }
+    case 'cancel': {
+      // "Ptoo!" — cheeks puff, the mouth pops open and the file flies back out; then a grumpy shrug.
+      const ptoo = moodT < 0.22
+      const puff = moodT < 0.1
+      return {
+        ...base,
+        jaw: puff ? 0.05 : ptoo ? 0.85 : 0.1,
+        smile: ptoo ? -0.1 : -0.3,
+        brow: ptoo ? 0.8 : 0.45,
+        knit: ptoo ? 0 : 0.25,
+        lid: ptoo ? 0 : 0.45,
+        cheek: puff ? 1.1 : 0,
+        blush: 0.7,
+        jawOmega: 34,
+        dy: ptoo ? -5 : 0,
+        rot: ptoo ? 0 : -5,
+        handL: ptoo ? { x: -70, y: 150, r: 20 } : { x: -114, y: 108, r: -72 + Math.sin(t * 5) * 4 },
+        handR: ptoo ? { x: 70, y: 150, r: -20 } : { x: 114, y: 108, r: 72 - Math.sin(t * 5) * 4 },
+        follow: 0.4
+      }
+    }
     case 'leave': {
       const wave = Math.sin(t * 14) * 18
       const p = Math.min(1, moodT / 0.38)
@@ -385,6 +511,7 @@ export function step(b: Brain, i: PoseInput): StepResult {
     }
     if (i.mood === 'spit') b.sq.v -= 1.6
     if (i.mood === 'refuse') b.sq.v += 0.8
+    if (i.mood === 'cancel') b.sq.v += 1.6
     b.lastMood = i.mood
   }
   if (i.mood === 'eat' && i.moodT > 0.2 && i.moodT - dt <= 0.2) b.sq.v -= 2.8 // jaw snap = squash
@@ -481,16 +608,23 @@ function finish(
   const lookVel = dt > 0 ? (lx - prevLx) / dt : 0
   springStep(b.hairRot, clamp(-lookVel * 18, -30, 30), 6, dt)
 
-  // Pupils: exact direction to the target from each eye's current position.
-  const headX = lx * DEPTH.head.x * motion + tg.dx * motion
-  const headY = ly * DEPTH.head.y * motion + breath * 1.2 * motion + tg.dy * motion
-  const eyeDX = headX + lx * DEPTH.eyes.x * motion
-  const eyeDY = headY + ly * DEPTH.eyes.y * motion
+  // Head turn: translate + roll toward the target, slight narrowing (foreshortening).
+  const lxm = lx * motion
+  const lym = ly * motion
+  const rig = turnRig(lxm)
+  const headX = lxm * DEPTH.head.x + tg.dx * motion
+  const headY = lym * DEPTH.head.y + breath * 1.2 * motion + tg.dy * motion
+  const headRot = lxm * HEAD_TURN_DEG + tg.rot * motion
+  const sxTurn = sx * (1 - 0.035 * Math.abs(lxm))
+
+  // Pupils: exact direction to the target, solved through the whole rig (roll, squash, parallax,
+  // per-eye foreshortening) so the eyes stay locked on the file however far the head turns.
   let pl: Point = { x: 0, y: 0 }
   let pr: Point = { x: 0, y: 0 }
   if (i.target) {
-    pl = pupilOffset({ x: EYE_L.x + eyeDX, y: EYE_L.y + eyeDY }, i.target, PUPIL_MAX)
-    pr = pupilOffset({ x: EYE_R.x + eyeDX, y: EYE_R.y + eyeDY }, i.target, PUPIL_MAX)
+    const local = headInverse({ headX, headY, headRot, sx: sxTurn, sy }, i.target)
+    pl = pupilOffset(EYE_L, headToEyeLocal('L', local, lxm, lym, rig), PUPIL_MAX)
+    pr = pupilOffset(EYE_R, headToEyeLocal('R', local, lxm, lym, rig), PUPIL_MAX)
   } else {
     pl = { x: lx * PUPIL_MAX * 0.8, y: ly * PUPIL_MAX * 0.7 }
     pr = { ...pl }
@@ -513,11 +647,11 @@ function finish(
     bodyY: breath * 0.6 * motion,
     headX,
     headY,
-    headRot: lx * 5 * motion + tg.rot * motion,
-    sx,
+    headRot,
+    sx: sxTurn,
     sy,
-    lx: lx * motion,
-    ly: ly * motion,
+    lx: lxm,
+    ly: lym,
     jaw: clamp(b.jaw.x, 0, 1.15),
     smile: clamp(b.smile.x, -1, 1),
     brow: b.brow.x,
