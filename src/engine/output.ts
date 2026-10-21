@@ -73,24 +73,26 @@ function writeError(err: unknown, dir: string): EngineError {
 
 /**
  * Commit a finished temp file under a unique final name without ever replacing an existing file
- * (SEC-110). link() fails with EEXIST instead of replacing: an atomic "create if absent". On
- * filesystems without hard links (FAT/exFAT, some network shares) copyFile(COPYFILE_EXCL) is the
- * equally race-safe fallback (O_EXCL). rename() is never used for files: it silently replaces.
+ * (SEC-110). link() fails with EEXIST instead of replacing: an atomic "create if absent". When
+ * link() fails for any other reason, copyFile(COPYFILE_EXCL) is the equally race-safe fallback
+ * (O_EXCL), and ITS error is what gets reported. There is deliberately no allow-list of "no hard
+ * links here" codes: FAT/exFAT and network drives answer differently per OS (Linux vfat: EPERM;
+ * macOS msdosfs/smbfs: ENOTSUP; Windows FAT/exFAT: ERROR_INVALID_FUNCTION, which libuv reports as
+ * EISDIR; some SMB servers: EINVAL/EACCES/UNKNOWN), and a real permission problem makes the copy
+ * fail too. rename() is never used for files: it silently replaces.
  */
-export async function commitFile(tempPath: string, dir: string, name: string): Promise<string> {
+export async function commitFile(tempPath: string, dir: string, name: string, linkFile: typeof link = link): Promise<string> {
   const { base, ext } = splitName(name)
   let linkWorks = true
   for (let n = 0; n < MAX_COLLISIONS; n++) {
     const finalPath = join(dir, numberedName(base, ext, n))
     if (linkWorks) {
       try {
-        await link(tempPath, finalPath)
+        await linkFile(tempPath, finalPath)
         await unlink(tempPath).catch(() => undefined)
         return finalPath
       } catch (err) {
-        const code = errnoCode(err)
-        if (code === 'EEXIST') continue
-        if (!LINK_UNSUPPORTED.has(code ?? '')) throw writeError(err, dir)
+        if (errnoCode(err) === 'EEXIST') continue
         linkWorks = false
       }
     }
@@ -106,15 +108,38 @@ export async function commitFile(tempPath: string, dir: string, name: string): P
   throw new EngineError('OUTPUT_NOT_WRITABLE', 'Too many files with the same name already exist here.')
 }
 
-/** Errors from link() that mean "no hard links here", not "no permission". */
-const LINK_UNSUPPORTED = new Set(['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'ENOSYS', 'EXDEV', 'EMLINK', 'EINVAL'])
+/** Error codes Windows reports while a virus scanner or the indexer briefly holds a fresh file. */
+const TRANSIENT_WIN_RENAME = new Set(['EPERM', 'EACCES', 'EBUSY'])
+
+/**
+ * rename() that retries a few times on Windows for transient sharing violations (the same idea as
+ * graceful-fs). Only used for children of our own temp folder, so retrying cannot touch user files.
+ */
+export async function renameRetrying(
+  from: string,
+  to: string,
+  platform: NodeJS.Platform = process.platform,
+  renameFn: typeof rename = rename
+): Promise<void> {
+  const attempts = platform === 'win32' ? 6 : 1
+  for (let i = 1; ; i++) {
+    try {
+      await renameFn(from, to)
+      return
+    } catch (err) {
+      if (i >= attempts || !TRANSIENT_WIN_RENAME.has(errnoCode(err) ?? '')) throw err
+      await new Promise((r) => setTimeout(r, 40 * i))
+    }
+  }
+}
 
 async function moveChildren(from: string, to: string): Promise<void> {
   for (const child of await readdir(from)) {
-    // `to` was created empty by us a moment ago, so these names cannot clash with user files.
-    await rename(join(from, child), join(to, child))
+    // `to` was created empty by us a moment ago (and checked empty right before), so these names
+    // cannot clash with user files.
+    await renameRetrying(join(from, child), join(to, child))
   }
-  await rm(from, { recursive: true, force: true })
+  await rm(from, { recursive: true, force: true, maxRetries: 3 })
 }
 
 /**
@@ -141,6 +166,9 @@ export async function commitDir(tempDir: string, parent: string, name: string): 
       if (code === 'ENOTEMPTY' || code === 'EEXIST') {
         if (process.platform !== 'win32') continue // someone wrote into our reserved folder: leave it, take the next name
       }
+      // Windows' rename() replaces existing FILES, so never move into a folder that is no longer
+      // empty (someone wrote into our reserved name meanwhile): leave it and take the next name.
+      if ((await readdir(finalPath).catch(() => [])).length > 0) continue
       try {
         await moveChildren(tempDir, finalPath)
         return finalPath

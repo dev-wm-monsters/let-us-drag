@@ -2,7 +2,7 @@
 // PDF output uses the FAKE htmlToPdf adapter (tests/helpers/engine.ts); these tests check what
 // the engine sends to it (sanitized, self-contained HTML) and that the bytes are saved. Real
 // Chromium rendering is exercised by the Electron E2E suite.
-import { readFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { PDFDocument } from 'pdf-lib'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -156,6 +156,74 @@ describe('text (md / txt / html)', () => {
     expect(d).toContain('banana')
     expect(d).not.toContain('alert(1)')
     expect((await runOption('to-html', [src])).error?.code).toBe('UNSUPPORTED')
+  })
+
+  it('Markdown → HTML: hostile markup is sanitized and the file carries the no-network/no-script CSP (D17, F-17)', async () => {
+    const hostile = [
+      '# Safe heading',
+      '',
+      '<script>alert("md")</script>',
+      '',
+      '<img src="x" onerror="alert(2)"> and <IMG SRC=x ONERROR=alert(3)>',
+      '',
+      '<img src="https://evil.example/track.png" alt="tracker">',
+      '',
+      '<meta http-equiv="refresh" content="0;url=https://evil.example/">',
+      '',
+      '<iframe src="https://evil.example/frame"></iframe>',
+      '',
+      '<p style="background:url(https://evil.example/bg.png)">styled</p>',
+      '',
+      '[click](javascript:alert(4)) and [web](https://example.com/ok)',
+      '',
+      '![remote](https://evil.example/md-image.png)',
+      '',
+      '<a href="#top" onclick="alert(5)">anchor</a>',
+      ''
+    ].join('\n')
+    const md = await textFile(join(dir, 'hostile.md'), hostile)
+    const [out] = await convertOk('to-html', [md])
+    expect(basename(out!)).toBe('hostile.html')
+    const h = await readFile(out!, 'utf8')
+    expect(h).toContain('<h1>Safe heading</h1>')
+    expect(h).toContain(`<meta http-equiv="Content-Security-Policy" content="${RENDER_CSP}">`)
+    // the CSP meta must come before anything that could load (it only applies to later content)
+    expect(h.indexOf('Content-Security-Policy')).toBeLessThan(h.indexOf('<body>'))
+    expect(h).not.toMatch(/<script/i)
+    expect(h).not.toMatch(/\son[a-z]+\s*=/i)
+    expect(h).not.toMatch(/javascript:/i)
+    expect(h).not.toContain('evil.example')
+    expect(h).not.toMatch(/<iframe/i)
+    expect(h).not.toMatch(/http-equiv="refresh"/i)
+    expect(h.match(/http-equiv=/gi)).toHaveLength(1) // only our CSP
+    expect(h).toContain('styled')
+    expect(h).toContain('href="https://example.com/ok"') // plain web links stay clickable
+    expect(h).toContain('href="#top"')
+  })
+
+  it('DOCX → HTML is sanitized the same way and carries the CSP (D17, F-17)', async () => {
+    const d = await import('docx')
+    const doc = new d.Document({
+      sections: [
+        {
+          children: [
+            new d.Paragraph({ children: [new d.TextRun('<script>alert("docx")</script> literal text')] }),
+            new d.Paragraph({ children: [new d.ExternalHyperlink({ link: 'javascript:alert(6)', children: [new d.TextRun('bad link')] })] }),
+            new d.Paragraph({ children: [new d.ExternalHyperlink({ link: 'https://example.com/ok', children: [new d.TextRun('good link')] })] })
+          ]
+        }
+      ]
+    })
+    const src = join(dir, 'hostile.docx')
+    await writeFile(src, await d.Packer.toBuffer(doc))
+    const [out] = await convertOk('to-html', [src])
+    const h = await readFile(out!, 'utf8')
+    expect(h).toContain(`<meta http-equiv="Content-Security-Policy" content="${RENDER_CSP}">`)
+    expect(h).not.toMatch(/<script/i)
+    expect(h).toContain('&lt;script&gt;') // the document's TEXT is kept, escaped
+    expect(h).not.toMatch(/javascript:/i)
+    expect(h).toContain('bad link')
+    expect(h).toContain('href="https://example.com/ok"')
   })
 
   it('several text files → one merged PDF', async () => {

@@ -9,7 +9,7 @@
 //    (process.type === 'utility'), then expects a DOM. We import it while presenting Node mode
 //    and with @napi-rs/canvas blocked, which is enough for text extraction.
 import { readFile } from 'node:fs/promises'
-import { basename, join } from 'node:path'
+import { basename, posix, win32 } from 'node:path'
 import type { EngineAdapters, PdfRenderOptions } from '../api'
 import { EngineError, aboutFile, errMessage, invalidInput, throwIfAborted } from '../errors'
 import { MAX_PDF_IMAGE_PIXELS, MAX_PDF_PAGES } from '../limits'
@@ -79,9 +79,35 @@ async function loadPdfjs(): Promise<Pdfjs> {
   return pdfjsPromise
 }
 
-function assetDir(sub: string): string {
-  // pdfjs reads these with fs in Node; it concatenates file names, so a trailing separator is required.
-  return join(packageDir('pdfjs-dist'), sub) + (process.platform === 'win32' ? '\\' : '/')
+/**
+ * Base "URL" for one of pdf.js's data folders (cmaps, standard_fonts, wasm, iccs).
+ *
+ * pdfjs-dist 6.4.299 (legacy/build/pdf.mjs) validates every factory URL with `val.endsWith("/")`
+ * (getFactoryUrlProp, else "Invalid factory url: … must include trailing slash") and, in Node, reads
+ * `${baseUrl}${filename}` with `fs.promises.readFile(string)` (NodeBinaryDataFactory). A string is
+ * a filesystem PATH for fs, never a URL, so a "file://" URL would not work here. The answer is a
+ * plain path that ends with "/": on Windows every backslash becomes "/" (the Win32 file APIs and
+ * Node's fs accept "/" as a separator, including "//server/share/…" UNC paths). An extended-length
+ * prefix ("\\?\") is dropped first because such paths do not accept "/". On POSIX a backslash is an
+ * ordinary file-name character and is left alone.
+ */
+export function pdfjsAssetUrl(dir: string, platform: NodeJS.Platform = process.platform): string {
+  let p = dir
+  if (platform === 'win32') {
+    if (/^\\\\\?\\UNC\\/i.test(p)) p = `\\\\${p.slice(8)}`
+    else if (/^\\\\\?\\[a-z]:/i.test(p)) p = p.slice(4)
+    p = p.replace(/\\/g, '/')
+  }
+  return p.endsWith('/') ? p : `${p}/`
+}
+
+/** The local data-folder options passed to pdf.js getDocument() (SEC-71). */
+export function pdfjsAssetOptions(
+  root: string = packageDir('pdfjs-dist'),
+  platform: NodeJS.Platform = process.platform
+): { standardFontDataUrl: string; cMapUrl: string; wasmUrl: string; iccUrl: string } {
+  const sub = (name: string): string => pdfjsAssetUrl(platform === 'win32' ? win32.join(root, name) : posix.join(root, name), platform)
+  return { standardFontDataUrl: sub('standard_fonts'), cMapUrl: sub('cmaps'), wasmUrl: sub('wasm'), iccUrl: sub('iccs') }
 }
 
 /** Scale for a page so the canvas stays within the limits. */
@@ -107,6 +133,18 @@ function tooManyPages(n: number): EngineError {
   return invalidInput(`This PDF has ${n.toLocaleString('en-US')} pages. I can turn at most ${MAX_PDF_PAGES.toLocaleString('en-US')} pages into pictures at once.`)
 }
 
+/** Fixed pdf.js getDocument() options (SEC-71); the data-folder paths come from pdfjsAssetOptions(). */
+export const PDFJS_DOCUMENT_OPTIONS = {
+  cMapPacked: true,
+  useSystemFonts: false,
+  enableXfa: false,
+  disableFontFace: true,
+  maxImageSize: MAX_PDF_IMAGE_PIXELS,
+  isOffscreenCanvasSupported: false,
+  isImageDecoderSupported: false,
+  verbosity: 0
+} as const
+
 /**
  * pdf.js options (SEC-71): local-only font/cmap/wasm data, no system fonts, no XFA, no font-face
  * injection, a cap on embedded image size, no OffscreenCanvas/ImageDecoder. (`isEvalSupported`
@@ -115,21 +153,15 @@ function tooManyPages(n: number): EngineError {
 async function openPdf(path: string): Promise<PdfDoc> {
   const pdfjs = await loadPdfjs()
   const data = await readPdfBytes(path)
-  const task = pdfjs.getDocument({
-    data,
-    standardFontDataUrl: assetDir('standard_fonts'),
-    cMapUrl: assetDir('cmaps'),
-    cMapPacked: true,
-    wasmUrl: assetDir('wasm'),
-    iccUrl: assetDir('iccs'),
-    useSystemFonts: false,
-    enableXfa: false,
-    disableFontFace: true,
-    maxImageSize: MAX_PDF_IMAGE_PIXELS,
-    isOffscreenCanvasSupported: false,
-    isImageDecoderSupported: false,
-    verbosity: 0
-  })
+  let task: ReturnType<Pdfjs['getDocument']>
+  try {
+    task = pdfjs.getDocument({ data, ...PDFJS_DOCUMENT_OPTIONS, ...pdfjsAssetOptions() })
+  } catch (err) {
+    // getDocument() only throws synchronously for bad options (e.g. B-016, a factory URL without a
+    // trailing "/"): our setup is broken, not the user's file, so this is never INPUT_INVALID.
+    throw new EngineError('TOOL_FAILED', "I couldn't open PDF files right now.", `pdf.js getDocument: ${errMessage(err)}`)
+  }
+  // Errors about the file itself only come from the loading task (B-017: damaged → INPUT_INVALID).
   try {
     return await task.promise
   } catch (err) {

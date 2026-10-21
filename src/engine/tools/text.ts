@@ -1,6 +1,6 @@
 // Document (DOCX via mammoth) and text (Markdown / plain text / HTML) conversions.
-// HTML → PDF always goes through EngineAdapters.htmlToPdf (Chromium printToPDF in the app) with
-// SANITIZED markup inside a document carrying a no-network, no-script CSP.
+// HTML → PDF always goes through EngineAdapters.htmlToPdf (Chromium printToPDF in the app). Both the
+// HTML sent to it and every .html file we write are SANITIZED and carry a no-network, no-script CSP.
 import { readFile } from 'node:fs/promises'
 import type { OptionId } from '../../shared/types'
 import { EngineError, invalidInput } from '../errors'
@@ -28,9 +28,18 @@ export async function readText(path: string): Promise<string> {
   return buf.toString('utf8').replace(/^﻿/, '')
 }
 
+/**
+ * Untrusted HTML → a complete, self-contained document: sanitized (no scripts, handlers, frames,
+ * meta refreshes or external resources) and carrying the no-network/no-script CSP meta. Used for
+ * everything the engine renders to PDF AND for every .html file it writes (TPM decision D17, F-17).
+ */
+export function safeHtmlDocument(html: string, title: string): string {
+  return wrapHtmlDocument(sanitizeHtml(html), title, { csp: true })
+}
+
 /** Render an HTML fragment/document to PDF bytes through the adapter, sanitized. */
 export async function renderPdf(html: string, title: string, htmlToPdf: HtmlToPdf): Promise<Uint8Array> {
-  const doc = wrapHtmlDocument(sanitizeHtml(html), title, { csp: true })
+  const doc = safeHtmlDocument(html, title)
   if (Buffer.byteLength(doc, 'utf8') > MAX_HTML_BYTES) {
     throw invalidInput(`This document is too big to print (more than ${formatBytes(MAX_HTML_BYTES)} of text and pictures).`)
   }
@@ -66,7 +75,7 @@ export async function convertText(optionId: OptionId, path: string, ext: string,
       return { data: await renderPdf(input.html, title, htmlToPdf), ext: 'pdf' }
     case 'to-html':
       if (input.kind === 'html') throw new EngineError('UNSUPPORTED')
-      return { data: wrapHtmlDocument(input.html, title), ext: 'html' }
+      return { data: safeHtmlDocument(input.html, title), ext: 'html' }
     case 'to-docx': {
       const html = input.kind === 'txt' ? plainTextToDocxHtml(input.source) : input.html
       return { data: await htmlToDocx(html, title), ext: 'docx' }
@@ -120,7 +129,7 @@ export async function convertDocx(
     case 'to-pdf':
       return { data: await renderPdf(await docxHtml(path, signal), title, htmlToPdf), ext: 'pdf' }
     case 'to-html':
-      return { data: wrapHtmlDocument(await docxHtml(path, signal), title), ext: 'html' }
+      return { data: safeHtmlDocument(await docxHtml(path, signal), title), ext: 'html' }
     case 'to-md':
       return { data: htmlToMarkdown(await docxHtml(path, signal)), ext: 'md' }
     case 'to-txt': {
