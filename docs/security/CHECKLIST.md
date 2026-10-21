@@ -10,6 +10,9 @@ plus the evidence (file:line, command output, test name). "MUST" items block the
 Status column: the state on the scaffold baseline `develop@e9fae72`. "—" means it cannot be judged yet
 because the code does not exist. "FAIL F-xx" refers to the baseline findings in §K.
 
+**Current status (phase 2, `develop@a6c0d94`): see [REVIEW.md](REVIEW.md)**, which records PASS/FAIL per ID with
+file:line evidence, new findings F-15..F-22, and which owner is expected to close each ID.
+
 Shorthand used in the "Verify" column:
 - `grep:` means `git grep -nE '<regex>' -- <paths>` must return the stated result.
 - `test:` means an automated test (vitest or Playwright) that the owner adds; its name goes into the evidence.
@@ -74,7 +77,7 @@ Shorthand used in the "Verify" column:
 | SEC-60 | MUST | ffmpeg is spawned with `spawn(path, argsArray, {shell:false, windowsHide:true})` and `-nostdin -hide_banner`; never `exec`/`execSync`/`shell:true`, never string-joined commands. | grep: `shell:\s*true` → none; grep `exec\(`/`execSync` in `src` → none; see SEC-146 for the lint gate. | — |
 | SEC-61 | MUST | Every ffmpeg input is preceded by `-protocol_whitelist file` (plus `pipe` only if used). | Unit test of the args builder; engine test: an HLS playlist fixture that references `http://127.0.0.1:9/x.ts` fails without a network attempt. | — |
 | SEC-62 | MUST | Every ffmpeg input is preceded by `-format_whitelist <category list>` (video/audio: `mov,mp4,m4a,3gp,3g2,mj2,matroska,webm,avi,mp3,wav,ogg,flac,aac`; ICO/BMP: `ico,bmp_pipe`; verify with `ffmpeg -demuxers` of each shipped build). | Unit test of the args builder; engine test: `ffconcat version 1.0\nfile x.wav` saved as `.mp3` → `INPUT_INVALID`. | — |
-| SEC-63 | MUST | Paths given to ffmpeg are absolute and prefixed with `file:`; image outputs do not use `image2` pattern expansion (`-update 1` or an explicit muxer); a `%` in a file name works. | Engine test: input named `a%03d -x.mp4` converts correctly. | — |
+| SEC-63 | MUST | Paths given to ffmpeg are absolute (and may be prefixed with `file:`, which only stops protocol confusion); **inputs** are never opened by the `image2` demuxer as a sequence pattern (BMP/ICO: `-f image2 -pattern_type none`, or `-f bmp_pipe`; audio/video: the SEC-62 whitelist without `image2`); image outputs do not use `image2` pattern expansion (`-update 1` or an explicit muxer); a `%` in a file name works. Phase 2 correction: `file:` does **not** stop the sequence expansion [V, REVIEW.md F-20]. | Engine test: input named `a%03d -x.mp4` converts correctly; `a%03d.bmp` next to a different `a001.bmp` converts its own content. | — |
 | SEC-64 | MUST | ffmpeg is passed `-n` (never overwrite), and the output goes through the SEC-110 commit. | Args-builder unit test. | — |
 | SEC-65 | MUST | Cancel and timeout kill the ffmpeg process (and children) and delete partial outputs. | Engine test: cancel during a long encode → no process left, no output file. | — |
 | SEC-70 | MUST | `pdfjs-dist` ≥ 4.2.67 (CVE-2024-4367). | `npm ls pdfjs-dist`. | PASS (6.4.299) |
