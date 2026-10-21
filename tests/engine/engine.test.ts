@@ -3,7 +3,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
-import { join, relative } from 'node:path'
+import { isAbsolute, join, relative } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Engine, HostToWorker, WorkerToHost } from '../../src/engine/api'
 import { Limiter, createEngine, describePaths } from '../../src/engine/index'
@@ -33,8 +33,16 @@ describe('describePaths', () => {
   })
 
   it('rejects relative paths and reports missing files', async () => {
-    await expect(describePaths([relative(process.cwd(), join(dir, 'x'))])).rejects.toMatchObject({ code: 'UNSUPPORTED' })
+    // B-018: on Windows the temp dir and the cwd can be on different drives, and then relative()
+    // returns an ABSOLUTE path ("D:\…"). Only a path that really is relative must be refused.
+    const rel = relative(process.cwd(), join(dir, 'x'))
+    if (!isAbsolute(rel)) await expect(describePaths([rel])).rejects.toMatchObject({ code: 'UNSUPPORTED' })
     await expect(describePaths(['relative/file.txt'])).rejects.toMatchObject({ code: 'UNSUPPORTED' })
+    await expect(describePaths([join('..', 'up', 'file.txt')])).rejects.toMatchObject({ code: 'UNSUPPORTED' })
+    if (process.platform === 'win32') {
+      // drive-relative ("C:file.txt", resolved against that drive's cwd) is not absolute either
+      await expect(describePaths(['C:file.txt'])).rejects.toMatchObject({ code: 'UNSUPPORTED' })
+    }
     await expect(describePaths([join(dir, 'missing.png')])).rejects.toMatchObject({ code: 'INPUT_NOT_FOUND' })
   })
 })

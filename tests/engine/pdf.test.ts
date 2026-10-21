@@ -4,7 +4,8 @@ import { basename, join } from 'node:path'
 import sharp from 'sharp'
 import { PDFDocument } from 'pdf-lib'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { fitScale, MAX_CANVAS_PIXELS, MAX_CANVAS_SIDE } from '../../src/engine/tools/pdf'
+import { existsSync } from 'node:fs'
+import { fitScale, MAX_CANVAS_PIXELS, MAX_CANVAS_SIDE, PDFJS_DOCUMENT_OPTIONS, pdfjsAssetOptions, pdfjsAssetUrl } from '../../src/engine/tools/pdf'
 import { MAGIC, makeTempDir, pdfFile, startsWith } from '../helpers/fixtures'
 import { convertOk, runOption } from '../helpers/engine'
 
@@ -22,6 +23,62 @@ describe('fitScale', () => {
     const s = fitScale(14_400, 14_400)
     expect(14_400 * s).toBeLessThanOrEqual(MAX_CANVAS_SIDE)
     expect((14_400 * s) ** 2).toBeLessThanOrEqual(MAX_CANVAS_PIXELS * 1.0001)
+  })
+})
+
+describe('pdf.js data-folder URLs (B-016, B-017)', () => {
+  const WIN_ROOT = 'D:\\a\\let-us-drag\\let-us-drag\\node_modules\\pdfjs-dist'
+
+  it('win32: backslashes become "/", always a trailing "/", extended-length prefixes dropped', () => {
+    expect(pdfjsAssetUrl(`${WIN_ROOT}\\cmaps`, 'win32')).toBe('D:/a/let-us-drag/let-us-drag/node_modules/pdfjs-dist/cmaps/')
+    expect(pdfjsAssetUrl(`${WIN_ROOT}\\cmaps\\`, 'win32')).toBe('D:/a/let-us-drag/let-us-drag/node_modules/pdfjs-dist/cmaps/')
+    expect(pdfjsAssetUrl('\\\\server\\share\\app\\cmaps', 'win32')).toBe('//server/share/app/cmaps/')
+    expect(pdfjsAssetUrl('\\\\?\\C:\\Program Files\\App\\cmaps', 'win32')).toBe('C:/Program Files/App/cmaps/')
+    expect(pdfjsAssetUrl('\\\\?\\UNC\\server\\share\\cmaps', 'win32')).toBe('//server/share/cmaps/')
+  })
+
+  it('POSIX: unchanged apart from the trailing "/" (a backslash is a normal file-name character there)', () => {
+    expect(pdfjsAssetUrl('/opt/app/node_modules/pdfjs-dist/cmaps', 'linux')).toBe('/opt/app/node_modules/pdfjs-dist/cmaps/')
+    expect(pdfjsAssetUrl('/Applications/Let us drag!.app/x\\y/wasm/', 'darwin')).toBe('/Applications/Let us drag!.app/x\\y/wasm/')
+  })
+
+  it('every option for a Windows install is a forward-slash path ending in "/"', () => {
+    const opts = pdfjsAssetOptions(WIN_ROOT, 'win32')
+    expect(opts).toEqual({
+      standardFontDataUrl: 'D:/a/let-us-drag/let-us-drag/node_modules/pdfjs-dist/standard_fonts/',
+      cMapUrl: 'D:/a/let-us-drag/let-us-drag/node_modules/pdfjs-dist/cmaps/',
+      wasmUrl: 'D:/a/let-us-drag/let-us-drag/node_modules/pdfjs-dist/wasm/',
+      iccUrl: 'D:/a/let-us-drag/let-us-drag/node_modules/pdfjs-dist/iccs/'
+    })
+  })
+
+  it('on this machine, base + file name points at the real pdf.js data files (how pdf.js reads them in Node)', () => {
+    const opts = pdfjsAssetOptions()
+    for (const v of Object.values(opts)) expect(v.endsWith('/')).toBe(true)
+    expect(existsSync(`${opts.cMapUrl}78-H.bcmap`)).toBe(true)
+    expect(existsSync(`${opts.standardFontDataUrl}FoxitDingbats.pfb`)).toBe(true)
+    expect(existsSync(`${opts.wasmUrl}openjpeg.wasm`)).toBe(true)
+    expect(existsSync(`${opts.iccUrl}CGATS001Compat-v2-micro.icc`)).toBe(true)
+  })
+
+  it('pdf.js accepts the win32 options; the old backslash form is what CI rejected', async () => {
+    const g = globalThis as { pdfjsWorker?: unknown }
+    g.pdfjsWorker ??= await import('pdfjs-dist/legacy/build/pdf.worker.mjs')
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
+    const winOpts = pdfjsAssetOptions(WIN_ROOT, 'win32')
+    // The pre-fix value (join() + "\\") throws synchronously inside getDocument(): that was B-016,
+    // and because it happened before the loading task existed it surfaced as INTERNAL (B-017).
+    expect(() => pdfjs.getDocument({ data: new Uint8Array([1]), ...winOpts, cMapUrl: `${WIN_ROOT}\\cmaps\\` })).toThrow(/must include trailing slash/)
+
+    const good = await readFile(await pdfFile(join(dir, 'win-opts.pdf'), 1))
+    const task = pdfjs.getDocument({ data: new Uint8Array(good), ...PDFJS_DOCUMENT_OPTIONS, ...winOpts })
+    expect((await task.promise).numPages).toBe(1)
+    await task.destroy()
+
+    // With the same options, a damaged PDF fails in the loading task (→ INPUT_INVALID), not in getDocument().
+    const bad = pdfjs.getDocument({ data: new TextEncoder().encode('%PDF-1.7\nthis is garbage'), ...PDFJS_DOCUMENT_OPTIONS, ...winOpts })
+    await expect(bad.promise).rejects.toMatchObject({ name: 'InvalidPDFException' })
+    await bad.destroy()
   })
 })
 

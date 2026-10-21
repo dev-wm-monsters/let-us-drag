@@ -9,6 +9,7 @@ import {
   mergedName,
   numberedName,
   pagesFolderName,
+  renameRetrying,
   splitName,
   suffixedName,
   unzipFolderName,
@@ -71,6 +72,55 @@ describe('atomic commit, never overwrite', () => {
     const final = await commitDir(temp, dir, 'pages')
     expect(final).toBe(join(dir, 'pages (1)'))
     expect(await readdir(join(dir, 'pages'))).toEqual(['keep.txt'])
+  })
+
+  it('commitFile falls back to an exclusive copy whatever error link() gives (FAT/exFAT/network drives)', async () => {
+    const sub = join(dir, 'nolinks')
+    await mkdir(sub)
+    await writeFile(join(sub, 'y.txt'), 'original')
+    // Windows reports CreateHardLink on FAT/exFAT (ERROR_INVALID_FUNCTION) as EISDIR; Linux vfat
+    // says EPERM, macOS msdosfs ENOTSUP, some SMB servers something else again.
+    for (const code of ['EISDIR', 'EPERM', 'ENOTSUP', 'EINVAL', 'UNKNOWN']) {
+      const temp = join(sub, `.tmp-${code}`)
+      await writeFile(temp, code)
+      let calls = 0
+      const noLinks = async (): Promise<void> => {
+        calls++
+        throw Object.assign(new Error(`link failed: ${code}`), { code })
+      }
+      const final = await commitFile(temp, sub, 'y.txt', noLinks)
+      expect(calls).toBe(1) // not retried once we know hard links don't work here
+      expect(await readFile(final, 'utf8')).toBe(code)
+      expect(await readdir(sub)).not.toContain(`.tmp-${code}`)
+    }
+    expect(await readFile(join(sub, 'y.txt'), 'utf8')).toBe('original')
+    expect((await readdir(sub)).sort()).toEqual(['y (1).txt', 'y (2).txt', 'y (3).txt', 'y (4).txt', 'y (5).txt', 'y.txt'])
+  })
+
+  it('commitFile still reports OUTPUT_NOT_WRITABLE when the copy fails too', async () => {
+    const noLinks = async (): Promise<void> => {
+      throw Object.assign(new Error('nope'), { code: 'EPERM' })
+    }
+    await expect(commitFile(join(dir, 'no-such-temp'), join(dir, 'no-such-dir'), 'z.txt', noLinks)).rejects.toMatchObject({ code: 'OUTPUT_NOT_WRITABLE' })
+  })
+
+  it('renameRetrying retries transient Windows sharing violations only', async () => {
+    let n = 0
+    const flaky = async (): Promise<void> => {
+      if (++n < 3) throw Object.assign(new Error('busy'), { code: 'EBUSY' })
+    }
+    await renameRetrying('a', 'b', 'win32', flaky)
+    expect(n).toBe(3)
+    n = 0
+    await expect(renameRetrying('a', 'b', 'linux', flaky)).rejects.toMatchObject({ code: 'EBUSY' })
+    expect(n).toBe(1)
+    const gone = async (): Promise<void> => {
+      n++
+      throw Object.assign(new Error('gone'), { code: 'ENOENT' })
+    }
+    n = 0
+    await expect(renameRetrying('a', 'b', 'win32', gone)).rejects.toMatchObject({ code: 'ENOENT' })
+    expect(n).toBe(1)
   })
 
   it('OutputStager: temp files are hidden, committed in order, the rest cleaned up', async () => {
