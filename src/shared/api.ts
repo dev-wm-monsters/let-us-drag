@@ -15,8 +15,7 @@ export const IPC = {
   overlayInteractive: 'lud:overlay-interactive', // (interactive: boolean) => void (focus/click for feedMe)
   overlayDone: 'lud:overlay-done', // () => void  renderer finished its leave animation
   openFeedWindow: 'lud:open-feed-window', // () => void
-  // Additive (Platform, v0.1):
-  overlayEngaged: 'lud:overlay-engaged', // () => void  overlay renderer saw a Files dragenter → main stops moving the sensor
+  overlayEngaged: 'lud:overlay-engaged', // () => void  renderer saw a real file dragenter; overlay is now visible (stop following the cursor)
   openSettingsWindow: 'lud:open-settings-window', // () => void
   // main → renderer (send)
   jobEvent: 'lud:job-event', // JobEvent
@@ -53,8 +52,7 @@ export interface LudApi {
   onOverlayDisarm(cb: () => void): () => void
   onCursor(cb: (p: { x: number; y: number }) => void): () => void
   onSettingsChanged(cb: (s: Settings) => void): () => void
-  // Additive (Platform, v0.1):
-  /** Overlay only: a drag carrying Files entered the sensor; main stops following the cursor. */
+  /** Overlay renderer received a file dragenter and shows the Uncle (main: stop moving the sensor). */
   overlayEngaged(): Promise<void>
   openSettingsWindow(): Promise<void>
   onPlatformStatusChanged(cb: (s: PlatformStatus) => void): () => void

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Let us drag! — visual harness</title>
+    <style>
+      /* A fake desktop behind the transparent overlay, for screenshots only. */
+      html.harness-desktop,
+      html.harness-desktop body {
+        background:
+          radial-gradient(circle at 30% 20%, #9fc6e8 0, transparent 55%),
+          radial-gradient(circle at 80% 80%, #b9a6dc 0, transparent 50%),
+          linear-gradient(135deg, #7aa7cf, #8d84c4) !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./harness.tsx"></script>
+  </body>
+</html>

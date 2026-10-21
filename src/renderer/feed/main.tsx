@@ -1,4 +1,11 @@
-// Scaffold placeholder. Owned by the Frontend dev (docs/PLAN.md §7).
+import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import '../common/styles.css'
+import '../common/windows.css'
+import { FeedApp } from './App'
 
-createRoot(document.getElementById('root')!).render(<h1>Let us drag! — feed</h1>)
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <FeedApp />
+  </StrictMode>
+)
