@@ -1,8 +1,9 @@
 name: Package
 
 on:
+  # Packaging uses 4 runners (2 of them macOS); run it on main, on release tags, or on demand.
   push:
-    branches: [main, develop]
+    branches: [main]
     tags: ['v*']
   workflow_dispatch:
 
@@ -31,27 +32,46 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: node scripts/fetch-ffmpeg.mjs ${{ matrix.plat }} ${{ matrix.arch }}
+      - name: Fetch ffmpeg
+        shell: bash
+        run: mkdir -p ci-logs && set -o pipefail && node scripts/fetch-ffmpeg.mjs ${{ matrix.plat }} ${{ matrix.arch }} 2>&1 | tee ci-logs/ffmpeg.log
       - name: Verify ffmpeg encoders we rely on
         shell: bash
         run: |
           exe=resources/bin/${{ matrix.plat }}-${{ matrix.arch }}/ffmpeg
           [ "$RUNNER_OS" = "Windows" ] && exe="$exe.exe"
           "$exe" -hide_banner -encoders > encoders.txt
+          "$exe" -hide_banner -version | head -1 | tee -a ci-logs/ffmpeg.log
           for e in libx264 libvpx-vp9 libopus libmp3lame libvorbis aac flac pcm_s16le gif png mjpeg bmp; do
-            grep -q " $e " encoders.txt || { echo "missing encoder: $e"; exit 1; }
+            grep -q " $e " encoders.txt || { echo "missing encoder: $e" | tee -a ci-logs/ffmpeg.log; exit 1; }
           done
-          echo "all required encoders present"
-      - run: npm run build
-      - run: npx electron-builder ${{ matrix.builder }} --publish never
+          echo "all required encoders present" | tee -a ci-logs/ffmpeg.log
+      - name: Build
+        shell: bash
+        run: set -o pipefail && npm run build 2>&1 | tee ci-logs/build.log
+      - name: Package
+        shell: bash
+        run: set -o pipefail && npx electron-builder ${{ matrix.builder }} --publish never 2>&1 | tee ci-logs/package.log
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - name: Inspect macOS signature
         if: runner.os == 'macOS'
+        shell: bash
         run: |
           app=$(find release -maxdepth 3 -name "*.app" | head -1)
-          codesign -dv --verbose=2 "$app" 2>&1 | head -20
-          lipo -archs "$app/Contents/MacOS/"* || true
+          { echo "app: $app"; codesign -dv --verbose=2 "$app" 2>&1 | head -20; codesign --verify --deep --strict "$app" && echo "codesign verify: OK";
+            lipo -archs "$app/Contents/MacOS/"* 2>&1; } | tee ci-logs/signature.log
+      - name: Artifact sizes
+        shell: bash
+        run: ls -la release/ | grep -E "\.(dmg|exe|AppImage|deb)$" | tee ci-logs/sizes.log
+      - name: Report results as annotations
+        if: always()
+        shell: bash
+        run: |
+          for f in ci-logs/*.log; do
+            [ -f "$f" ] || continue
+            node scripts/ci-report.mjs notice "${{ matrix.name }} $(basename "$f" .log)" "$f" 60
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: LetUsDrag-${{ matrix.name }}

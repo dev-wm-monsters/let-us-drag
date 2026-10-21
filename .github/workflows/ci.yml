@@ -39,13 +39,32 @@ jobs:
           exe=ffmpeg; [ "$RUNNER_OS" = "Windows" ] && exe=ffmpeg.exe
           plat=$(node -p process.platform); arch=$(node -p process.arch)
           echo "LUD_FFMPEG_PATH=$GITHUB_WORKSPACE/resources/bin/$plat-$arch/$exe" >> "$GITHUB_ENV"
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm run build
-      - run: npm test
+      - name: Typecheck
+        shell: bash
+        run: mkdir -p ci-logs && set -o pipefail && npm run typecheck 2>&1 | tee ci-logs/typecheck.log
+      - name: Lint
+        shell: bash
+        run: set -o pipefail && npm run lint 2>&1 | tee ci-logs/lint.log
+      - name: Build
+        shell: bash
+        run: set -o pipefail && npm run build 2>&1 | tee ci-logs/build.log
+      - name: Unit + engine tests
+        shell: bash
+        run: set -o pipefail && npm test 2>&1 | tee ci-logs/test.log
       - name: E2E (Linux, Xvfb)
         if: runner.os == 'Linux'
-        run: xvfb-run -a npm run test:e2e
+        shell: bash
+        run: set -o pipefail && xvfb-run -a npm run test:e2e 2>&1 | tee ci-logs/e2e.log
+      - name: Report results as annotations
+        if: always()
+        shell: bash
+        run: |
+          for f in ci-logs/*.log; do
+            [ -f "$f" ] || continue
+            name=$(basename "$f" .log)
+            if grep -qiE "(error|failed|✗|×)" "$f"; then lvl=warning; else lvl=notice; fi
+            node scripts/ci-report.mjs "$lvl" "${{ matrix.os }} $name" "$f" 60
+          done
       - name: Upload test artifacts
         if: always()
         uses: actions/upload-artifact@v4
