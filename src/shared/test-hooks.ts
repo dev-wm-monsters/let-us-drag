@@ -66,5 +66,15 @@ export const TEST_CANCEL_CHANNEL = 'lud:test-cancel' as const
  *   `"onboarding-done"`, `"platform-status"`, `"accessibility-section"`, `"grant-accessibility"`,
  *   `"open-feed-window"`, `"test-sound"`
  * - option bubbles are <button>s: clickable only while files are held (feedMe after a drop on the mouth)
+ * Additive (Frontend, phase 2):
+ * - overlay root and feed root carry `data-uncle-mood` = "hamster" | "struggle" | "none" (TPM D1;
+ *   struggle wins when both apply; set from the drop until the session rests, like data-hamster)
+ * - `data-uncle-state` may also be `cancel` (TPM D3): the user cancelled during eat/chew; the Uncle spits
+ *   the file back, the speech bubble says "Fine, keep it.", then → leave → hidden (feed: idle) after ~1.4 s.
+ *   A CANCELLED job error for the running job enters the same state.
+ * - `data-testid="cancel-job"` ("Spit it out" button on the progress ring) exists only while chewing;
+ *   clicking it, Esc (window focused) and `cancelActive()` (renderer side: LudApi.onTestCancel) all run
+ *   the same code path: one `cancelJob(jobId)` call, sent after the startJob invoke settled.
+ * - Feed Window handles `dropFilesOnFeed` via LudApi.onTestFeedDrop (same path as onTestDrop).
  */
 export {}

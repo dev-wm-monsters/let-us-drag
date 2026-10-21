@@ -1,6 +1,6 @@
 // Visual QA harness entry: renders the real overlay / feed / settings UI in plain Chromium with a
 // mocked window.lud. Open via `node src/renderer/dev/serve.mjs` →
-//   http://127.0.0.1:5199/dev/harness.html?view=overlay|feed|settings[&plain=1&hungry=1&platform=darwin&reason=mac-permission&firstRun=1&jobs=auto]
+//   http://127.0.0.1:5199/dev/harness.html?view=overlay|feed|settings[&plain=1&hungry=1&platform=darwin&reason=mac-permission&firstRun=1&jobs=auto&bg=flat]
 // Drive it from Playwright through window.__harness (see src/renderer/dev/capture.mjs).
 import type { PlatformStatus, Settings } from '../../shared/types'
 import { createMockLud, type MockControl } from './mock-lud'
@@ -91,7 +91,7 @@ window.__harness = {
   }
 }
 
-if (view === 'overlay') document.documentElement.classList.add('harness-desktop')
+if (view === 'overlay') document.documentElement.classList.add(q.get('bg') === 'flat' ? 'harness-flat' : 'harness-desktop')
 
 // Import the real window entry after the mock is installed.
 if (view === 'feed') await import('../feed/main')

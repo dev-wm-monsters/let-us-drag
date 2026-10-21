@@ -2,7 +2,7 @@
 // Shared by the overlay window and the Feed Window. Pure presentation driven by the session model.
 import { type CSSProperties, memo, type ReactNode, useCallback, useMemo } from 'react'
 import type { ConversionOption, OptionId } from '../../shared/types'
-import { type Model, speech, visibleOptions } from '../overlay/state'
+import { type Model, speech, uncleMoodAttr, visibleOptions } from '../overlay/state'
 import { ringLayout } from './geometry'
 import { baseName, LINES, shortName } from './text'
 import { Uncle } from './uncle/Uncle'
@@ -31,6 +31,33 @@ export function uncleOffset(width: number, vx: number, vy: number): { x: number;
 
 function moodFor(m: Model): Mood {
   return m.state
+}
+
+/** "Spit it out" button on the progress ring (TPM D3). Angle in degrees (0 = right, -90 = up). */
+export const CANCEL_ANGLE = -45
+
+function CancelButton({ radius, onCancel }: { radius: number; onCancel(): void }) {
+  const a = (CANCEL_ANGLE * Math.PI) / 180
+  const style = { '--x': `${Math.round(Math.cos(a) * radius)}px`, '--y': `${Math.round(Math.sin(a) * radius)}px` } as CSSProperties
+  return (
+    <button
+      type="button"
+      className="lud-cancel"
+      style={style}
+      data-testid="cancel-job"
+      title={LINES.cancelHint}
+      aria-label={`${LINES.cancelHint} (cancel)`}
+      // The overlay is not focusable while chewing, but it still receives clicks (no focus needed).
+      onClick={onCancel}
+    >
+      <span className="lud-cancel-x" aria-hidden>
+        ✕
+      </span>
+      <span className="lud-cancel-tip" aria-hidden>
+        {LINES.cancelHint}
+      </span>
+    </button>
+  )
 }
 
 interface OptionsRingProps {
@@ -117,7 +144,15 @@ function PlainTarget({ state }: { state: Model['state'] }) {
   return (
     <div className={`lud-plain lud-plain-${state}`} data-testid="plain-target">
       <div className="lud-plain-core">
-        {state === 'spit' ? '✓' : state === 'choke' || state === 'refuse' ? '✕' : state === 'chew' || state === 'eat' ? '…' : '+'}
+        {state === 'spit'
+          ? '✓'
+          : state === 'choke' || state === 'refuse'
+            ? '✕'
+            : state === 'cancel'
+              ? '↩'
+              : state === 'chew' || state === 'eat'
+                ? '…'
+                : '+'}
       </div>
     </div>
   )
@@ -149,12 +184,17 @@ export function Stage({ s, testId, uncleWidth, ring, reducedMotion, idleExtra, c
 
   // Fly-in start point relative to the stage centre.
   let fly: CSSProperties | null = null
-  if (model.state === 'eat') {
+  if (model.state === 'eat' || model.state === 'cancel') {
     const el = s.stageRef.current
     const r = el?.getBoundingClientRect()
     const from = s.dropPointRef.current
-    const fx = r && from ? from.x - (r.left + r.width / 2) : 0
-    const fy = r && from ? from.y - (r.top + r.height / 2) : 0
+    let fx = r && from ? from.x - (r.left + r.width / 2) : 0
+    let fy = r && from ? from.y - (r.top + r.height / 2) : 0
+    if (model.state === 'cancel' && Math.hypot(fx, fy) < 60) {
+      // Dropped on the mouth (or unknown): spit it up and to the left, away from the cancel button.
+      fx = -ring.radius * 0.8
+      fy = -ring.radius * 0.45
+    }
     fly = { '--fx': `${fx}px`, '--fy': `${fy}px`, '--tx': '0px', '--ty': `${plain ? 0 : mouth.y}px` } as CSSProperties
   }
 
@@ -171,6 +211,7 @@ export function Stage({ s, testId, uncleWidth, ring, reducedMotion, idleExtra, c
       data-hamster={model.hamster ? 'true' : 'false'}
       data-struggle={model.struggle ? 'true' : 'false'}
       data-plain={plain ? 'true' : 'false'}
+      data-uncle-mood={uncleMoodAttr(model)}
       style={{ '--uncle-scale': scale } as CSSProperties}
     >
       <div className="lud-center">
@@ -234,14 +275,21 @@ export function Stage({ s, testId, uncleWidth, ring, reducedMotion, idleExtra, c
           </div>
         )}
 
+        {model.state === 'chew' && <CancelButton radius={ring.radius} onCancel={s.cancelJob} />}
+
         {fly && (
-          <div className="lud-fly" style={fly} key={`fly-${model.session}`}>
+          <div
+            className={model.state === 'cancel' ? 'lud-spitback' : 'lud-fly'}
+            style={fly}
+            key={`${model.state}-${model.session}`}
+            data-testid={model.state === 'cancel' ? 'spit-back' : undefined}
+          >
             <FileGlyph ext={firstItem?.ext ?? ''} />
           </div>
         )}
 
         {(model.state === 'chew' || model.state === 'eat') && model.hamster && (
-          <div className="lud-badge" style={{ top: headTop.y - 10 }}>
+          <div className="lud-badge" style={{ top: headTop.y - 10 }} data-testid="hamster-badge">
             nom ×{model.items.length}
           </div>
         )}

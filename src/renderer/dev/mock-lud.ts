@@ -71,6 +71,10 @@ export interface MockControl {
   disarm(): void
   cursor(p: { x: number; y: number }): void
   testDrop(p: TestDropPayload): void
+  /** E2E-style drop on the Feed Window (LudTestHooks.dropFilesOnFeed). */
+  testFeedDrop(p: TestDropPayload): void
+  /** E2E-style cancel of the running job (LudTestHooks.cancelActive). */
+  testCancel(): void
   changeSettings(patch: Partial<Settings>): void
 }
 
@@ -112,6 +116,8 @@ export function createMockLud(opts: MockOptions = {}): MockControl {
   const cursorCh = new Channel<{ x: number; y: number }>()
   const settingsCh = new Channel<Settings>()
   const testDropCh = new Channel<TestDropPayload>()
+  const testFeedDropCh = new Channel<TestDropPayload>()
+  const testCancelCh = new Channel<void>()
   const calls: MockControl['calls'] = []
   const jobs: JobRequest[] = []
   let mode = opts.jobs ?? 'manual'
@@ -186,7 +192,9 @@ export function createMockLud(opts: MockOptions = {}): MockControl {
     onOverlayDisarm: (cb) => disarmCh.on(() => cb()),
     onCursor: (cb) => cursorCh.on(cb),
     onSettingsChanged: (cb) => settingsCh.on(cb),
-    onTestDrop: (cb) => testDropCh.on(cb)
+    onTestDrop: (cb) => testDropCh.on(cb),
+    onTestFeedDrop: (cb) => testFeedDropCh.on(cb),
+    onTestCancel: (cb) => testCancelCh.on(() => cb())
   }
 
   return {
@@ -204,6 +212,8 @@ export function createMockLud(opts: MockOptions = {}): MockControl {
     disarm: () => disarmCh.emit(),
     cursor: (p) => cursorCh.emit(p),
     testDrop: (p) => testDropCh.emit(p),
+    testFeedDrop: (p) => testFeedDropCh.emit(p),
+    testCancel: () => testCancelCh.emit(),
     changeSettings: (patch) => {
       Object.assign(settings, patch)
       settingsCh.emit({ ...settings })

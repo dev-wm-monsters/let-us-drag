@@ -28,7 +28,9 @@ export const LINES = {
   saved: 'Saved next to original',
   idleFeed: 'Drop a file on me!',
   noPaths: "Hmm, I couldn't get hold of that file.",
-  nothingToDo: "I don't know how to cook that."
+  nothingToDo: "I don't know how to cook that.",
+  cancelled: 'Fine, keep it.',
+  cancelHint: 'Spit it out'
 } as const
 
 /** Cross-platform basename (handles / and \). */

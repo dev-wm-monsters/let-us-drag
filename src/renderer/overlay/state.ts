@@ -18,6 +18,8 @@ export type UncleState =
   | 'choke'
   | 'refuse'
   | 'leave'
+  /** The user cancelled the meal (D3): he spits the file back ("Fine, keep it.") and leaves. */
+  | 'cancel'
 
 export type Host = 'overlay' | 'feed'
 
@@ -75,6 +77,8 @@ export type Action =
   | { type: 'MIN_CHEW_ELAPSED' }
   | { type: 'JOB_EVENT'; event: JobEvent }
   | { type: 'ESC' }
+  /** Cancel the running job ("Spit it out" button, Esc while busy, E2E cancelActive). */
+  | { type: 'CANCEL' }
   | { type: 'DISARM' }
   | { type: 'DRAG_CANCEL' }
   | { type: 'LEAVE' }
@@ -90,7 +94,9 @@ export const TIMING = {
   resultMs: 2500,
   /** The Feed Window keeps results a little longer (the user is not mid-gesture). */
   feedResultMs: 6000,
-  leaveMs: 380
+  leaveMs: 380,
+  /** Spit-back after a cancel: short, then he leaves. */
+  cancelMs: 1400
 } as const
 
 export function restState(host: Host): UncleState {
@@ -152,12 +158,24 @@ export function wantsInteractive(m: Model): boolean {
   return (m.state === 'feedMe' && m.held !== null) || m.state === 'spit' || m.state === 'choke'
 }
 
+/**
+ * `data-uncle-mood` for QA (TPM D1): the chewing modifier as one value. Struggle wins when both apply
+ * (it also decides the chew rate). Set from the drop until the session rests, like data-hamster/-struggle.
+ */
+export function uncleMoodAttr(m: Pick<Model, 'hamster' | 'struggle'>): 'hamster' | 'struggle' | 'none' {
+  if (m.struggle) return 'struggle'
+  if (m.hamster) return 'hamster'
+  return 'none'
+}
+
 export function speech(m: Model): string | null {
   switch (m.state) {
     case 'feedMe':
       return m.held ? LINES.pickOne : LINES.feedMe
     case 'refuse':
       return m.message ?? LINES.refuse
+    case 'cancel':
+      return LINES.cancelled
     case 'idle':
       return LINES.idleFeed
     default:
@@ -204,6 +222,16 @@ function resolve(m: Model): Model {
   return choke(m, friendlyError(m.outcome.error))
 }
 
+/**
+ * Cancel a meal in progress: no output, he spits the file back.
+ * If the job already finished (we were only waiting for the minimum chew), there is nothing left to
+ * cancel: show the result right away instead of pretending nothing was written.
+ */
+function cancel(m: Model): Model {
+  if (m.state === 'chew' && m.outcome?.kind === 'done') return resolve({ ...m, minChewDone: true })
+  return { ...m, state: 'cancel', options: [], hovered: null, held: null, dropping: false, progress: 0, message: null }
+}
+
 function leave(m: Model): Model {
   return { ...m, state: 'leave', options: [], hovered: null }
 }
@@ -221,7 +249,8 @@ export function reducer(m: Model, a: Action): Model {
     }
 
     case 'ENGAGE': {
-      const canEngage = isResting(m) || m.state === 'leave' || m.state === 'spit' || m.state === 'choke' || m.state === 'refuse'
+      const canEngage =
+        isResting(m) || m.state === 'leave' || m.state === 'spit' || m.state === 'choke' || m.state === 'refuse' || m.state === 'cancel'
       if (!canEngage) return m
       const base: Model = { ...rest(m), session: m.session + 1, dragCount: a.probe.count }
       const cat = categoryForProbe(a.probe)
@@ -299,6 +328,8 @@ export function reducer(m: Model, a: Action): Model {
         case 'done':
           return resolve({ ...m, outcome: { kind: 'done', outputPaths: e.outputPaths } })
         case 'error':
+          // Cancelled elsewhere (e.g. main restarted a stuck worker, or a cancel hook): no cough, just spit it back.
+          if (e.error.code === 'CANCELLED') return cancel(m)
           return resolve({ ...m, outcome: { kind: 'error', error: e.error } })
       }
       return m
@@ -306,7 +337,11 @@ export function reducer(m: Model, a: Action): Model {
 
     case 'ESC':
       if (isResting(m) || m.state === 'leave') return m
+      if (isBusy(m)) return cancel(m)
       return leave(m)
+
+    case 'CANCEL':
+      return isBusy(m) ? cancel(m) : m
 
     case 'DISARM':
     case 'DRAG_CANCEL': {
@@ -317,7 +352,7 @@ export function reducer(m: Model, a: Action): Model {
     }
 
     case 'LEAVE':
-      if (m.state === 'spit' || m.state === 'choke' || m.state === 'refuse') return leave(m)
+      if (m.state === 'spit' || m.state === 'choke' || m.state === 'refuse' || m.state === 'cancel') return leave(m)
       return m
 
     case 'LEAVE_DONE':

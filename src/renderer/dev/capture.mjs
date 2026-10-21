@@ -253,6 +253,37 @@ const scenarios = {
     await shot(page, 'overlay-16-plain-chew')
     await ctx.close()
   },
+  async 'overlay-18-cancel'() {
+    // D3: "Spit it out" on the progress ring while chewing → spit-back + "Fine, keep it." → leave.
+    const { page, ctx } = await open({ view: 'overlay' })
+    const c = await center(page)
+    await enterAt(page, c.x, c.y, [MP4])
+    await sleep(450)
+    const p = await optionPoint(page, 'to-gif')
+    await dropAt(page, p.x, p.y, [MP4])
+    await sleep(900)
+    await emit(page, { type: 'progress', progress: 0.35 })
+    await sleep(400)
+    await expectState(page, 'chew')
+    const btn = page.locator('[data-testid="cancel-job"]')
+    await btn.hover()
+    await sleep(350)
+    await shot(page, 'overlay-18-cancel-button')
+    await btn.click()
+    // Grab raw frames first (palette encoding is slow and would eat into the 1.4 s spit-back).
+    await sleep(240)
+    await expectState(page, 'cancel')
+    const spit = await page.screenshot()
+    await sleep(420)
+    await expectState(page, 'cancel')
+    const fine = await page.screenshot()
+    await save(spit, 'overlay-19-cancel-spit-back')
+    await save(fine, 'overlay-20-cancel-fine-keep-it')
+    const cancelled = await H(page, () => window.__harness.calls.filter((c) => c.name === 'cancelJob').length)
+    if (cancelled !== 1) throw new Error(`expected 1 cancelJob call, got ${cancelled}`)
+    await page.waitForFunction(() => window.__harness.state() === 'hidden', null, { timeout: 4000 })
+    await ctx.close()
+  },
   async 'overlay-17-reduced-motion'() {
     const { page, ctx } = await open({ view: 'overlay' }, { reducedMotion: 'reduce' })
     const c = await center(page)
@@ -297,6 +328,57 @@ const scenarios = {
       await ctx.close()
     }
   },
+  async 'hero'() {
+    // README hero: drag → appear → head follows the file → eat → chew → spit (~5–6 s, flat bg, ≤ 480 px).
+    const ffmpeg = process.env.LUD_FFMPEG_PATH ?? 'ffmpeg'
+    if (spawnSync(ffmpeg, ['-version'], { shell: false }).status !== 0) {
+      console.warn('ffmpeg not found; skipping hero GIF')
+      return
+    }
+    const { page, ctx } = await open({ view: 'overlay', jobs: 'manual', bg: 'flat' }, { width: 540, height: 540 })
+    await installFakeCursor(page, 'PNG')
+    const c = await center(page)
+    const jpg = await (async () => {
+      await enterAt(page, -50, -50, [PNG]) // probe the layout once (off-screen), then reset
+      await sleep(600) // let the bubbles finish fanning out
+      const p = await optionPoint(page, 'to-jpg')
+      await H(page, () => window.__harness.key('Escape'))
+      await page.waitForFunction(() => window.__harness.state() === 'hidden', null, { timeout: 3000 })
+      return p
+    })()
+    const { cdp, shots } = await screencast(ctx, page)
+    await moveFake(page, 40, 500)
+    await cdp.send('Page.startScreencast', { format: 'png', everyNthFrame: 1 })
+    await sleep(60)
+    let at = await glide(page, { x: 40, y: 500 }, { x: c.x - 60, y: c.y + 110 }, 330, null)
+    await enterAt(page, at.x, at.y, [PNG])
+    // Between the bubbles: he follows the file left, up, right…
+    at = await glide(page, at, { x: c.x - 250, y: c.y - 10 }, 480, [PNG])
+    at = await glide(page, at, { x: c.x - 40, y: c.y - 255 }, 450, [PNG])
+    at = await glide(page, at, { x: c.x + 250, y: c.y + 20 }, 480, [PNG])
+    at = await glide(page, at, jpg, 380, [PNG]) // …and turns his whole face to JPG
+    await sleep(450)
+    await expectState(page, 'hover')
+    await dropAt(page, jpg.x, jpg.y, [PNG])
+    await moveFake(page, jpg.x, jpg.y, false)
+    await sleep(650)
+    for (const v of [0.35, 0.7, 0.95]) {
+      await emit(page, { type: 'progress', progress: v })
+      await sleep(300)
+    }
+    await emit(page, { type: 'done', outputPaths: ['/Users/demo/Desktop/holiday-photo.jpg'] })
+    await glide(page, jpg, { x: c.x + 170, y: c.y + 215 }, 450, null, false)
+    await sleep(950)
+    await expectState(page, 'spit')
+    await cdp.send('Page.stopScreencast')
+    await ctx.close()
+    encodeGif(ffmpeg, shots, {
+      fps: 15,
+      width: 400,
+      colors: 96,
+      out: resolve(process.env.LUD_HERO_PATH ?? join(repoRoot, 'docs/art/hero.gif'))
+    })
+  },
   async 'gif'() {
     // Eat → chew → spit loop recorded with the CDP screencast (real-time frames), encoded with ffmpeg.
     const ffmpeg = process.env.LUD_FFMPEG_PATH ?? 'ffmpeg'
@@ -306,13 +388,7 @@ const scenarios = {
       return
     }
     const { page, ctx } = await open({ view: 'overlay', jobs: 'manual' }, { width: 520, height: 520 })
-    const frames = mkdtempSync(join(tmpdir(), 'lud-frames-'))
-    const cdp = await ctx.newCDPSession(page)
-    const shots = []
-    cdp.on('Page.screencastFrame', async (f) => {
-      shots.push({ data: f.data, t: f.metadata.timestamp })
-      await cdp.send('Page.screencastFrameAck', { sessionId: f.sessionId }).catch(() => undefined)
-    })
+    const { cdp, shots } = await screencast(ctx, page)
     const c = await center(page)
     await cdp.send('Page.startScreencast', { format: 'png', everyNthFrame: 1 })
     await enterAt(page, c.x, c.y + 30, [PNG])
@@ -333,44 +409,105 @@ const scenarios = {
     await sleep(1800)
     await cdp.send('Page.stopScreencast')
     await ctx.close()
-    // Re-time frames at a constant 20 fps using their timestamps.
-    if (shots.length < 5) {
-      console.warn('too few screencast frames; skipping GIF')
-      rmSync(frames, { recursive: true, force: true })
-      return
-    }
-    const t0 = shots[0].t
-    const fps = 20
-    const total = Math.floor((shots[shots.length - 1].t - t0) * fps)
-    let j = 0
-    for (let k = 0; k <= total; k++) {
-      const t = t0 + k / fps
-      while (j + 1 < shots.length && shots[j + 1].t <= t) j++
-      writeFileSync(join(frames, `f${String(k).padStart(4, '0')}.png`), Buffer.from(shots[j].data, 'base64'))
-    }
-    const gif = resolve(process.env.LUD_GIF_PATH ?? join(repoRoot, 'docs/art/uncle-eat-chew-spit.gif'))
-    mkdirSync(dirname(gif), { recursive: true })
-    const r = spawnSync(
-      ffmpeg,
-      [
-        '-y',
-        '-loglevel',
-        'error',
-        '-framerate',
-        String(fps),
-        '-i',
-        join(frames, 'f%04d.png'),
-        '-vf',
-        'scale=360:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=96[p];[b][p]paletteuse=dither=bayer:bayer_scale=4',
-        '-loop',
-        '0',
-        gif
-      ],
-      { shell: false, stdio: 'inherit' }
-    )
-    rmSync(frames, { recursive: true, force: true })
-    if (r.status === 0) written.push(gif)
-    else console.warn('ffmpeg failed to write the GIF')
+    encodeGif(ffmpeg, shots, {
+      fps: 20,
+      width: 360,
+      colors: 96,
+      out: resolve(process.env.LUD_GIF_PATH ?? join(repoRoot, 'docs/art/uncle-eat-chew-spit.gif'))
+    })
+  }
+}
+
+async function screencast(ctx, page) {
+  const cdp = await ctx.newCDPSession(page)
+  const shots = []
+  cdp.on('Page.screencastFrame', async (f) => {
+    shots.push({ data: f.data, t: f.metadata.timestamp })
+    await cdp.send('Page.screencastFrameAck', { sessionId: f.sessionId }).catch(() => undefined)
+  })
+  return { cdp, shots }
+}
+
+/** Re-time screencast frames at a constant fps (by timestamp) and encode a looping GIF with ffmpeg. */
+function encodeGif(ffmpeg, shots, { fps, width, colors, out }) {
+  if (shots.length < 5) {
+    console.warn('too few screencast frames; skipping GIF')
+    return
+  }
+  const frames = mkdtempSync(join(tmpdir(), 'lud-frames-'))
+  const t0 = shots[0].t
+  const total = Math.floor((shots[shots.length - 1].t - t0) * fps)
+  let j = 0
+  for (let k = 0; k <= total; k++) {
+    const t = t0 + k / fps
+    while (j + 1 < shots.length && shots[j + 1].t <= t) j++
+    writeFileSync(join(frames, `f${String(k).padStart(4, '0')}.png`), Buffer.from(shots[j].data, 'base64'))
+  }
+  mkdirSync(dirname(out), { recursive: true })
+  const r = spawnSync(
+    ffmpeg,
+    [
+      '-y',
+      '-loglevel',
+      'error',
+      '-framerate',
+      String(fps),
+      '-i',
+      join(frames, 'f%04d.png'),
+      '-vf',
+      `scale=${width}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=${colors}:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle`,
+      '-loop',
+      '0',
+      out
+    ],
+    { shell: false, stdio: 'inherit' }
+  )
+  rmSync(frames, { recursive: true, force: true })
+  if (r.status === 0) written.push(out)
+  else console.warn('ffmpeg failed to write the GIF')
+}
+
+/** A fake OS drag image (arrow cursor + file card) for the README GIF; pointer-events: none. */
+async function installFakeCursor(page, ext) {
+  await page.evaluate((ext) => {
+    const el = document.createElement('div')
+    el.id = 'fake-drag'
+    el.style.cssText =
+      'position:fixed;left:0;top:0;z-index:9999;pointer-events:none;will-change:transform;transform:translate(-100px,-100px)'
+    el.innerHTML = `
+      <div class="fd-file" style="position:absolute;left:10px;top:14px;width:34px;height:42px;background:#fff;border:3px solid #2b1a14;border-radius:3px 11px 3px 3px;box-shadow:2px 3px 0 #2b1a14;display:grid;place-items:end center;padding-bottom:5px;transform:rotate(-8deg);opacity:.95">
+        <span style="font:900 9px system-ui,sans-serif;color:#fff;background:#f08a3c;border-radius:3px;padding:1px 3px">${ext}</span>
+      </div>
+      <svg width="22" height="30" viewBox="0 0 22 30" style="position:absolute;left:-2px;top:-2px"><path d="M2 2 L2 24 L8 18.5 L12.5 28 L16.5 26 L12 16.8 L20 16.4 Z" fill="#fff" stroke="#111" stroke-width="2" stroke-linejoin="round"/></svg>`
+    document.body.appendChild(el)
+  }, ext)
+}
+const moveFake = (page, x, y, withFile = true) =>
+  page.evaluate(
+    ([x, y, withFile]) => {
+      const el = document.getElementById('fake-drag')
+      if (!el) return
+      el.style.transform = `translate(${x}px, ${y}px)`
+      el.querySelector('.fd-file').style.display = withFile ? '' : 'none'
+    },
+    [x, y, withFile]
+  )
+
+/**
+ * Move the fake cursor (and the drag, when `files` is given) along a straight line in `ms` of wall
+ * time (time-based, so slow evaluate round-trips do not stretch the GIF).
+ */
+async function glide(page, from, to, ms, files, withFile = true) {
+  const t0 = Date.now()
+  for (;;) {
+    const k = Math.min(1, (Date.now() - t0) / ms)
+    const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2 // ease in-out
+    const x = from.x + (to.x - from.x) * e
+    const y = from.y + (to.y - from.y) * e
+    await moveFake(page, x, y, withFile)
+    if (files) await overAt(page, x, y, files)
+    if (k >= 1) return to
+    await sleep(16)
   }
 }
 
