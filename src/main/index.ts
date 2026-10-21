@@ -1,17 +1,34 @@
-// Scaffold placeholder. Owned by the Platform backend dev (docs/PLAN.md §7).
-import { app, BrowserWindow } from 'electron'
-import { join } from 'node:path'
+// Main process entry: single-instance lock, E2E setup, then app wiring (app.ts).
 
-app.whenReady().then(async () => {
-  const win = new BrowserWindow({
-    width: 420,
-    height: 420,
-    show: false,
-    webPreferences: { preload: join(__dirname, '../preload/index.cjs'), sandbox: true, contextIsolation: true }
+import { app, dialog } from 'electron'
+import { isAbsolute } from 'node:path'
+import { startApp, type RunningApp } from './app'
+import { createLogger } from './logger'
+import { isE2E } from './test-hooks'
+
+const e2e = isE2E()
+const log = createLogger(!app.isPackaged || process.env['LUD_DEBUG'] === '1')
+
+// E2E isolation: tests may point userData at a temp dir (only honoured when LUD_E2E=1).
+const e2eUserData = process.env['LUD_E2E_USER_DATA']
+if (e2e && e2eUserData && isAbsolute(e2eUserData)) app.setPath('userData', e2eUserData)
+
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  let running: RunningApp | null = null
+  app.on('second-instance', () => {
+    // Launching the app again shows the settings window (the app lives in the tray).
+    void running?.openSettingsWindow()
   })
-  if (process.env['ELECTRON_RENDERER_URL']) await win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/feed/index.html`)
-  else await win.loadFile(join(__dirname, '../renderer/feed/index.html'))
-  win.show()
-})
-
-app.on('window-all-closed', () => app.quit())
+  app
+    .whenReady()
+    .then(async () => {
+      running = await startApp({ e2e, log })
+    })
+    .catch((err: unknown) => {
+      log(`startup failed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`)
+      dialog.showErrorBox('Let us drag!', "Let us drag! couldn't start. Please try again, or reinstall the app if this keeps happening.")
+      app.exit(1)
+    })
+}
