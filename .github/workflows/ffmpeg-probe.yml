@@ -1,0 +1,45 @@
+name: FFmpeg probe (macOS)
+
+# One-off investigation job: resolve candidate GPL static ffmpeg builds for macOS, verify licence
+# flags and encoders, and report URL + SHA-256 as annotations (so the TPM can pin them).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-15, arch: arm64 }
+          - { os: macos-15-intel, arch: amd64 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Probe Martin Riedl release build
+        shell: bash
+        run: |
+          set -u
+          mkdir -p probe ci-logs && cd probe
+          log=../ci-logs/probe.log
+          url="https://ffmpeg.martin-riedl.de/redirect/latest/macos/${{ matrix.arch }}/release/ffmpeg.zip"
+          final=$(curl -sSL -o ffmpeg.zip -w '%{url_effective}' "$url") || { echo "download failed: $url" | tee -a $log; exit 0; }
+          { echo "requested: $url"; echo "final url: $final"; echo "sha256(zip): $(shasum -a 256 ffmpeg.zip | cut -d' ' -f1)"; echo "size: $(stat -f%z ffmpeg.zip)"; } | tee -a $log
+          unzip -o -q ffmpeg.zip && ls -la | tee -a $log
+          chmod +x ffmpeg
+          { echo "sha256(binary): $(shasum -a 256 ffmpeg | cut -d' ' -f1)"; file ffmpeg; ./ffmpeg -hide_banner -version | head -3;
+            echo "--- -L (first 5 lines)"; ./ffmpeg -hide_banner -L | head -5;
+            echo "--- buildconf nonfree?"; ./ffmpeg -hide_banner -buildconf | grep -iE "nonfree|enable-gpl|version3" || true;
+            echo "--- otool -L (dynamic deps)"; otool -L ffmpeg | head -20;
+            echo "--- encoders"; ./ffmpeg -hide_banner -encoders > enc.txt;
+            for e in libx264 libvpx-vp9 libopus libmp3lame libvorbis aac flac pcm_s16le gif png mjpeg bmp; do grep -q " $e " enc.txt && echo "ok $e" || echo "MISSING $e"; done;
+            echo "--- codesign"; codesign -dv ffmpeg 2>&1 | head -5; } 2>&1 | tee -a $log
+      - name: Report
+        if: always()
+        run: node scripts/ci-report.mjs notice "ffmpeg probe ${{ matrix.arch }}" ci-logs/probe.log 120
