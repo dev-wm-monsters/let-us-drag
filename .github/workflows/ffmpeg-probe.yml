@@ -38,6 +38,7 @@ jobs:
           path=$(grep -E "_[0-9]+\.[0-9]+(\.[0-9]+)?/" links.txt | sort -r | head -1)
           [ -n "$path" ] || path=$(head -1 links.txt)
           if [ -z "$path" ] && [ "${{ matrix.arch }}" = "amd64" ]; then path=/download/macos/amd64/1789931006_9.0.2/ffmpeg.zip; echo "using known pinned amd64 path" | tee -a $log; fi
+          if [ -z "$path" ] && [ "${{ matrix.arch }}" = "arm64" ]; then path=/download/macos/arm64/1789931890_9.0.2/ffmpeg.zip; echo "using known pinned arm64 path" | tee -a $log; fi
           [ -n "$path" ] || { echo "no download link found" | tee -a $log; exit 0; }
           url="https://ffmpeg.martin-riedl.de$path"
           curl -sSL -A "Mozilla/5.0 let-us-drag-ci" -o ffmpeg.zip -w "zip http=%{http_code} bytes=%{size_download}\n" "$url" | tee -a $log
@@ -48,11 +49,12 @@ jobs:
           { echo "sha256(binary): $(shasum -a 256 ffmpeg | cut -d' ' -f1)"; file ffmpeg; ./ffmpeg -hide_banner -version | head -3;
             echo "--- -L (first 5 lines)"; ./ffmpeg -hide_banner -L | head -5;
             echo "--- buildconf nonfree/gpl:"; ./ffmpeg -hide_banner -buildconf | grep -iE "nonfree|enable-gpl|version3";
-            echo "--- otool -L (dynamic deps)"; otool -L ffmpeg | head -20;
+            echo "--- minimum macOS (LC_BUILD_VERSION / LC_VERSION_MIN_MACOSX)"; otool -l ffmpeg | grep -A4 -E "LC_BUILD_VERSION|LC_VERSION_MIN_MACOSX" | grep -E "minos|version" | head -4;
+            echo "--- non-system dynamic deps"; otool -L ffmpeg | tail -n +2 | grep -vE "/System/Library/|/usr/lib/" || echo "(none)";
             echo "--- encoders"; ./ffmpeg -hide_banner -encoders > enc.txt;
             for e in libx264 libvpx-vp9 libopus libmp3lame libvorbis aac flac pcm_s16le gif png mjpeg bmp; do grep -q " $e " enc.txt && echo "ok $e" || echo "MISSING $e"; done;
             echo "--- codesign"; codesign -dv ffmpeg 2>&1 | head -5; } 2>&1 | tee -a $log
           exit 0
       - name: Report
         if: always()
-        run: node scripts/ci-report.mjs notice "ffmpeg probe ${{ matrix.arch }}" ci-logs/probe.log 120
+        run: node scripts/ci-report.mjs notice "ffmpeg probe ${{ matrix.arch }}" ci-logs/probe.log 200
