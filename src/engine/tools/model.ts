@@ -13,7 +13,8 @@
 // product owner decides to mirror later; today it answers 404 at once.
 //
 // Network rules (SEC-120/121): https only, hard-coded URLs, redirects followed manually and only to
-// GitHub's release hosts, a byte cap (the pinned size), a connect and a stall timeout, SHA-256
+// GitHub's release hosts, a byte cap (the pinned size), a connect timeout (response headers only)
+// and a stall timeout (no data for a while; never a total-time limit on the body), SHA-256
 // checked while streaming and again whenever a cached file is first used in a process.
 import { createHash, randomBytes } from 'node:crypto'
 import { createReadStream, createWriteStream, existsSync } from 'node:fs'
@@ -21,7 +22,7 @@ import { mkdir, readdir, rename, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
-import { EngineError, cancelledOrTimeout, errMessage } from '../errors'
+import { EngineError, FRIENDLY_MESSAGES, cancelledOrTimeout, errMessage } from '../errors'
 import { MODEL_CONNECT_TIMEOUT_MS, MODEL_STALL_TIMEOUT_MS } from '../limits'
 
 export const MODEL_FILE = 'isnet-general-use.onnx'
@@ -173,25 +174,64 @@ async function cleanPartials(cacheDir: string): Promise<void> {
   await Promise.all(names.filter((n) => n.startsWith(`${MODEL_FILE}.`) && n.endsWith('.part')).map((n) => rm(join(cacheDir, n), { force: true }).catch(() => undefined)))
 }
 
-/** fetch with manual, allow-listed redirects and a timeout until the response headers arrive. */
+/** Why one source failed; decides which friendly message the user finally sees. */
+type FailureKind = 'timeout' | 'integrity' | 'network' | 'http'
+
+/** A per-source failure with its kind (internal; the user only sees the final EngineError). */
+class SourceFailure extends Error {
+  readonly kind: FailureKind
+  constructor(kind: FailureKind, message: string) {
+    super(message)
+    this.name = 'SourceFailure'
+    this.kind = kind
+  }
+}
+
+/** User-facing message per failure kind (one line, well under MAX_MESSAGE_CHARS even with a file-name prefix). */
+export const MODEL_FAILURE_MESSAGES: Readonly<Record<FailureKind, string>> = {
+  timeout: 'The background-removal model download timed out. Your connection may be slow or unstable. Please try again.',
+  integrity: 'The background-removal model arrived damaged, so I threw it away. Please try again.',
+  network: FRIENDLY_MESSAGES.MODEL_DOWNLOAD_FAILED,
+  http: "The background-removal model isn't available from its download server right now. Please try again later."
+}
+/** When several sources failed, the most telling reason wins (the mirror's 404 must not hide a timeout). */
+const KIND_PRIORITY: readonly FailureKind[] = ['timeout', 'integrity', 'network', 'http']
+
+/**
+ * fetch with manual, allow-listed redirects and a connect timeout that only covers waiting for the
+ * response headers of each hop. Once headers arrive the timer is cleared, so the body stream is
+ * governed only by `signal` (user cancel) and the caller's stall timeout, never by a wall clock:
+ * a slow but steady 179 MB download must not be cut off after `connectTimeoutMs`.
+ */
 async function fetchAllowed(url: string, opts: ModelOptions, signal: AbortSignal): Promise<Response> {
   const doFetch = opts.fetchImpl ?? fetch
   const hosts = opts.allowedHosts ?? MODEL_ALLOWED_HOSTS
+  const connectMs = opts.connectTimeoutMs ?? MODEL_CONNECT_TIMEOUT_MS
   let current = url
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    if (!isAllowedModelUrl(current, hosts)) throw new Error(`refused URL ${new URL(current).host || current}`)
-    const connect = AbortSignal.timeout(opts.connectTimeoutMs ?? MODEL_CONNECT_TIMEOUT_MS)
-    const res = await doFetch(current, { redirect: 'manual', signal: AbortSignal.any([signal, connect]) })
+    if (!isAllowedModelUrl(current, hosts)) throw new SourceFailure('http', `refused URL ${new URL(current).host || current}`)
+    const connect = new AbortController()
+    const timer = setTimeout(() => connect.abort(new SourceFailure('timeout', `no response headers within ${connectMs} ms`)), connectMs)
+    timer.unref?.()
+    let res: Response
+    try {
+      res = await doFetch(current, { redirect: 'manual', signal: AbortSignal.any([signal, connect.signal]) })
+    } catch (err) {
+      if (connect.signal.aborted && !signal.aborted) throw connect.signal.reason as SourceFailure
+      throw err
+    } finally {
+      clearTimeout(timer) // headers are in (or the request failed): the body is not under this timeout
+    }
     if (res.status >= 300 && res.status < 400) {
       const location = res.headers.get('location')
       await res.body?.cancel().catch(() => undefined)
-      if (!location) throw new Error(`HTTP ${res.status} without location`)
+      if (!location) throw new SourceFailure('http', `HTTP ${res.status} without location`)
       current = new URL(location, current).href
       continue
     }
     return res
   }
-  throw new Error('too many redirects')
+  throw new SourceFailure('http', 'too many redirects')
 }
 
 async function download(target: string, expected: string, opts: ModelOptions, signal: AbortSignal, onProgress: (p: number) => void): Promise<string> {
@@ -200,6 +240,7 @@ async function download(target: string, expected: string, opts: ModelOptions, si
   await mkdir(opts.cacheDir, { recursive: true })
   await cleanPartials(opts.cacheDir)
   const failures: string[] = []
+  const kinds = new Set<FailureKind>()
   for (const url of urls) {
     if (signal.aborted) throw cancelledOrTimeout(signal)
     const part = `${target}.${randomBytes(4).toString('hex')}.part`
@@ -214,20 +255,21 @@ async function download(target: string, expected: string, opts: ModelOptions, si
       const res = await fetchAllowed(url, opts, signal)
       if (!res.ok || !res.body) {
         await res.body?.cancel().catch(() => undefined)
-        throw new Error(`HTTP ${res.status}`)
+        throw new SourceFailure('http', `HTTP ${res.status}`)
       }
       const declared = Number(res.headers.get('content-length')) || undefined
-      if (size !== undefined && declared !== undefined && declared !== size) throw new Error(`unexpected size ${declared}`)
+      if (size !== undefined && declared !== undefined && declared !== size) throw new SourceFailure('integrity', `unexpected size ${declared}`)
       const total = size ?? declared
       const hash = createHash('sha256')
       let received = 0
+      // Stall timeout (no data for stallTimeoutMs): armed now, re-armed on every chunk below.
       kick()
       const meter = new Transform({
         transform(chunk: Buffer, _enc, cb) {
           kick()
           received += chunk.length
           if (size !== undefined && received > size) {
-            cb(new Error(`more than ${size} bytes`))
+            cb(new SourceFailure('integrity', `more than ${size} bytes`))
             return
           }
           hash.update(chunk)
@@ -240,7 +282,7 @@ async function download(target: string, expected: string, opts: ModelOptions, si
       })
       opts.onVerify?.()
       const digest = hash.digest('hex')
-      if (digest !== expected) throw new Error(`SHA-256 mismatch: got ${digest}`)
+      if (digest !== expected) throw new SourceFailure('integrity', `SHA-256 mismatch: got ${digest}`)
       await rename(part, target)
       verified.add(target)
       onProgress(1)
@@ -248,12 +290,15 @@ async function download(target: string, expected: string, opts: ModelOptions, si
     } catch (err) {
       await rm(part, { force: true }).catch(() => undefined)
       if (signal.aborted) throw cancelledOrTimeout(signal)
+      const kind: FailureKind = stall.signal.aborted ? 'timeout' : err instanceof SourceFailure ? err.kind : 'network'
+      kinds.add(kind)
       failures.push(`${url}: ${stall.signal.aborted ? 'stalled' : errMessage(err)}`)
     } finally {
       if (stallTimer) clearTimeout(stallTimer)
     }
   }
-  throw new EngineError('MODEL_DOWNLOAD_FAILED', undefined, failures.join(' ; '))
+  const kind = KIND_PRIORITY.find((k) => kinds.has(k)) ?? 'network'
+  throw new EngineError('MODEL_DOWNLOAD_FAILED', MODEL_FAILURE_MESSAGES[kind], failures.join(' ; '))
 }
 
 /** Size of the cached model if present (for UI/diagnostics). */
