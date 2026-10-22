@@ -13,12 +13,38 @@ const FRIENDLY: Record<JobErrorCode, string> = {
   INTERNAL: 'Oops, I got a hiccup. Please try again.'
 }
 
+/** The engine caps `JobError.message` at this many characters (src/engine/limits.ts MAX_MESSAGE_CHARS). */
+export const MAX_ENGINE_MESSAGE_CHARS = 200
+
 /** Prefer the engine's human message (contract: safe to show); fall back to our per-code text. */
 export function friendlyError(error: Pick<JobError, 'code' | 'message'> | null | undefined): string {
   if (!error) return FRIENDLY.INTERNAL
   const msg = typeof error.message === 'string' ? error.message.trim() : ''
-  if (msg && msg.length <= 160) return msg
+  if (msg && msg.length <= MAX_ENGINE_MESSAGE_CHARS) return msg
   return FRIENDLY[error.code] ?? FRIENDLY.INTERNAL
+}
+
+/** Engine stage text while the Remove BG model is downloaded once (src/engine/jobs.ts MODEL_DOWNLOAD_STAGE, D10/D15). */
+export const MODEL_DOWNLOAD_STAGE = 'One-time download of my scissors (179 MB AI model)'
+/** Share of the first file's progress the engine gives to that download (src/engine/jobs.ts: `p * 0.4`). */
+export const MODEL_DOWNLOAD_SHARE = 0.4
+const MAX_STAGE_CHARS = 80
+
+/**
+ * Caption under the progress ring while chewing (D15, QA3-02): the engine's stage text, plus the
+ * download percentage during the one-time model download. `progress` is the job's overall 0..1
+ * (-1 unknown); the download happens while the first of `itemCount` files is processed.
+ */
+export function stageCaption(stage: string | null | undefined, progress: number, itemCount: number): string | null {
+  let text = typeof stage === 'string' ? stage.replace(/\s+/g, ' ').trim() : ''
+  if (!text) return null
+  if (text.length > MAX_STAGE_CHARS) text = text.slice(0, MAX_STAGE_CHARS - 1).trimEnd() + '…'
+  if (text === MODEL_DOWNLOAD_STAGE) {
+    if (!Number.isFinite(progress) || progress < 0) return text
+    const pct = Math.floor((progress * Math.max(1, itemCount) * 100) / MODEL_DOWNLOAD_SHARE + 1e-6)
+    return `${text} · ${Math.max(0, Math.min(100, pct))}%`
+  }
+  return /[.!?…)]$/.test(text) ? text : `${text}…`
 }
 
 export const LINES = {

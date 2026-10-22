@@ -92,3 +92,80 @@ export function clampToCircle(p: Point, r: number): Point {
   if (d <= r || d === 0) return p
   return { x: (p.x / d) * r, y: (p.y / d) * r }
 }
+
+/** Axis-aligned box (top-left + size), relative to the ring centre. */
+export interface Box {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+export type HintSide = 'below' | 'above' | 'inner' | 'outer'
+
+export interface HintPlacementInput {
+  /** Centre of the hovered bubble. */
+  slot: Point
+  /** Centres of the other bubbles (must stay uncovered). */
+  others: readonly Point[]
+  /** Visual radius of the hovered (scaled) bubble. */
+  bubbleRadius: number
+  /** Visual radius of the other bubbles (incl. their shadow). */
+  otherRadius: number
+  /** Measured size of the hint pill. */
+  size: { w: number; h: number }
+  /** Area the hint must stay inside (the window minus a margin), relative to the ring centre. */
+  bounds: Box
+  /** Space between the hovered bubble and the hint. */
+  gap: number
+}
+
+export interface HintPlacement extends Box {
+  side: HintSide
+  /** 0 when the hint covers no other bubble (and not the hovered one either). */
+  overlap: number
+}
+
+/** How far a circle reaches into a box (0 when they do not touch). */
+function circleIntoBox(c: Point, r: number, b: Box): number {
+  const nx = Math.max(b.x, Math.min(c.x, b.x + b.w))
+  const ny = Math.max(b.y, Math.min(c.y, b.y + b.h))
+  return Math.max(0, r - Math.hypot(c.x - nx, c.y - ny))
+}
+
+/**
+ * Place an option hint pill next to its bubble so it stays inside the window and covers no other
+ * bubble (QA3-03): try below, above, the inner side (towards the Uncle) and the outer side, clamp
+ * each into the bounds and keep the first one that covers nothing (else the least overlapping).
+ */
+export function placeHint(i: HintPlacementInput): HintPlacement {
+  const { slot, size, bounds, gap } = i
+  const r = i.bubbleRadius + gap
+  const innerIsRight = slot.x <= 0
+  const raw: Record<HintSide, Point> = {
+    below: { x: slot.x - size.w / 2, y: slot.y + r },
+    above: { x: slot.x - size.w / 2, y: slot.y - r - size.h },
+    inner: { x: innerIsRight ? slot.x + r : slot.x - r - size.w, y: slot.y - size.h / 2 },
+    outer: { x: innerIsRight ? slot.x - r - size.w : slot.x + r, y: slot.y - size.h / 2 }
+  }
+  let best: HintPlacement | null = null
+  for (const side of ['below', 'above', 'inner', 'outer'] as const) {
+    const p = raw[side]
+    const box: Box = {
+      x: clamp(p.x, bounds.x, Math.max(bounds.x, bounds.x + bounds.w - size.w)),
+      y: clamp(p.y, bounds.y, Math.max(bounds.y, bounds.y + bounds.h - size.h)),
+      w: size.w,
+      h: size.h
+    }
+    let overlap = circleIntoBox(slot, i.bubbleRadius, box)
+    for (const o of i.others) overlap += circleIntoBox(o, i.otherRadius, box)
+    const placed: HintPlacement = { ...box, side, overlap: Math.round(overlap * 100) / 100 }
+    if (placed.overlap === 0) return placed
+    if (!best || placed.overlap < best.overlap) best = placed
+  }
+  return best!
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, v))
+}

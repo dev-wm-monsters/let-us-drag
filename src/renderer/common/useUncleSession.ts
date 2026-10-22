@@ -14,6 +14,7 @@ import {
   reducer,
   TIMING,
   visibleOptions,
+  wantsClickThrough,
   wantsInteractive
 } from '../overlay/state'
 import { isFileDrag, probeFromItems } from './drag'
@@ -29,6 +30,9 @@ export interface RingGeometry {
 }
 
 export const DEFAULT_RING: RingGeometry = { radius: 190, hitRadius: 46, mouthRadius: 100 }
+
+/** Attribute on elements that must receive clicks while the overlay is otherwise click-through (D20). */
+export const INTERACTIVE_ATTR = 'data-lud-interactive'
 
 export function usePrefersReducedMotion(): boolean {
   const query = '(prefers-reduced-motion: reduce)'
@@ -55,7 +59,12 @@ export interface UncleSession {
   choose(id: OptionId): void
   hoverOption(id: OptionId | null): void
   reveal(path: string): void
-  setCardHovered(on: boolean): void
+  /**
+   * The pointer entered/left an interactive element (cancel button, result card; mark them with
+   * INTERACTIVE_ATTR too). Keeps a hovered card on screen and, in the overlay, turns click-through
+   * off while the pointer is over it (D20).
+   */
+  setOverInteractive(on: boolean): void
   /** Feed Window "choose file" button: same path as a drop on the mouth. */
   feedFiles(files: File[]): void
   /** Cancel the running job ("Spit it out" button, Esc while busy, E2E cancelActive). */
@@ -70,6 +79,18 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
   ringRef.current = ring
 
   const lookRef = useRef<Point | null>(null)
+  // D20: is the pointer over an interactive element (cancel button, result card)?
+  const [overInteractive, setOverInteractiveState] = useState(false)
+  const overInteractiveRef = useRef(false)
+  const cardHovered = useRef(false)
+  const setOverInteractive = useCallback((on: boolean) => {
+    cardHovered.current = on
+    if (overInteractiveRef.current === on) return
+    overInteractiveRef.current = on
+    setOverInteractiveState(on)
+  }, [])
+  // Last click-through value sent to main (main resets it to false on arm and when it hides).
+  const sentClickThrough = useRef(false)
   const cursorRef = useRef<Point | null>(null)
   const dropPointRef = useRef<Point | null>(null)
   const stageRef = useRef<HTMLDivElement | null>(null)
@@ -292,6 +313,9 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
       subscribe('onSettingsChanged', (s) => dispatch({ type: 'SETTINGS', settings: s })),
       subscribe('onJobEvent', (ev) => dispatch({ type: 'JOB_EVENT', event: ev })),
       subscribe('onOverlayArm', (info) => {
+        // Main made the overlay a normal drop target again (D20) and a result card is dropped (D21).
+        sentClickThrough.current = false
+        setOverInteractive(false)
         dispatch({ type: 'ARM', settings: info.settings })
         cursorRef.current = info.cursor
         measure()
@@ -305,6 +329,12 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
       subscribe('onCursor', (p) => {
         cursorRef.current = p
         updateLook()
+        // D20 on every OS: main polls the cursor for the whole session, so this also works where
+        // setIgnoreMouseEvents cannot forward mouse moves (Linux) or forwarding is paused (Windows UIPI).
+        if (host === 'overlay' && wantsClickThrough(modelRef.current)) {
+          const el = typeof document.elementFromPoint === 'function' ? document.elementFromPoint(p.x, p.y) : null
+          setOverInteractive(!!el?.closest(`[${INTERACTIVE_ATTR}]`))
+        }
       }),
       subscribe('onTestDrop', testDrop),
       // E2E: drops on the Feed Window (dropFilesOnFeed) — only the feed renderer handles them.
@@ -315,10 +345,9 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
       alive = false
       for (const off of offs) off()
     }
-  }, [cancelJob, dispatch, engage, host, measure, optionCenter, resolveDrop, updateLook])
+  }, [cancelJob, dispatch, engage, host, measure, optionCenter, resolveDrop, setOverInteractive, updateLook])
 
   // ——— state-entry effects: sounds, job start, timers ———
-  const cardHovered = useRef(false)
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scheduleLeave = useCallback(
     (ms: number) => {
@@ -409,7 +438,7 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
     []
   )
 
-  // Overlay must accept clicks/keys while items are held or a result card is shown.
+  // Overlay takes focus/keys only while items are held (feedMe); never for result cards (D20, QA3-07).
   const interactive = wantsInteractive(model)
   const lastInteractive = useRef(false)
   useEffect(() => {
@@ -417,6 +446,23 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
     lastInteractive.current = interactive
     void call('setOverlayInteractive', undefined, interactive)
   }, [host, interactive])
+
+  // An element that disappears under the pointer never sends pointerleave: forget the hover when
+  // the state changes (a new card starts un-hovered).
+  useLayoutEffect(() => {
+    setOverInteractive(false)
+  }, [state, session, setOverInteractive])
+
+  // D20: after the drop the overlay is click-through, except while the pointer is over the cancel
+  // button or a result card. Re-sent on every state change while true (cheap, and robust if main
+  // reset it on its own).
+  const clickThrough = host === 'overlay' && wantsClickThrough(model) && !overInteractive
+  useEffect(() => {
+    if (host !== 'overlay') return
+    if (clickThrough === sentClickThrough.current && !clickThrough) return
+    sentClickThrough.current = clickThrough
+    void call('setOverlayClickThrough', undefined, clickThrough)
+  }, [host, clickThrough, state])
 
   // Look target follows hover changes too.
   useEffect(() => {
@@ -435,10 +481,6 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
   const reveal = useCallback((path: string) => {
     void call('revealPath', undefined, path)
   }, [])
-  const setCardHovered = useCallback((on: boolean) => {
-    cardHovered.current = on
-  }, [])
-
   return {
     model,
     dispatch,
@@ -449,7 +491,7 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
     choose,
     hoverOption,
     reveal,
-    setCardHovered,
+    setOverInteractive,
     feedFiles,
     cancelJob
   }
