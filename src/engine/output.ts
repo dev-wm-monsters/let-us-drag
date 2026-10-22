@@ -4,7 +4,7 @@
 //   committed (link / exclusive copy / reserved folder) once the whole job succeeded, so a failed
 //   job leaves no half-written files and nothing that already exists is ever replaced.
 import { randomBytes } from 'node:crypto'
-import { constants as fsConstants } from 'node:fs'
+import { constants as fsConstants, existsSync } from 'node:fs'
 import { copyFile, link, mkdir, open, readdir, rename, rm, rmdir, unlink } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
 import { EngineError, errnoCode } from './errors'
@@ -177,10 +177,13 @@ function writeError(err: unknown, dir: string): EngineError {
   if (code === 'ENOSPC') {
     return new EngineError('OUTPUT_NOT_WRITABLE', 'The disk is full, so I could not save the result.', String(err))
   }
-  if (code === 'ENOENT') {
+  // Windows reports an over-long path as ENOENT: if the folder still exists (or its own path is
+  // beyond the Win32 directory limit of 247 characters), the path length was the problem.
+  const winPathTooLong = process.platform === 'win32' && dir.length > 247
+  if (code === 'ENOENT' && !existsSync(dir) && !winPathTooLong) {
     return new EngineError('OUTPUT_NOT_WRITABLE', 'The folder of the original file is gone, so I could not save the result.', String(err))
   }
-  if (code === 'ENAMETOOLONG') {
+  if (code === 'ENAMETOOLONG' || code === 'ENOENT') {
     return new EngineError('OUTPUT_NOT_WRITABLE', 'The name or folder path is too long here, so I could not save the result.', String(err))
   }
   return new EngineError('OUTPUT_NOT_WRITABLE', undefined, `${dir}: ${String(err)}`)

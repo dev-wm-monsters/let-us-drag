@@ -189,8 +189,10 @@ describe('full path budget', () => {
 })
 
 describe('engine: long names end to end (QA3-08)', () => {
-  it('246×"L".png → Compress succeeds with a shortened "-compressed" name', async () => {
+  it('246×"L".png → Compress succeeds with a shortened "-compressed" name', async ({ skip }) => {
     const src = join(dir, `${'L'.repeat(246)}.png`)
+    // Without long-path support Windows cannot even create this input inside the temp folder (> MAX_PATH).
+    if (process.platform === 'win32' && src.length > 259) skip()
     await sharp({ create: { width: 16, height: 16, channels: 3, background: '#cc3333' } }).png().toFile(src)
     const res = await runOption('compress', [src])
     expect(res.error, JSON.stringify(res.error)).toBeUndefined()
