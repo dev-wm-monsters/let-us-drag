@@ -14,7 +14,8 @@ module.exports = tseslint.config(
           selector: "ImportDeclaration[source.value=/^(node:)?child_process$/] > :matches(ImportDefaultSpecifier, ImportNamespaceSpecifier)",
           message: 'Import named spawn/execFile from child_process (no default/namespace import).'
         },
-        { selector: "Property[key.name='shell'][value.value=true]", message: 'Never spawn with shell: true.' },
+        // Any `shell` option other than a literal false (true, '/bin/sh', a variable …) is refused.
+        { selector: "Property[key.name='shell']:not([value.value=false])", message: 'Never spawn with a shell (shell must be absent or false).' },
         {
           selector: "CallExpression[callee.name='require'][arguments.0.value=/^(node:)?child_process$/]",
           message: 'Import named spawn/execFile from child_process instead of require().'

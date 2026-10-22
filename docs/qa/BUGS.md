@@ -65,3 +65,6 @@
 | B-061 | Low | TPM | Fixed | F-26/F-27: ffmpeg licence gate fails open; LICENSE/README extras not hashed | Security review | 93089d1 |
 | B-062 | Medium | TPM | Fixed | F-08/SEC-146: ESLint gate misses node:child_process exec, shell:true | Security review | 93089d1 |
 | B-063 | Low | Engine | Deferred (public release) | SEC-105: unzip does not propagate Mark-of-the-Web / quarantine | Security review | public-release list |
+| B-064 | Medium | Frontend | Open | QA-P4-02: in feedMe the held-files card covers the bottom option bubbles (overlay and Feed Window) | QA phase-4 regression, P4-HELD-COVER | — |
+| B-065 | Low | Engine | Open | QA-P4-01: an unclosed `<svg>/<math>/<noscript>/<template>` in MD/HTML input drops the rest of the document from HTML/PDF output | QA, tests/engine/qa-sanitizer-truncation.test.ts | — |
+| B-066 | Low | TPM | Fixed | QA-P4-03: ESLint only caught literal `shell: true` | QA | this commit |
