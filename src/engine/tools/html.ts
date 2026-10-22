@@ -51,12 +51,17 @@ export function escapeAttr(s: string): string {
 
 const NAME_CHAR = /[A-Za-z0-9:_-]/
 
-/** Tokenize HTML. Never throws. */
-export function tokenize(html: string): Token[] {
+/**
+ * Tokenize HTML. Never throws. `from` starts tokenizing at that offset; `noClose` remembers, per
+ * raw-text element name, an offset from which its end tag was searched for and not found (it can
+ * then not be found from any later offset either), so callers that tokenize several suffixes of
+ * the same string (the sanitizer, B-065) never rescan to the end of it for the same name.
+ */
+export function tokenize(html: string, from = 0, noClose: Map<string, number> = new Map()): Token[] {
   const out: Token[] = []
   const n = html.length
-  let i = 0
-  let textStart = 0
+  let i = from
+  let textStart = from
   const flushText = (end: number): void => {
     if (end > textStart) out.push({ type: 'text', raw: html.slice(textStart, end) })
   }
@@ -141,7 +146,9 @@ export function tokenize(html: string): Token[] {
     if (RAW_TEXT.has(name) && !selfClosing) {
       const closeRe = new RegExp(`</${name}[\\s/>]`, 'ig')
       closeRe.lastIndex = i
-      const m = name === 'plaintext' ? null : closeRe.exec(html)
+      const knownMissing = (noClose.get(name) ?? n + 1) <= i
+      const m = name === 'plaintext' || knownMissing ? null : closeRe.exec(html)
+      if (!m && !knownMissing) noClose.set(name, i)
       const end = m ? m.index : n
       if (end > i) out.push({ type: 'rawtext', raw: html.slice(i, end), parent: name })
       if (m) {
@@ -293,55 +300,108 @@ function sanitizeAttrs(tag: string, attrs: Attr[]): Attr[] {
 }
 
 /**
+ * B-065 (QA-P4-01): where a drop-with-content element WITHOUT an end tag stops being dropped.
+ * Block-level start tags (a browser also leaves SVG/MathML at most of them), so an unclosed
+ * <svg>, <math>, <noscript>, <template>, <script>, … loses at most its own inline content, never
+ * the rest of the document. <table> and <form> are deliberately not boundaries: they are what
+ * MathML/SVG mutation-XSS payloads nest inside the foreign element (<math><mtext><table><mglyph>…).
+ * Whatever follows a boundary goes through the normal sanitizer, so it is as safe as any input.
+ */
+const DROP_BOUNDARY = [
+  'address', 'article', 'aside', 'blockquote', 'body', 'center', 'dd', 'details', 'div', 'dl', 'dt', 'fieldset',
+  'figcaption', 'figure', 'footer', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 'hgroup', 'hr', 'li', 'listing',
+  'main', 'menu', 'nav', 'ol', 'p', 'pre', 'section', 'summary', 'ul'
+]
+const DROP_BOUNDARY_SET = new Set(DROP_BOUNDARY)
+const DROP_BOUNDARY_RE = new RegExp(`<(?:${DROP_BOUNDARY.join('|')})(?=[\\s/>])`, 'gi')
+
+/** Indexes of the drop-with-content start tags that have a matching end tag in `tokens`. */
+function closedDropStarts(tokens: readonly Token[]): Set<number> {
+  const closed = new Set<number>()
+  const open = new Map<string, number[]>()
+  tokens.forEach((t, i) => {
+    if (t.type === 'start' && DROP_WITH_CONTENT.has(t.name) && !t.selfClosing && !VOID_ELEMENTS.has(t.name)) {
+      const stack = open.get(t.name)
+      if (stack) stack.push(i)
+      else open.set(t.name, [i])
+    } else if (t.type === 'end' && DROP_WITH_CONTENT.has(t.name)) {
+      const i0 = open.get(t.name)?.pop()
+      if (i0 !== undefined) closed.add(i0)
+    }
+  })
+  return closed
+}
+
+/**
  * Sanitize an HTML document or fragment into a body fragment that is safe to render with
  * JavaScript disabled and without network access: removes scripts, frames, plugins, meta
  * refreshes, event handlers, javascript: URLs and every external resource reference.
  */
 export function sanitizeHtml(html: string): string {
   let out = ''
-  let dropDepth = 0
-  let dropTag = ''
   let openRaw = '' // raw-text element (style, textarea, …) whose end tag has not been seen yet
-  for (const t of tokenize(html)) {
-    if (dropDepth > 0) {
-      if (t.type === 'start' && t.name === dropTag && !t.selfClosing && !VOID_ELEMENTS.has(t.name)) dropDepth++
-      else if (t.type === 'end' && t.name === dropTag) dropDepth--
-      continue
-    }
-    switch (t.type) {
-      case 'text':
-        out += t.raw.replace(/</g, '&lt;')
-        break
-      case 'rawtext':
-        // CSS never needs a raw '<' ("\3c " is the same character inside CSS strings): nothing in a
-        // <style> can close it early or look like markup to any parser (B-060).
-        out += t.parent === 'style' ? sanitizeCss(t.raw).replace(/</g, '\\3c ') : escapeHtml(decodeEntities(t.raw))
-        break
-      case 'start': {
-        if (DROP_WITH_CONTENT.has(t.name)) {
-          if (!VOID_ELEMENTS.has(t.name) && !t.selfClosing) {
-            dropDepth = 1
-            dropTag = t.name
+  const noClose = new Map<string, number>()
+  // Usually one pass. An unclosed dropped element whose raw text (e.g. <noscript>…, or a <style>
+  // inside <math>) runs to the end of the input resumes at the next block boundary in that text:
+  // a new pass tokenizes from there. Passes cover disjoint, increasing ranges of the input.
+  for (let from: number | undefined = 0; from !== undefined; ) {
+    const tokens = tokenize(html, from, noClose)
+    const closed = closedDropStarts(tokens)
+    from = undefined
+    let dropDepth = 0
+    let dropTag = ''
+    let dropUnclosed = false // no matching end tag: dropping stops at the next block boundary (B-065)
+    for (let i = 0; i < tokens.length; i++) {
+      const t = tokens[i]!
+      if (dropDepth > 0) {
+        if (dropUnclosed && t.type === 'start' && DROP_BOUNDARY_SET.has(t.name)) {
+          dropDepth = 0 // fall through: the boundary itself is sanitized normally
+        } else {
+          if (dropUnclosed && t.type === 'rawtext' && i === tokens.length - 1) {
+            // raw text up to the end of the input (no end tag): look for a boundary inside it
+            DROP_BOUNDARY_RE.lastIndex = html.length - t.raw.length
+            from = DROP_BOUNDARY_RE.exec(html)?.index
+          } else if (t.type === 'start' && t.name === dropTag && !t.selfClosing && !VOID_ELEMENTS.has(t.name)) dropDepth++
+          else if (t.type === 'end' && t.name === dropTag) dropDepth--
+          continue
+        }
+      }
+      switch (t.type) {
+        case 'text':
+          out += t.raw.replace(/</g, '&lt;')
+          break
+        case 'rawtext':
+          // CSS never needs a raw '<' ("\3c " is the same character inside CSS strings): nothing in a
+          // <style> can close it early or look like markup to any parser (B-060).
+          out += t.parent === 'style' ? sanitizeCss(t.raw).replace(/</g, '\\3c ') : escapeHtml(decodeEntities(t.raw))
+          break
+        case 'start': {
+          if (DROP_WITH_CONTENT.has(t.name)) {
+            if (!VOID_ELEMENTS.has(t.name) && !t.selfClosing) {
+              dropDepth = 1
+              dropTag = t.name
+              dropUnclosed = !closed.has(i)
+            }
+            break
+          }
+          if (UNWRAP.has(t.name)) break
+          const attrs = sanitizeAttrs(t.name, t.attrs)
+          out += `<${t.name}${attrs.map((a) => ` ${a.name}="${escapeAttr(a.value)}"`).join('')}${t.selfClosing && VOID_ELEMENTS.has(t.name) ? ' /' : ''}>`
+          if (RAW_TEXT.has(t.name)) {
+            // "<style/>" is an OPEN <style> for a browser: close it ourselves.
+            if (t.selfClosing) out += `</${t.name}>`
+            else openRaw = t.name
           }
           break
         }
-        if (UNWRAP.has(t.name)) break
-        const attrs = sanitizeAttrs(t.name, t.attrs)
-        out += `<${t.name}${attrs.map((a) => ` ${a.name}="${escapeAttr(a.value)}"`).join('')}${t.selfClosing && VOID_ELEMENTS.has(t.name) ? ' /' : ''}>`
-        if (RAW_TEXT.has(t.name)) {
-          // "<style/>" is an OPEN <style> for a browser: close it ourselves.
-          if (t.selfClosing) out += `</${t.name}>`
-          else openRaw = t.name
-        }
-        break
+        case 'end':
+          if (DROP_WITH_CONTENT.has(t.name) || UNWRAP.has(t.name)) break
+          if (t.name === openRaw) openRaw = ''
+          out += `</${t.name}>`
+          break
+        default:
+          break
       }
-      case 'end':
-        if (DROP_WITH_CONTENT.has(t.name) || UNWRAP.has(t.name)) break
-        if (t.name === openRaw) openRaw = ''
-        out += `</${t.name}>`
-        break
-      default:
-        break
     }
   }
   // An unterminated raw-text element would swallow whatever follows the fragment.
