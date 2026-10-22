@@ -4,11 +4,11 @@ Owner: Backend dev, Platform (docs/PLAN.md section 7). The preload lives in `src
 
 | File | What it does |
 |---|---|
-| `index.ts` | Registers the `lud-sandbox:` scheme, single-instance lock, then `startApp()` (never overrides userData, TPM D5). Launching the app again opens Settings: `second-instance` on Windows/Linux, `activate` (LaunchServices "reopen") on macOS |
+| `index.ts` | Registers the `lud-sandbox:` scheme; a packaged build quits at once (exit 1) when started with a remote-debugging / inspector switch (TPM D22, F-23; `debug-switches.ts` is the pure check); single-instance lock, then `startApp()` (never overrides userData, TPM D5). Launching the app again opens Settings: `second-instance` on Windows/Linux, `activate` (LaunchServices "reopen") on macOS |
 | `e2e-mode.ts` | Pure: E2E mode = `LUD_E2E=1` AND not packaged (TPM D12, SEC-18) |
 | `app.ts` | Wiring: windows, tray, engine host, gesture, IPC, settings side effects, quit cleanup |
 | `paths.ts` | Pure: renderer page / preload / worker / resources / tray icon paths; `rendererPageOf()` (which of our pages a URL is); dev server URL ignored when packaged (F-09) |
-| `security.ts` | Secure `webPreferences` (callers cannot weaken them), navigation / window.open / webview blocking for every webContents, deny-all permission / display-capture / download handlers, remote-request blocking for the app session (SEC-150), including `file:` URLs that name a server (Windows UNC → SMB/NTLM) |
+| `security.ts` | Secure `webPreferences` (callers cannot weaken them), navigation / window.open / webview blocking for every webContents, deny-all permission / display-capture / download handlers, remote-request blocking for the app session (SEC-150), including `file:` URLs that name a server (Windows UNC → SMB/NTLM); spell checker off on every session and `spellcheck: false` in every window, so no Hunspell dictionary is downloaded (TPM D22, F-24: no network request at launch) |
 | `windows/overlay.ts` | Overlay window + sensor/engage flow (PLAN §3.5); `overlay-session.ts` is the pure state machine + safety timeouts; `overlay-geometry.ts` is the pure placement math |
 | `windows/feed.ts`, `windows/settings.ts` | Single-instance Feed and Settings windows (`singleton.ts`) |
 | `platform/trigger-logic.ts` | Pure trigger state machine (drag + key); `trigger.ts` adapts uiohook-napi; `gesture.ts` owns start/stop/pause + `PlatformStatus`; `gesture-env.ts` is the pure "may the hook start?" decision; `permissions.ts` handles macOS Accessibility |
@@ -33,6 +33,26 @@ Owner: Backend dev, Platform (docs/PLAN.md section 7). The preload lives in `src
 3. The mouse is released. The renderer gets `overlayDisarm`. This is sent for every release after an
    arm, including one that follows a successful drop, so the renderer must ignore it in that case.
 4. The renderer calls `lud.overlayDone()` when its leave animation ends, and main hides the window.
+
+A new trigger arm is ignored only while the sensor is already armed or while a job started from the
+overlay is running (one Uncle at a time). Over a result/error card, the leave animation or feedMe it
+re-arms at the new cursor and the renderer dismisses what it showed (TPM D21).
+
+Mouse and focus (TPM D20):
+
+- During arm/sensor/engaged drag the overlay is a normal drop target (D16). Main forces this on
+  every arm and resets it when the overlay hides.
+- After the drop the renderer calls `lud.setOverlayClickThrough(true)`: main calls
+  `setIgnoreMouseEvents(true, { forward: true })`, clicks go to the windows below, mouse moves are
+  still forwarded, so the renderer sees the pointer enter the cancel button / a card and calls
+  `setOverlayClickThrough(false)` there. Requests while hidden or armed are ignored (a late request
+  from the previous card cannot turn the new sensor off).
+- **Linux:** `forward` exists only on macOS and Windows, so the renderer could never see the pointer
+  enter a button again. Main ignores `setOverlayClickThrough` on Linux: the overlay stays clickable
+  (QA3-06 remains on Linux; the gesture is X11-only there anyway).
+- Focus: only `lud.setOverlayInteractive(true)` (feedMe) makes the window focusable and focuses it.
+  Cards and the cancel button work without focus; on macOS the window has `acceptFirstMouse` so the
+  first click on an inactive overlay reaches the page.
 
 Safety timeouts (`overlay-session.ts`) make sure the overlay can never stay on screen:
 
@@ -69,6 +89,8 @@ coordinates (CSS px), only when it changes, at most about 60 Hz.
 - Smoke tests against the built app:
   - `npm run build && xvfb-run -a node tests/unit/platform/smoke/electron-smoke.mjs` (fake engine:
     windows, IPC policy, hooks, htmlToPdf, crash/restart, hardened webPreferences);
+  - `npm run build && xvfb-run -a node tests/unit/platform/smoke/feed-drop-smoke.mjs` (B-055:
+    `dropFilesOnFeed` opens the Feed Window itself and resolves; real engine);
   - `npm run build && LUD_FFMPEG_PATH=/usr/bin/ffmpeg xvfb-run -a node tests/unit/platform/smoke/pdf-render-smoke.mjs`
     (real engine: PDF → PNG/JPG through `renderPdfPages`, huge/hostile/corrupt PDFs, SEC-82 HTML checks).
 

@@ -2,6 +2,7 @@
 
 import { app, dialog, protocol } from 'electron'
 import { startApp, type RunningApp } from './app'
+import { forbiddenDebugSwitch } from './debug-switches'
 import { isE2E } from './e2e-mode'
 import { createLogger } from './logger'
 import { SANDBOX_PRIVILEGES, SANDBOX_SCHEME } from './sandbox-protocol'
@@ -16,7 +17,18 @@ const log = createLogger(!app.isPackaged || process.env['LUD_DEBUG'] === '1')
 // Custom scheme for the hidden PDF helper windows; must happen before 'ready'.
 protocol.registerSchemesAsPrivileged([{ scheme: SANDBOX_SCHEME, privileges: { ...SANDBOX_PRIVILEGES } }])
 
-if (!app.requestSingleInstanceLock()) {
+// TPM D22 / F-23: a packaged build never runs with a remote-debugging (CDP) endpoint. Quit before
+// any window, the single-instance lock or the hook exist. Unpackaged runs (dev, E2E) keep it.
+const debugSwitch = app.isPackaged ? forbiddenDebugSwitch(process.argv, (name) => app.commandLine.hasSwitch(name), process.platform) : null
+
+if (debugSwitch !== null) {
+  try {
+    process.stderr.write(`[lud] refusing to start with --${debugSwitch}\n`)
+  } catch {
+    // no console (Windows GUI app): nothing to report to
+  }
+  app.exit(1)
+} else if (!app.requestSingleInstanceLock()) {
   // Another instance owns this profile: it shows its settings window (below); we just leave.
   app.quit()
 } else {

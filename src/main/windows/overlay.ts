@@ -8,6 +8,7 @@ import type { Settings } from '../../shared/types'
 import { createAppWindow, loadPage, type WindowContext } from './common'
 import { OVERLAY_SIZE, overlayBounds, samePoint, sameRect, toWindowPoint, type Point, type Rect } from './overlay-geometry'
 import {
+  clickThroughAllowed,
   initialOverlaySession,
   overlaySessionReducer,
   safetyTimeout,
@@ -24,6 +25,8 @@ export interface OverlayDeps {
   getSettings(): Settings
   isQuitting(): boolean
   log?: (message: string) => void
+  /** Defaults to process.platform (injectable for tests). */
+  platform?: NodeJS.Platform
 }
 
 export class OverlayController {
@@ -32,10 +35,13 @@ export class OverlayController {
   private pollTimer: ReturnType<typeof setInterval> | null = null
   private safetyTimer: ReturnType<typeof setTimeout> | null = null
   private lastCursor: Point | null = null
+  private ignoringMouse = false
   private loaded: Promise<void>
+  private readonly platform: NodeJS.Platform
 
   constructor(private readonly deps: OverlayDeps) {
-    const isMac = process.platform === 'darwin'
+    this.platform = deps.platform ?? process.platform
+    const isMac = this.platform === 'darwin'
     this.win = createAppWindow(
       deps.ctx,
       'overlay',
@@ -57,7 +63,10 @@ export class OverlayController {
         alwaysOnTop: true,
         focusable: false,
         title: 'Let us drag!',
-        ...(isMac ? { hiddenInMissionControl: true, roundedCorners: false } : {})
+        // acceptFirstMouse (macOS): the overlay is never key (focusable: false outside feedMe), so
+        // without it the first click on the cancel button / a result card would only try to
+        // activate the window instead of reaching the page (D19, D20: clickable without focus).
+        ...(isMac ? { hiddenInMissionControl: true, roundedCorners: false, acceptFirstMouse: true } : {})
       },
       // Keep the hidden, preloaded page responsive so it can appear instantly.
       { backgroundThrottling: false }
@@ -113,6 +122,9 @@ export class OverlayController {
     const bounds = this.boundsFor(cursor)
     this.win.setBounds(bounds)
     this.win.setFocusable(false)
+    // D20/D16: the sensor (and a new gesture over a card that was click-through, D21) is a normal
+    // drop target.
+    this.setIgnoreMouse(false)
     this.win.showInactive()
     // Re-assert the level after showing (some window managers reset it).
     this.win.setAlwaysOnTop(true, 'screen-saver')
@@ -133,11 +145,32 @@ export class OverlayController {
     this.apply({ type: 'engaged' })
   }
 
+  /**
+   * feedMe only (D20): the renderer asks for keyboard focus + clicks while it offers the options.
+   * This is the only place the overlay ever takes focus.
+   */
   setInteractive(interactive: boolean): void {
     if (this.session.phase === 'hidden') return
     this.apply({ type: 'interactive', value: interactive })
+    if (this.win.isDestroyed()) return
+    if (interactive) this.setIgnoreMouse(false)
     this.win.setFocusable(interactive)
     if (interactive) this.win.focus()
+  }
+
+  /**
+   * D20 (B-051): the renderer makes the overlay click-through after the drop, and clickable again
+   * while the pointer is over an interactive element (mouse moves are forwarded so it can tell).
+   * Ignored while hidden/armed and on Linux (see clickThroughAllowed). Never changes focus.
+   */
+  setClickThrough(clickThrough: boolean): void {
+    if (this.win.isDestroyed()) return
+    this.setIgnoreMouse(clickThrough && clickThroughAllowed(this.session, this.platform))
+  }
+
+  /** Current D20 state (true = clicks pass through to the windows below). */
+  get clickThrough(): boolean {
+    return this.ignoringMouse
   }
 
   jobStarted(jobId: string): void {
@@ -203,7 +236,19 @@ export class OverlayController {
     this.lastCursor = null
     if (this.win.isDestroyed()) return
     this.win.setFocusable(false)
+    this.setIgnoreMouse(false)
     this.win.hide()
+  }
+
+  /**
+   * The only caller of setIgnoreMouseEvents (so the cached state cannot drift). `forward` is
+   * honoured on macOS/Windows only. No native call when nothing changes (on Linux: never).
+   */
+  private setIgnoreMouse(ignore: boolean): void {
+    if (this.win.isDestroyed() || ignore === this.ignoringMouse) return
+    this.ignoringMouse = ignore
+    if (ignore) this.win.setIgnoreMouseEvents(true, { forward: true })
+    else this.win.setIgnoreMouseEvents(false)
   }
 
   private startPolling(): void {

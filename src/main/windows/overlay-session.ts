@@ -37,12 +37,32 @@ export type OverlaySessionEvent =
   | { type: 'jobFinished'; jobId: string }
   | { type: 'done' }
 
-/** Is the overlay busy with something the user is looking at (do not re-arm over it)? */
+/**
+ * Would a new trigger arm be ignored right now?
+ * - armed: already a sensor under the cursor (double arm, key repeat).
+ * - a conversion started from the overlay is running (one Uncle at a time).
+ * Everything else is interruptible (TPM D21, B-056): a result/error card (spit/choke), the leave
+ * animation, feedMe, or an 'engaged' session whose mouse-up we never saw (a new arm needs a new
+ * press, so the previous gesture is over). The renderer dismisses what it shows on overlayArm.
+ */
 export function isBusy(s: OverlaySession): boolean {
   if (s.phase === 'hidden') return false
   if (s.phase === 'armed') return true
-  if (s.phase === 'engaged') return true
-  return s.jobs.length > 0 || s.interactive
+  return s.jobs.length > 0
+}
+
+/**
+ * TPM D20 (B-051/B-052): may the overlay ignore the mouse (`setIgnoreMouseEvents(true, {forward})`)
+ * now, when its renderer asks for it?
+ * - Never while hidden or while the sensor is armed: during the gesture it must be a normal drop
+ *   target (D16); a late request from the previous card must not turn the new sensor off.
+ * - Never on Linux: `forward` (mouse moves still reach the page while ignoring clicks) exists only
+ *   on macOS and Windows, so the renderer could not see the pointer enter a button to turn
+ *   click-through off again. Linux keeps the overlay clickable (as in v0.1 before D20).
+ */
+export function clickThroughAllowed(s: OverlaySession, platform: NodeJS.Platform): boolean {
+  if (platform !== 'darwin' && platform !== 'win32') return false
+  return s.phase !== 'hidden' && s.phase !== 'armed'
 }
 
 export function overlaySessionReducer(s: OverlaySession, e: OverlaySessionEvent): OverlaySession {

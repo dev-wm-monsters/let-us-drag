@@ -121,6 +121,12 @@ try {
   assert.match(notAllowed2, /Request rejected/)
   step('IPC validation rejects bad input / unrevealable paths; per-page allowlist enforced')
 
+  // D20: the overlay may toggle click-through (main ignores it on Linux: no forwarded mouse moves).
+  assert.equal(await overlay.evaluate(() => window.lud.setOverlayClickThrough(true).then(() => 'ok', (e) => String(e))), 'ok')
+  assert.equal(await overlay.evaluate(() => window.lud.setOverlayClickThrough(false).then(() => 'ok', (e) => String(e))), 'ok')
+  assert.match(await overlay.evaluate(() => window.lud.setOverlayClickThrough('yes').then(() => 'ok', (e) => String(e))), /Invalid/)
+  step('setOverlayClickThrough accepted from the overlay, validated')
+
   await overlay.evaluate((p) => window.lud.startJob({ id: 'smoke-pdf', optionId: 'to-pdf', inputPaths: [p] }), input)
   await waitFor(() => app.evaluate(() => globalThis.__ludTest.jobEvents().some((e) => e.jobId === 'smoke-pdf' && (e.type === 'done' || e.type === 'error'))), 'pdf job', 40_000)
   const pdfEv = await app.evaluate(() => globalThis.__ludTest.jobEvents().find((e) => e.jobId === 'smoke-pdf' && (e.type === 'done' || e.type === 'error')))
@@ -170,6 +176,7 @@ try {
   const settingsPage = await waitFor(async () => app.windows().find((p) => p.url().includes('/settings/')), 'settings page')
   const badSettings = await settingsPage.evaluate(() => window.lud.setSettings({ triggerKey: 'capslock' }).then(() => 'ok', (e) => String(e)))
   assert.match(badSettings, /Invalid settings/)
+  assert.match(await settingsPage.evaluate(() => window.lud.setOverlayClickThrough(true).then(() => 'ok', (e) => String(e))), /Request rejected/)
   const extraKey = await settingsPage.evaluate(() => window.lud.setSettings({ sounds: false, evil: 1 }).then(() => 'ok', (e) => String(e)))
   assert.match(extraKey, /Invalid settings/, 'strict schema rejects unknown keys')
   step('settings window: strict settings validation')

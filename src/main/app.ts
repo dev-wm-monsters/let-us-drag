@@ -4,7 +4,7 @@
 import { app, BrowserWindow, Menu, powerMonitor, screen, session, utilityProcess } from 'electron'
 import { isAbsolute, join } from 'node:path'
 import { IPC } from '../shared/api'
-import { TEST_CANCEL_CHANNEL, TEST_FEED_DROP_CHANNEL, type TestDropPayload } from '../shared/test-hooks'
+import { TEST_CANCEL_CHANNEL, type TestDropPayload } from '../shared/test-hooks'
 import type { JobEvent, JobRequest, PlatformStatus, Settings } from '../shared/types'
 import { launchCommand, linuxAutostartPath, loginItemSettings, setLinuxAutostart } from './autostart'
 import { EngineHost, type WorkerLike } from './engine-host'
@@ -253,7 +253,7 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
   // Only in E2E mode (LUD_E2E=1 and NOT packaged, see e2e-mode.ts); loaded lazily so the hook
   // code is not even evaluated in normal runs.
   if (e2e && !app.isPackaged) {
-    const { createTestHooks, installTestHooks } = await import('./test-hooks')
+    const { createTestHooks, deliverFeedDrop, installTestHooks } = await import('./test-hooks')
     installTestHooks(
       createTestHooks({
         primaryCenter: () => rectCenter(screen.getPrimaryDisplay().workArea),
@@ -261,14 +261,9 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
         jobEvents: () => registry.recordedEvents(),
         openFeedWindow: () => feedWin.open(),
         openSettingsWindow: () => settingsWin.open(),
-        sendFeedDrop: async (payload: TestDropPayload) => {
-          const win = await feedWin.open()
-          if (win.webContents.isLoading()) await new Promise<void>((r) => win.webContents.once('did-finish-load', () => r()))
-          // A freshly opened feed renderer subscribes in a React effect after its first render:
-          // wait for the drop zone (DOM contract) plus two frames so the message is not lost.
-          await win.webContents.executeJavaScript(FEED_READY_SCRIPT).catch(() => undefined)
-          if (!win.isDestroyed()) win.webContents.send(TEST_FEED_DROP_CHANNEL, payload)
-        },
+        // Opens the Feed Window if needed (open() resolves once its page has loaded), then waits
+        // for the renderer to subscribe before sending (B-055).
+        sendFeedDrop: async (payload: TestDropPayload) => deliverFeedDrop(await feedWin.open(), payload),
         sendCancel: () => broadcast(TEST_CANCEL_CHANNEL, undefined, [overlay.win, feedWin.window])
       })
     )
@@ -305,14 +300,6 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
 
   return { openSettingsWindow: () => settingsWin.open() }
 }
-
-/** E2E only: resolves once the feed page rendered its drop zone (max 10 s) and two frames passed. */
-const FEED_READY_SCRIPT = `new Promise((resolve) => {
-  const t0 = Date.now()
-  const done = () => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 50)))
-  const check = () => (document.querySelector('[data-testid="feed-dropzone"]') || Date.now() - t0 > 10000 ? done() : setTimeout(check, 50))
-  check()
-})`
 
 /** How often (macOS) we check that the Accessibility grant is still there while the hook runs. */
 const PERMISSION_LOSS_POLL_MS = 5_000

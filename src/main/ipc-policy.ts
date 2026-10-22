@@ -13,6 +13,7 @@ type InvokeChannel =
   | typeof IPC.getPlatformStatus
   | typeof IPC.requestAccessibility
   | typeof IPC.overlayInteractive
+  | typeof IPC.overlayClickThrough
   | typeof IPC.overlayDone
   | typeof IPC.overlayEngaged
   | typeof IPC.openFeedWindow
@@ -38,6 +39,7 @@ export const IPC_ALLOWLIST: Readonly<Record<InvokeChannel, readonly RendererPage
   [IPC.getPlatformStatus]: ALL,
   [IPC.requestAccessibility]: ['settings'],
   [IPC.overlayInteractive]: ['overlay'],
+  [IPC.overlayClickThrough]: ['overlay'],
   [IPC.overlayDone]: ['overlay'],
   [IPC.overlayEngaged]: ['overlay'],
   [IPC.openFeedWindow]: ['settings'],

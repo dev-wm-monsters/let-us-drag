@@ -57,6 +57,7 @@ export function hardenSession(ses: Session): void {
   // No source → getDisplayMedia() is rejected.
   ses.setDisplayMediaRequestHandler((_request, callback) => callback(null))
   ses.on('will-download', (event) => event.preventDefault())
+  disableSpellChecker(ses)
 }
 
 const REMOTE_PROTOCOLS = new Set(['http:', 'https:', 'ws:', 'wss:', 'ftp:'])
@@ -93,4 +94,19 @@ export function blockRemoteRequests(ses: Session, devOrigin: string | undefined,
     if (blocked) log?.(`blocked request: ${details.url.slice(0, 120)}`)
     callback({ cancel: blocked })
   })
+}
+
+/** Never reached: setSpellCheckerDictionaryDownloadURL needs a URL; nothing listens on port 9 here. */
+export const NO_DICTIONARY_URL = 'https://127.0.0.1:9/'
+
+/**
+ * TPM D22 / F-24 (B-059): no spell checker, so Chromium never downloads a Hunspell dictionary
+ * (a request to redirector.gvt1.com at every launch on Windows/Linux; macOS uses the OS checker
+ * and these calls are no-ops there). `spellcheck: false` in webPreferences alone does not stop the
+ * session-level download. The download URL is pointed at an unroutable local address as a second
+ * layer, in case a future Chromium starts the downloader anyway.
+ */
+export function disableSpellChecker(ses: Pick<Session, 'setSpellCheckerEnabled' | 'setSpellCheckerDictionaryDownloadURL'>): void {
+  ses.setSpellCheckerEnabled(false)
+  ses.setSpellCheckerDictionaryDownloadURL(NO_DICTIONARY_URL)
 }
