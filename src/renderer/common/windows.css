@@ -84,6 +84,27 @@ body {
   font-weight: 600;
   color: var(--muted);
 }
+/* The held-files chip (B-064) takes the tagline's place without changing the layout. */
+.feed-sub {
+  position: relative;
+}
+.feed-sub p.is-covered {
+  visibility: hidden;
+}
+.feed-sub .lud-held {
+  position: absolute;
+  left: 0;
+  top: -4px;
+  max-width: 100%;
+  gap: 6px;
+  padding: 2px 10px 2px 4px;
+  border-width: 2.5px;
+  box-shadow: 2px 2px 0 var(--ink);
+  animation: lud-fade 200ms ease-out both;
+}
+.feed-sub .lud-held small {
+  font-size: 11px;
+}
 .feed-zone {
   position: relative;
   flex: 1;

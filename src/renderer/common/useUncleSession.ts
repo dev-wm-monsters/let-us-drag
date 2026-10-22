@@ -27,9 +27,14 @@ export interface RingGeometry {
   radius: number
   hitRadius: number
   mouthRadius: number
+  /**
+   * Uniform scale of the whole stage drawing (Uncle, ring, cards) around the stage centre. 1 except
+   * in a Feed Window too small for the ring (B-064): the geometry above stays in unscaled px.
+   */
+  scale: number
 }
 
-export const DEFAULT_RING: RingGeometry = { radius: 190, hitRadius: 46, mouthRadius: 100 }
+export const DEFAULT_RING: RingGeometry = { radius: 190, hitRadius: 46, mouthRadius: 100, scale: 1 }
 
 /** Attribute on elements that must receive clicks while the overlay is otherwise click-through (D20). */
 export const INTERACTIVE_ATTR = 'data-lud-interactive'
@@ -124,7 +129,8 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
     if (i < 0) return null
     const slot = ringLayout(opts.length, ringRef.current.radius)[i]
     if (!slot) return null
-    return { x: stageCenter.current.x + slot.x, y: stageCenter.current.y + slot.y }
+    const k = ringRef.current.scale
+    return { x: stageCenter.current.x + slot.x * k, y: stageCenter.current.y + slot.y * k }
   }, [])
 
   const updateLook = useCallback(() => {
@@ -138,8 +144,9 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
     const opts = visibleOptions(m)
     const slots = ringLayout(opts.length, ringRef.current.radius)
     const hoveredIndex = m.hovered ? opts.findIndex((o) => o.id === m.hovered) : -1
+    const k = ringRef.current.scale
     const hit = hitTest({
-      p: { x: p.x - stageCenter.current.x, y: p.y - stageCenter.current.y },
+      p: { x: (p.x - stageCenter.current.x) / k, y: (p.y - stageCenter.current.y) / k },
       slots,
       hitRadius: ringRef.current.hitRadius,
       hoveredIndex: hoveredIndex >= 0 ? hoveredIndex : null,

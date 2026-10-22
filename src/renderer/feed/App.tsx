@@ -1,7 +1,7 @@
 // Feed Window: an always-available drop target (fallback for Wayland / denied macOS permission).
 // Plain HTML5 drag & drop + a file picker; after the drop it's the same flow as the overlay.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Stage } from '../common/Stage'
+import { HeldChip, Stage } from '../common/Stage'
 import { feedRing, uncleWidthFor } from '../common/layout'
 import { usePrefersReducedMotion, useUncleSession } from '../common/useUncleSession'
 import { isBusy } from '../overlay/state'
@@ -47,13 +47,19 @@ export function FeedApp() {
   }, [s.model.state])
 
   const busy = isBusy(s.model)
+  // Files dropped on the Uncle, waiting for an option: named in the header, where the chip covers no
+  // bubble whatever the window size (B-064).
+  const held = s.model.state === 'feedMe' ? s.model.held : null
   return (
     <div className="feed">
       <header className="feed-head">
         <h1>
           Let us drag<span>!</span>
         </h1>
-        <p>Feed me a file. I'll cook it right next to the original.</p>
+        <div className="feed-sub">
+          <p className={held ? 'is-covered' : undefined}>Feed me a file. I'll cook it right next to the original.</p>
+          {held && <HeldChip held={held} className="is-in-head" />}
+        </div>
       </header>
       <div
         ref={zoneRef}
@@ -61,7 +67,7 @@ export function FeedApp() {
         data-testid="feed-dropzone"
         aria-label="Drop files here"
       >
-        <Stage s={s} testId="feed-root" uncleWidth={uncleWidth} ring={ring} reducedMotion={reduced} />
+        <Stage s={s} testId="feed-root" uncleWidth={uncleWidth} ring={ring} reducedMotion={reduced} showHeld={false} />
       </div>
       <footer className="feed-foot">
         <button

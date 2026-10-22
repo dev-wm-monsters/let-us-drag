@@ -37,6 +37,20 @@ export function ringLayout(count: number, radius: number): RingSlot[] {
   })
 }
 
+/** Most options a ring ever shows (the catalog caps every category at 8). */
+export const MAX_RING_OPTIONS = 8
+
+/**
+ * Top (offset from the ring centre) of the held-files chip shown under the ring in feedMe (B-064):
+ * below the lowest bubble of any ring of 1..MAX_RING_OPTIONS options, `clearance` being the room
+ * kept under a bubble centre (its hovered radius + shadow, and at least its square hit box).
+ */
+export function heldChipTop(radius: number, clearance: number): number {
+  let lowest = -radius
+  for (let n = 1; n <= MAX_RING_OPTIONS; n++) for (const s of ringLayout(n, radius)) lowest = Math.max(lowest, s.y)
+  return Math.ceil(lowest + clearance)
+}
+
 function round2(n: number): number {
   return Math.round(n * 100) / 100
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clampToCircle, hitTest, placeHint, pupilOffset, ringLayout, type RingSlot, softNorm } from './geometry'
+import { clampToCircle, heldChipTop, hitTest, MAX_RING_OPTIONS, placeHint, pupilOffset, ringLayout, type RingSlot, softNorm } from './geometry'
 
 describe('ringLayout', () => {
   it('returns nothing for 0 and top for 1', () => {
@@ -150,5 +150,26 @@ describe('placeHint (QA3-03: hints inside the window, never over another bubble)
     expect(p.overlap).toBeGreaterThan(0)
     expect(p.x).toBeGreaterThanOrEqual(bounds.x)
     expect(p.y + p.h).toBeLessThanOrEqual(bounds.y + bounds.h)
+  })
+})
+
+describe('heldChipTop (B-064)', () => {
+  // The overlay window is 560 px, its ring 190 px; Stage keeps 50 + 6 px under each bubble centre.
+  const CLEARANCE = 56
+  const CHIP_H = 32
+  it('puts the held-files chip under every bubble of 1..8 options, hovered or not', () => {
+    for (const radius of [120, 150, 190]) {
+      const top = heldChipTop(radius, CLEARANCE)
+      for (let n = 1; n <= MAX_RING_OPTIONS; n++) {
+        for (const s of ringLayout(n, radius)) {
+          // the 92 px square hit box and the hovered bubble (×1.24) with its shadow stay above it
+          expect(s.y + 46).toBeLessThanOrEqual(top)
+          expect(s.y + 50 + 4).toBeLessThanOrEqual(top)
+        }
+      }
+    }
+  })
+  it('fits the chip inside the 560 px overlay', () => {
+    expect(heldChipTop(190, CLEARANCE) + CHIP_H).toBeLessThanOrEqual(560 / 2 - 8)
   })
 })
