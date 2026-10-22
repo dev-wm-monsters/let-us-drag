@@ -76,6 +76,8 @@ export interface MockControl {
   /** E2E-style cancel of the running job (LudTestHooks.cancelActive). */
   testCancel(): void
   changeSettings(patch: Partial<Settings>): void
+  /** Last value set through setOverlayClickThrough (D20); reset to false by arm(), like main does. */
+  clickThrough(): boolean
 }
 
 function baseName(p: string): string {
@@ -125,6 +127,7 @@ export function createMockLud(opts: MockOptions = {}): MockControl {
   const settings: Settings = { ...DEFAULT_SETTINGS, ...opts.settings }
   const platform: PlatformStatus = opts.platform ?? { platform: 'linux', gestureAvailable: true }
   const log = (name: string, ...args: unknown[]) => calls.push({ name, args })
+  let clickThrough = false
 
   const runAuto = (req: JobRequest) => {
     const total = opts.jobMs ?? 1600
@@ -186,6 +189,10 @@ export function createMockLud(opts: MockOptions = {}): MockControl {
     overlayEngaged: async () => void log('overlayEngaged'),
     openFeedWindow: async () => void log('openFeedWindow'),
     openSettingsWindow: async () => void log('openSettingsWindow'),
+    setOverlayClickThrough: async (v) => {
+      log('setOverlayClickThrough', v)
+      clickThrough = v
+    },
     onPlatformStatusChanged: () => () => {},
     onJobEvent: (cb) => job.on(cb),
     onOverlayArm: (cb) => armCh.on(cb),
@@ -207,8 +214,11 @@ export function createMockLud(opts: MockOptions = {}): MockControl {
     },
     emitJobEvent: (e) => job.emit(e),
     lastJobId: () => jobs[jobs.length - 1]?.id ?? null,
-    arm: (info) =>
-      armCh.emit({ cursor: info?.cursor ?? { x: 300, y: 300 }, settings: info?.settings ?? { ...settings } }),
+    arm: (info) => {
+      // Main forces the overlay back to a normal drop target when it arms the sensor (D20).
+      clickThrough = false
+      armCh.emit({ cursor: info?.cursor ?? { x: 300, y: 300 }, settings: info?.settings ?? { ...settings } })
+    },
     disarm: () => disarmCh.emit(),
     cursor: (p) => cursorCh.emit(p),
     testDrop: (p) => testDropCh.emit(p),
@@ -217,6 +227,7 @@ export function createMockLud(opts: MockOptions = {}): MockControl {
     changeSettings: (patch) => {
       Object.assign(settings, patch)
       settingsCh.emit({ ...settings })
-    }
+    },
+    clickThrough: () => clickThrough
   }
 }

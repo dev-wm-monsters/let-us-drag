@@ -3,19 +3,23 @@
 //
 //   node src/renderer/dev/capture.mjs                # all scenarios + GIF
 //   node src/renderer/dev/capture.mjs hover feed     # only scenarios whose name contains a filter
-//   LUD_SCREENS_DIR=/tmp/x node src/renderer/dev/capture.mjs
+//   LUD_SCREENS_DIR=/tmp/x node src/renderer/dev/capture.mjs   # screenshots AND GIFs go to /tmp/x
+//
+// GIF paths: LUD_HERO_PATH / LUD_GIF_PATH when set, else next to the screenshots when LUD_SCREENS_DIR
+// is set (docs/art is never touched then, QA3-12), else docs/art/hero.gif + uncle-eat-chew-spit.gif.
 //
 // Chromium: LUD_CHROMIUM_PATH, else the newest chromium-*/chrome-linux/chrome under
 // PLAYWRIGHT_BROWSERS_PATH, else Playwright's default. GIF needs ffmpeg (LUD_FFMPEG_PATH or PATH).
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join } from 'node:path'
 import { chromium } from 'playwright'
 import sharp from 'sharp'
+import { artOutputPaths } from './art-paths.mjs'
 import { repoRoot, serverUrl, startRendererServer } from './vite-dev.mjs'
 
-const outDir = resolve(process.env.LUD_SCREENS_DIR ?? join(repoRoot, 'docs/art/screens'))
+const { outDir, heroGif, loopGif } = artOutputPaths(process.env, repoRoot)
 const filters = process.argv.slice(2)
 mkdirSync(outDir, { recursive: true })
 
@@ -208,7 +212,7 @@ const scenarios = {
     const p = await optionPoint(page, 'compress')
     await dropAt(page, p.x, p.y, [HUGE])
     await sleep(1200)
-    await emit(page, { type: 'progress', progress: -1, stage: 'thinking' })
+    await emit(page, { type: 'progress', progress: -1, stage: 'Chewing' })
     await sleep(500)
     await expectState(page, 'chew')
     await shot(page, 'overlay-12-struggle')
@@ -226,6 +230,38 @@ const scenarios = {
     await sleep(700)
     await expectState(page, 'choke')
     await shot(page, 'overlay-13-choke')
+    await ctx.close()
+  },
+  async 'overlay-21-download'() {
+    // D15/QA3-02: first Remove BG: the one-time model download is named, with its percentage.
+    const { page, ctx } = await open({ view: 'overlay' })
+    const c = await center(page)
+    await enterAt(page, c.x, c.y, [PNG])
+    await sleep(450)
+    const p = await optionPoint(page, 'remove-bg')
+    await dropAt(page, p.x, p.y, [PNG])
+    await sleep(1200)
+    await emit(page, { type: 'progress', progress: 0.4 * 0.42, stage: 'One-time download of my scissors (179 MB AI model)' })
+    await sleep(400)
+    await expectState(page, 'chew')
+    await shot(page, 'overlay-21-download')
+    await ctx.close()
+  },
+  async 'overlay-22-choke-long'() {
+    // QA3-04: the longest engine message (200 chars) wraps and the card stays inside the window.
+    const { page, ctx } = await open({ view: 'overlay' }, { width: 560, height: 560 })
+    const c = await center(page)
+    await enterAt(page, c.x, c.y, [PNG])
+    await sleep(450)
+    const p = await optionPoint(page, 'to-jpg')
+    await dropAt(page, p.x, p.y, [PNG])
+    await sleep(1300)
+    const message =
+      'quarterly-results-final-v7 (approved by finance) copy.png is larger than 1 GB, which is more than I can chew for this kind of file. Nothing was saved next to the original, so try a smaller one?'
+    await emit(page, { type: 'error', error: { code: 'INPUT_INVALID', message } })
+    await sleep(800)
+    await expectState(page, 'choke')
+    await shot(page, 'overlay-22-choke-long')
     await ctx.close()
   },
   async 'overlay-14-refuse'() {
@@ -376,7 +412,7 @@ const scenarios = {
       fps: 15,
       width: 400,
       colors: 96,
-      out: resolve(process.env.LUD_HERO_PATH ?? join(repoRoot, 'docs/art/hero.gif'))
+      out: heroGif
     })
   },
   async 'gif'() {
@@ -413,7 +449,7 @@ const scenarios = {
       fps: 20,
       width: 360,
       colors: 96,
-      out: resolve(process.env.LUD_GIF_PATH ?? join(repoRoot, 'docs/art/uncle-eat-chew-spit.gif'))
+      out: loopGif
     })
   }
 }

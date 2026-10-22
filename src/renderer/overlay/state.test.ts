@@ -10,7 +10,10 @@ import {
   speech,
   uncleMoodAttr,
   visibleOptions,
-  wantsInteractive
+  wantsClickThrough,
+  wantsInteractive,
+  chewCaption,
+  type UncleState
 } from './state'
 
 const item = (name: string, extra: Partial<DroppedItem> = {}): DroppedItem => {
@@ -93,7 +96,9 @@ describe('overlay state machine', () => {
     m = reducer(m, { type: 'MIN_CHEW_ELAPSED' })
     expect(m.state).toBe('spit')
     expect(m.outputPaths).toEqual(['/home/u/cat.jpg'])
-    expect(wantsInteractive(m)).toBe(true)
+    // D20/QA3-07: the result card works by click, without taking focus.
+    expect(wantsInteractive(m)).toBe(false)
+    expect(wantsClickThrough(m)).toBe(true)
     m = run(m, { type: 'LEAVE' })
     expect(m.state).toBe('leave')
     m = reducer(m, { type: 'LEAVE_DONE' })
@@ -334,5 +339,112 @@ describe('overlay state machine', () => {
     m = reducer(m, ev({ type: 'progress', jobId: 'j', progress: -1, stage: 'thinking' }))
     expect(m.progress).toBe(-1)
     expect(m.stage).toBe('thinking')
+  })
+})
+
+describe('D20 click-through / focus (QA3-06, QA3-07)', () => {
+  const ALL: UncleState[] = ['hidden', 'idle', 'appear', 'hover', 'feedMe', 'eat', 'chew', 'spit', 'choke', 'refuse', 'leave', 'cancel']
+
+  it('is click-through exactly after the drop (eat/chew/spit/choke/cancel/leave)', () => {
+    const through = ALL.filter((state) => wantsClickThrough({ state }))
+    expect(through.sort()).toEqual(['cancel', 'chew', 'choke', 'eat', 'leave', 'spit'])
+  })
+
+  it('stays a normal drop target during the gesture (appear/hover/feedMe/refuse, D16)', () => {
+    for (const state of ['appear', 'hover', 'feedMe', 'refuse', 'hidden', 'idle'] as const) expect(wantsClickThrough({ state })).toBe(false)
+  })
+
+  it('takes focus only in feedMe with held items, never for spit/choke', () => {
+    const held = run(initialModel('overlay'), png, { type: 'DROP_RESOLVED', items: [item('notes.md')], target: 'mouth', jobId: 'j' })
+    expect(held.state).toBe('feedMe')
+    expect(wantsInteractive(held)).toBe(true)
+    const chewing = run(held, { type: 'CHOOSE', optionId: 'to-pdf', jobId: 'j2' }, { type: 'EAT_DONE' })
+    expect(wantsInteractive(chewing)).toBe(false)
+    const choked = run(chewing, { type: 'MIN_CHEW_ELAPSED' }, ev({ type: 'error', jobId: 'j2', error: { code: 'TOOL_FAILED', message: '' } }))
+    expect(choked.state).toBe('choke')
+    expect(wantsInteractive(choked)).toBe(false)
+    expect(wantsClickThrough(choked)).toBe(true)
+  })
+})
+
+describe('D21 new gesture while a result is shown (QA3-11)', () => {
+  const spit = run(
+    initialModel('overlay'),
+    png,
+    { type: 'DROP_RESOLVED', items: [item('cat.png')], target: 'to-jpg', jobId: 'j' },
+    { type: 'EAT_DONE' },
+    { type: 'MIN_CHEW_ELAPSED' },
+    ev({ type: 'done', jobId: 'j', outputPaths: ['/home/u/cat.jpg'] })
+  )
+  const choke = run(
+    initialModel('overlay'),
+    png,
+    { type: 'DROP_RESOLVED', items: [item('cat.png')], target: 'to-jpg', jobId: 'j' },
+    { type: 'EAT_DONE' },
+    { type: 'MIN_CHEW_ELAPSED' },
+    ev({ type: 'error', jobId: 'j', error: { code: 'INPUT_INVALID', message: 'Blegh' } })
+  )
+  const leaving = reducer(spit, { type: 'LEAVE' })
+  const cancelled = run(
+    initialModel('overlay'),
+    png,
+    { type: 'DROP_RESOLVED', items: [item('cat.png')], target: 'to-jpg', jobId: 'j' },
+    { type: 'EAT_DONE' },
+    { type: 'CANCEL' }
+  )
+
+  it.each([
+    ['spit', spit],
+    ['choke', choke],
+    ['leave', leaving],
+    ['cancel', cancelled]
+  ])('arm during %s drops the card at once and the next dragenter starts a new gesture', (state, m) => {
+    expect(m.state).toBe(state)
+    const armed = reducer(m, { type: 'ARM' })
+    expect(armed.state).toBe('hidden')
+    expect(armed.outputPaths).toEqual([])
+    expect(armed.message).toBeNull()
+    expect(armed.job).toBeNull()
+    const engaged = reducer(armed, png)
+    expect(engaged.state).toBe('appear')
+    expect(engaged.session).toBe(m.session + 1)
+  })
+
+  it('arm never interrupts a meal in progress', () => {
+    const chewing = run(initialModel('overlay'), png, { type: 'DROP_RESOLVED', items: [item('cat.png')], target: 'to-jpg', jobId: 'j' }, { type: 'EAT_DONE' })
+    expect(reducer(chewing, { type: 'ARM' }).state).toBe('chew')
+  })
+})
+
+describe('chew caption (D15, QA3-02)', () => {
+  const chewing = (n = 1) =>
+    run(
+      initialModel('overlay'),
+      { type: 'ENGAGE', probe: { mimeTypes: ['image/png'], count: n } },
+      { type: 'DROP_RESOLVED', items: Array.from({ length: n }, (_, i) => item(`p${i}.png`)), target: 'remove-bg', jobId: 'j' },
+      { type: 'EAT_DONE' }
+    )
+
+  it('shows the model download stage with the download percentage', () => {
+    const m = reducer(chewing(), ev({ type: 'progress', jobId: 'j', progress: 0.2, stage: 'One-time download of my scissors (179 MB AI model)' }))
+    expect(m.state).toBe('chew')
+    expect(chewCaption(m)).toBe('One-time download of my scissors (179 MB AI model) · 50%')
+  })
+
+  it('scales the percentage by the number of files (the download runs with the first one)', () => {
+    const m = reducer(chewing(2), ev({ type: 'progress', jobId: 'j', progress: 0.1, stage: 'One-time download of my scissors (179 MB AI model)' }))
+    expect(chewCaption(m)).toBe('One-time download of my scissors (179 MB AI model) · 50%')
+  })
+
+  it('keeps the last stage text and shows other stages as they come', () => {
+    let m = reducer(chewing(), ev({ type: 'progress', jobId: 'j', progress: 0.4, stage: 'Checking the download' }))
+    expect(chewCaption(m)).toBe('Checking the download…')
+    m = reducer(m, ev({ type: 'progress', jobId: 'j', progress: 0.5 }))
+    expect(chewCaption(m)).toBe('Checking the download…')
+  })
+
+  it('is empty without a stage and outside chew', () => {
+    expect(chewCaption(chewing())).toBeNull()
+    expect(chewCaption(initialModel('overlay'))).toBeNull()
   })
 })

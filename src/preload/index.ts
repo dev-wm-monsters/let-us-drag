@@ -42,6 +42,7 @@ const api: LudApi & LudTestApi = {
   onSettingsChanged: (cb) => subscribe<Settings>(IPC.settingsChanged, cb),
   overlayEngaged: () => ipcRenderer.invoke(IPC.overlayEngaged),
   openSettingsWindow: () => ipcRenderer.invoke(IPC.openSettingsWindow),
+  setOverlayClickThrough: (clickThrough) => ipcRenderer.invoke(IPC.overlayClickThrough, clickThrough),
   onPlatformStatusChanged: (cb) => subscribe<PlatformStatus>(IPC.platformStatusChanged, cb),
   onTestDrop: (cb) => (E2E ? subscribe<TestDropPayload>(TEST_DROP_CHANNEL, cb) : () => undefined),
   onTestFeedDrop: (cb) => (E2E ? subscribe<TestDropPayload>(TEST_FEED_DROP_CHANNEL, cb) : () => undefined),

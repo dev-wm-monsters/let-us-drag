@@ -4,7 +4,7 @@
 import type { ConversionOption, DragProbe, DroppedItem, JobError, JobEvent, OptionId, Settings } from '../../shared/types'
 import { DEFAULT_SETTINGS } from '../../shared/types'
 import { isHamster, isStruggle, itemsAreBlocked, optionsForItems, optionsForProbe, categoryForProbe } from '../common/drag'
-import { friendlyError, LINES } from '../common/text'
+import { friendlyError, LINES, stageCaption } from '../common/text'
 
 export type UncleState =
   | 'hidden'
@@ -153,9 +153,37 @@ export function visibleOptions(m: Model): ConversionOption[] {
   return []
 }
 
-/** The overlay must accept clicks/keys (held items, result cards). */
+/**
+ * The overlay must take focus and keys: only while items are held in feedMe (D20). Result cards and
+ * the cancel button work by click without focus (QA3-07), see wantsClickThrough.
+ */
 export function wantsInteractive(m: Model): boolean {
-  return (m.state === 'feedMe' && m.held !== null) || m.state === 'spit' || m.state === 'choke'
+  return m.state === 'feedMe' && m.held !== null
+}
+
+/**
+ * D20 (QA3-06): after the drop, or once the gesture is over, the overlay lets the mouse through
+ * except while the pointer is over one of its interactive elements (cancel button, result cards).
+ * During the gesture (appear/hover/feedMe/refuse) it stays a normal drop target (D16).
+ */
+export function wantsClickThrough(m: Pick<Model, 'state'>): boolean {
+  switch (m.state) {
+    case 'eat':
+    case 'chew':
+    case 'spit':
+    case 'choke':
+    case 'cancel':
+    case 'leave':
+      return true
+    default:
+      return false
+  }
+}
+
+/** Caption under the progress ring while chewing: the engine's stage text (D15, QA3-02). */
+export function chewCaption(m: Model): string | null {
+  if (m.state !== 'chew') return null
+  return stageCaption(m.stage, m.progress, m.items.length)
 }
 
 /**
@@ -243,7 +271,8 @@ export function reducer(m: Model, a: Action): Model {
 
     case 'ARM': {
       const settings = a.settings ?? m.settings
-      // Never interrupt a meal in progress; otherwise start a fresh, invisible session.
+      // Never interrupt a meal in progress; otherwise start a fresh, invisible session. A result
+      // card (spit/choke), the spit-back or the leave animation is dropped at once (D21, QA3-11).
       if (isBusy(m)) return { ...m, settings }
       return { ...rest({ ...m, settings }) }
     }

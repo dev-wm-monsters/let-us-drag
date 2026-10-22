@@ -17,6 +17,7 @@ export const IPC = {
   openFeedWindow: 'lud:open-feed-window', // () => void
   overlayEngaged: 'lud:overlay-engaged', // () => void  renderer saw a real file dragenter; overlay is now visible (stop following the cursor)
   openSettingsWindow: 'lud:open-settings-window', // () => void
+  overlayClickThrough: 'lud:overlay-click-through', // (clickThrough: boolean) => void  D20: ignore mouse except over interactive elements
   // main → renderer (send)
   jobEvent: 'lud:job-event', // JobEvent
   overlayArm: 'lud:overlay-arm', // (info: OverlayArmInfo)
@@ -55,6 +56,8 @@ export interface LudApi {
   /** Overlay renderer received a file dragenter and shows the Uncle (main: stop moving the sensor). */
   overlayEngaged(): Promise<void>
   openSettingsWindow(): Promise<void>
+  /** D20: when true the overlay ignores the mouse (forwarding moves) except where the renderer turns it off. */
+  setOverlayClickThrough(clickThrough: boolean): Promise<void>
   onPlatformStatusChanged(cb: (s: PlatformStatus) => void): () => void
   /**
    * E2E only (LUD_E2E=1): simulated drops sent by the test hooks (src/shared/test-hooks.ts).

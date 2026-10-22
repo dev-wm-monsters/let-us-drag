@@ -159,21 +159,37 @@ button {
   outline: 3px dashed var(--ink);
   outline-offset: 6px;
 }
+/* Placed by Stage.tsx (placeHint): inside the window, never over another bubble (QA3-03). Long
+   hints wrap (the Remove BG download notice) instead of running off the edge. */
 .lud-option-hint {
   position: absolute;
-  left: 50%;
-  top: 100%;
-  margin-top: 8px;
-  transform: translateX(-50%);
-  white-space: nowrap;
-  padding: 4px 10px;
-  border-radius: 999px;
+  left: 0;
+  top: 0;
+  width: max-content;
+  max-width: min(230px, calc(100vw - 16px));
+  white-space: normal;
+  overflow-wrap: break-word;
+  text-align: center;
+  line-height: 1.25;
+  padding: 4px 11px 5px;
+  border-radius: 14px;
   background: var(--ink);
   color: var(--cream);
   font-weight: 700;
   font-size: 13px;
-  animation: lud-pop 160ms ease-out both;
-  z-index: 2;
+  animation: lud-hint-in 160ms ease-out both;
+  pointer-events: none;
+  z-index: 4;
+}
+@keyframes lud-hint-in {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 /* ——— progress ring ——— */
@@ -226,6 +242,32 @@ button {
   }
 }
 
+/* ——— stage text under the progress ring while chewing (D15, QA3-02) ——— */
+.lud-stage-text {
+  position: absolute;
+  left: 0;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(320px, calc(100vw - 24px));
+  padding: 4px 12px 5px;
+  border-radius: 14px;
+  background: var(--ink);
+  color: var(--cream);
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 1.3;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  pointer-events: none;
+  animation: lud-fade 200ms ease-out both;
+}
+
 /* ——— speech bubble ——— */
 .lud-speech {
   position: absolute;
@@ -269,16 +311,6 @@ button {
   to {
     transform: translate(-50%, -100%) scale(1) rotate(0);
     opacity: 1;
-  }
-}
-@keyframes lud-pop {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) scale(0.7);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%) scale(1);
   }
 }
 
@@ -376,8 +408,11 @@ button {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-width: 230px;
-  max-width: 320px;
+  /* Long engine messages (up to 200 chars) wrap; Stage.tsx moves the card up when it would leave
+     the window (QA3-04). */
+  width: max-content;
+  min-width: min(230px, calc(100vw - 24px));
+  max-width: min(360px, calc(100vw - 24px));
   padding: 12px 16px 12px 12px;
   border: 3.5px solid var(--ink);
   border-radius: 18px;
@@ -416,6 +451,15 @@ button {
   font-weight: 700;
   color: #4a3a30;
   white-space: normal;
+  overflow-wrap: anywhere;
+}
+.lud-card-text .lud-card-message {
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  line-clamp: 6;
+  overflow: hidden;
 }
 .lud-card-text em {
   font-style: normal;
@@ -557,7 +601,8 @@ button {
   }
   .lud-speech,
   .lud-held,
-  .lud-option-hint {
+  .lud-option-hint,
+  .lud-stage-text {
     animation: lud-fade 200ms ease-out both;
   }
   .lud-card,

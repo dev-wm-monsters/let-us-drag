@@ -15,8 +15,8 @@ live in [`screens/`](screens/).
 |---|---|---|
 | App icon + tray icons | `node src/renderer/dev/render-art.mjs icons` | `resources/icon.png` (1024²), `resources/tray/trayTemplate.png` (16², black+alpha), `trayTemplate@2x.png` (32²), `tray.png` (32², colour) |
 | Static poses (art review) | `node src/renderer/dev/render-art.mjs poses <dir>` | `<dir>/pose-<mood>.png/.svg` + `sheet.png` |
-| Screenshots of every state + GIFs | `node src/renderer/dev/capture.mjs [filter…]` | `docs/art/screens/*.png`, `docs/art/hero.gif` (scenario `hero`), `docs/art/uncle-eat-chew-spit.gif` (scenario `gif`) |
-| Smoke check of the renderer side of the E2E hooks | `node src/renderer/dev/verify-hooks.mjs` | console (exit 1 on failure): feed drops, cancelActive, "Spit it out", Esc, `data-uncle-mood` |
+| Screenshots of every state + GIFs | `node src/renderer/dev/capture.mjs [filter…]` | `docs/art/screens/*.png`, `docs/art/hero.gif` (scenario `hero`), `docs/art/uncle-eat-chew-spit.gif` (scenario `gif`); with `LUD_SCREENS_DIR` set, the PNGs **and** GIFs go there and docs/art is not touched |
+| Smoke check of the renderer side of the E2E hooks | `node src/renderer/dev/verify-hooks.mjs` | console (exit 1 on failure): feed drops, cancelActive, "Spit it out", Esc, `data-uncle-mood`; at 560x560: D20 click-through toggling, D21 arm over a card, chew stage text, every option hint inside the window and off the other bubbles, 140/200-char error cards inside the window |
 | Poke the UI by hand | `node src/renderer/dev/serve.mjs` | prints harness URLs |
 
 All of these use only installed packages (vite, @vitejs/plugin-react, react-dom/server, sharp,
@@ -49,6 +49,8 @@ playwright) plus `ffmpeg` for the GIF (`LUD_FFMPEG_PATH` or PATH).
    recorder needs an ffmpeg build that is not installed here). The hero GIF adds a fake drag image
    (arrow + file card, `pointer-events: none`) because a synthetic drag has no visible cursor.
    Env: `LUD_SCREENS_DIR`, `LUD_GIF_PATH`, `LUD_HERO_PATH`, `LUD_FFMPEG_PATH`, `LUD_CHROMIUM_PATH`.
+6. The mock also records `setOverlayClickThrough` (`__harness.clickThrough()` = last value; `arm()`
+   resets it to false like main does).
 
 ## Rig notes (phase 2)
 
@@ -66,3 +68,20 @@ playwright) plus `ffmpeg` for the GIF (`LUD_FFMPEG_PATH` or PATH).
   leave. The "Spit it out" button (`data-testid="cancel-job"`) sits on the progress ring at the
   top-right only while chewing; the hamster "nom ×N" badge moved to the top-left to make room.
   Screens: `overlay-18-cancel-button`, `overlay-19-cancel-spit-back`, `overlay-20-cancel-fine-keep-it`.
+
+## Phase 4 notes (stabilisation)
+
+- **Click-through (TPM D20)**: after the drop (eat, chew, spit, choke, cancel, leave) the overlay asks
+  main for `setOverlayClickThrough(true)`; it turns it off while the pointer is over the "Spit it
+  out" button or a result card (`pointerenter`/`pointerleave`, i.e. mouse moves forwarded on
+  macOS/Windows, and a hit test on main's cursor polling, which also covers Linux where moves are
+  not forwarded). Focus (`setOverlayInteractive(true)`) is only requested in feedMe; result cards
+  work by click without focus. A new arm drops any card at once (D21).
+- **Hints** are placed by `placeHint()` (`geometry.ts`): below, above, towards the Uncle or outwards,
+  whichever stays inside the window and covers no other bubble; long hints wrap (max 230 px).
+  Screen: `overlay-03-hover-remove-bg`.
+- **Stage text** under the progress ring while chewing (D15): the engine's stage, with the download
+  percentage during the one-time Remove BG model download. Screens: `overlay-12-struggle`,
+  `overlay-21-download`.
+- **Cards** wrap up to 6 lines of 13 px text (engine messages are capped at 200 characters) and move
+  up when they would leave the window. Screen: `overlay-22-choke-long` (560x560, 200 chars).

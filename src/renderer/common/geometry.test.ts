@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clampToCircle, hitTest, pupilOffset, ringLayout, softNorm } from './geometry'
+import { clampToCircle, hitTest, placeHint, pupilOffset, ringLayout, type RingSlot, softNorm } from './geometry'
 
 describe('ringLayout', () => {
   it('returns nothing for 0 and top for 1', () => {
@@ -86,5 +86,69 @@ describe('eye tracking helpers', () => {
     const c = clampToCircle({ x: 30, y: 40 }, 10)
     expect(c.x).toBeCloseTo(6)
     expect(c.y).toBeCloseTo(8)
+  })
+})
+
+describe('placeHint (QA3-03: hints inside the window, never over another bubble)', () => {
+  // Real overlay window: 560x560, ring radius 190 (common/layout.ts), 8 px margin.
+  const W = 560
+  const bounds = { x: -W / 2 + 8, y: -W / 2 + 8, w: W - 16, h: W - 16 }
+  const SIZES = {
+    short: { w: 116, h: 26 }, // "Convert to PNG"
+    long: { w: 230, h: 44 } // Remove BG: "Remove the background (first use downloads a 179 MB AI model, once)" wraps to 2 lines
+  }
+  const place = (slots: RingSlot[], index: number, size: { w: number; h: number }) =>
+    placeHint({
+      slot: slots[index]!,
+      others: slots.filter((_, i) => i !== index),
+      bubbleRadius: 50,
+      otherRadius: 48,
+      size,
+      bounds,
+      gap: 5
+    })
+
+  it('every bubble of every ring size gets a short hint inside the window that covers no bubble', () => {
+    for (let n = 1; n <= 8; n++) {
+      const slots = ringLayout(n, 190)
+      for (let i = 0; i < n; i++) {
+        for (const [kind, size] of Object.entries({ short: SIZES.short, wide: { w: 150, h: 26 } })) {
+          const p = place(slots, i, size)
+          const where = `n=${n} i=${i} ${kind} → ${p.side} (${p.x},${p.y})`
+          expect(p.overlap, where).toBe(0)
+          expect(p.x, where).toBeGreaterThanOrEqual(bounds.x)
+          expect(p.y, where).toBeGreaterThanOrEqual(bounds.y)
+          expect(p.x + p.w, where).toBeLessThanOrEqual(bounds.x + bounds.w)
+          expect(p.y + p.h, where).toBeLessThanOrEqual(bounds.y + bounds.h)
+        }
+      }
+    }
+  })
+
+  it('short hints keep their usual place under the bubble', () => {
+    const slots = ringLayout(8, 190)
+    for (const i of [0, 1, 2]) expect(place(slots, i, SIZES.short).side).toBe('below')
+  })
+
+  it('the Remove BG notice (left of an 8-bubble image ring) is not clipped and spares ICO and Compress', () => {
+    const slots = ringLayout(8, 190)
+    const p = place(slots, 6, SIZES.long) // image options: ..., to-ico (5), remove-bg (6), compress (7)
+    expect(p.overlap).toBe(0)
+    expect(p.x).toBeGreaterThanOrEqual(bounds.x)
+    expect(p.side).toBe('inner')
+  })
+
+  it('falls back to the least overlapping spot inside the window when nothing is free', () => {
+    const slot = { x: 0, y: 0 }
+    const others = [
+      { x: 0, y: 80 },
+      { x: 0, y: -80 },
+      { x: 80, y: 0 },
+      { x: -80, y: 0 }
+    ]
+    const p = placeHint({ slot, others, bubbleRadius: 50, otherRadius: 48, size: { w: 100, h: 30 }, bounds, gap: 5 })
+    expect(p.overlap).toBeGreaterThan(0)
+    expect(p.x).toBeGreaterThanOrEqual(bounds.x)
+    expect(p.y + p.h).toBeLessThanOrEqual(bounds.y + bounds.h)
   })
 })
