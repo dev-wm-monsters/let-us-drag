@@ -185,7 +185,6 @@ export function createMockLud(opts: MockOptions = {}): MockControl {
       return true
     },
     setOverlayInteractive: async (v) => void log('setOverlayInteractive', v),
-    setOverlayClickThrough: async (v) => void log('setOverlayClickThrough', v),
     overlayDone: async () => void log('overlayDone'),
     overlayEngaged: async () => void log('overlayEngaged'),
     openFeedWindow: async () => void log('openFeedWindow'),

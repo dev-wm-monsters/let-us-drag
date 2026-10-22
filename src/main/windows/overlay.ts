@@ -181,8 +181,13 @@ export class OverlayController {
     this.apply({ type: 'jobFinished', jobId })
   }
 
-  /** Renderer finished its leave animation. */
+  /**
+   * Renderer finished its leave animation. Ignored while a NEW gesture is armed: an overlayDone
+   * still in flight from the previous card (D21 re-arm) must not hide the fresh sensor.
+   * A legitimate done never arrives in 'armed' (mouse-up moves the session to 'released' first).
+   */
   done(): void {
+    if (this.session.phase === 'armed') return
     this.hideNow()
   }
 
