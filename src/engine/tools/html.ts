@@ -229,10 +229,17 @@ export function textContent(node: HtmlNode): string {
 // ---------------------------------------------------------------------------------------------
 // Sanitizer (for rendering untrusted HTML into a PDF)
 
-/** Elements removed together with everything inside them. */
+/**
+ * Elements removed together with everything inside them.
+ * svg/math (B-060, Security F-25): inside foreign content the browser parses differently from
+ * this tokenizer (<style> is not raw text there, CDATA sections exist, HTML "breakout" tags leave
+ * it), the root of every mutation-XSS trick. Never emitting <svg>/<math> means the output can
+ * never enter foreign content. SVG images still work as <img src="data:image/svg+xml,…">, where
+ * no script runs.
+ */
 const DROP_WITH_CONTENT = new Set([
   'script', 'iframe', 'frame', 'frameset', 'object', 'embed', 'applet', 'noscript', 'template', 'base', 'link', 'meta',
-  'title', 'portal', 'audio', 'video', 'source', 'track'
+  'title', 'portal', 'audio', 'video', 'source', 'track', 'svg', 'math'
 ])
 /** Wrapper elements that are unwrapped (content kept) because we provide our own document shell. */
 const UNWRAP = new Set(['html', 'head', 'body'])
@@ -294,6 +301,7 @@ export function sanitizeHtml(html: string): string {
   let out = ''
   let dropDepth = 0
   let dropTag = ''
+  let openRaw = '' // raw-text element (style, textarea, …) whose end tag has not been seen yet
   for (const t of tokenize(html)) {
     if (dropDepth > 0) {
       if (t.type === 'start' && t.name === dropTag && !t.selfClosing && !VOID_ELEMENTS.has(t.name)) dropDepth++
@@ -305,7 +313,9 @@ export function sanitizeHtml(html: string): string {
         out += t.raw.replace(/</g, '&lt;')
         break
       case 'rawtext':
-        out += t.parent === 'style' ? sanitizeCss(t.raw).replace(/<\//g, '<\\/') : escapeHtml(decodeEntities(t.raw))
+        // CSS never needs a raw '<' ("\3c " is the same character inside CSS strings): nothing in a
+        // <style> can close it early or look like markup to any parser (B-060).
+        out += t.parent === 'style' ? sanitizeCss(t.raw).replace(/</g, '\\3c ') : escapeHtml(decodeEntities(t.raw))
         break
       case 'start': {
         if (DROP_WITH_CONTENT.has(t.name)) {
@@ -318,16 +328,24 @@ export function sanitizeHtml(html: string): string {
         if (UNWRAP.has(t.name)) break
         const attrs = sanitizeAttrs(t.name, t.attrs)
         out += `<${t.name}${attrs.map((a) => ` ${a.name}="${escapeAttr(a.value)}"`).join('')}${t.selfClosing && VOID_ELEMENTS.has(t.name) ? ' /' : ''}>`
+        if (RAW_TEXT.has(t.name)) {
+          // "<style/>" is an OPEN <style> for a browser: close it ourselves.
+          if (t.selfClosing) out += `</${t.name}>`
+          else openRaw = t.name
+        }
         break
       }
       case 'end':
         if (DROP_WITH_CONTENT.has(t.name) || UNWRAP.has(t.name)) break
+        if (t.name === openRaw) openRaw = ''
         out += `</${t.name}>`
         break
       default:
         break
     }
   }
+  // An unterminated raw-text element would swallow whatever follows the fragment.
+  if (openRaw && openRaw !== 'plaintext') out += `</${openRaw}>`
   return out
 }
 
