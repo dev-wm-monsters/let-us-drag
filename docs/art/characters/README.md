@@ -1,8 +1,8 @@
 # Alternative character concepts
 
-![All ten characters, idle and eat](storyboard.png)
+![Motu Uncle and the ten alternative characters, idle and eat](storyboard.png)
 
-Ten alternative characters to choose from, alongside the Uncle. **Concept art only:** nothing here is
+Motu Uncle (a chubby version of the current Uncle) and ten alternative characters to choose from. **Concept art only:** nothing here is
 wired into the app. Open [`storyboard.html`](storyboard.html) for the full sheet (it is self-contained,
 with inline SVG and no external resources): name, origin, signature detail, how each one eats, chews
 and spits a file, and both poses side by side.
@@ -23,6 +23,15 @@ character has a huge mouth (the jaw drops 54–62 units, against the Uncle's 30)
 that still reads at about 250 px.
 
 ## The characters
+
+**00 · Motu Uncle** (the key piece). This is our current in-app Uncle with the same parts and colours
+copied from `UncleSvg.tsx`: wild grey side tufts, a comb-over, round glasses, the bushy moustache, the
+gold tooth, and the mole with its one curly hair. He wears the same argyle vest, shirt and red bow
+tie. What changes is that he is much fatter: a wide, jowly head with a double chin, puffed cheeks, a
+huge round belly with a straining button (it hangs by a thread in the eat pose), short chubby arms,
+and thick sausage fingers. The layer names match the existing rig one-to-one, so he is the cheapest
+option to ship. Swap the `headPath` proportions, the torso and the hands, and keep `pose.ts` as it is.
+
 
 **01 · Chacha Gappu** (India). The neighbourhood chacha: thick, oiled, side-parted hair with grey
 temples, a short bushy moustache and a paan-red grin. He wears a cream kurta under a teal Nehru vest
@@ -56,35 +65,32 @@ tooth that glints. Signatures: the coin (one per file; he bites it to check it i
 hand-painted MYSTERY DEALS sign. Running gag: his crooked toupee lifts clean off his head when he
 gulps.
 
-**06 · Big Bertha the Lunch Lady** (USA). A school-cafeteria legend: a big updo under a hairnet with an
-elastic edge, purple eyeshadow and lashes, berry lipstick and pearl studs. She wears a mint uniform and
-a white bib apron with a gravy splash, a BERTHA name tag and a heart pin. Signatures: the ladle, always
-with a dollop of mash, and the compartment lunch tray (peas, pizza square, jelly). She scoops the file
-with the ladle ("Next!") and slops the results onto the tray, one compartment per file.
-
-**07 · Sumo-san** (Japan). A gentle, polite giant, drawn respectfully: an oiled black topknot,
+**06 · Sumo-san** (Japan). A gentle, polite giant, drawn respectfully: an oiled black topknot,
 closed-eye contented smile, rosy cheeks, a broad bare chest and a navy mawashi with hanging cords. The
 design uses no ring rituals or religious elements. Signature: the shiko stomp. While he chews he
 stomps left and right, the topknot boings and dust puffs fly (both are shown in the eat pose). Lines:
 "Itadakimasu!" before he eats, "Gochisōsama deshita" when he hands the result over.
 
-**08 · Nonna Pina** (Italy). A cloud of tight white curls, happy squinting eyes with crow's feet,
+**07 · Nonna Pina** (Italy). A cloud of tight white curls, happy squinting eyes with crow's feet,
 pearls and a lace collar, a black dress and a red gingham apron with a floury handprint. Signature: the
 rolling pin, and flour dusted on her rosy cheeks. She rolls the file flat like pasta dough and slurps
 it like tagliatelle. The progress ring could fill like rising dough.
 
-**09 · Captain Chomp** (the Seven Seas). The only 3/4 figure in the set, so that the peg leg shows: one
+**08 · Captain Chomp** (the Seven Seas). The only 3/4 figure in the set, so that the peg leg shows: one
 boot and one wooden peg under striped trousers. He has a tricorn with a small skull-and-bones, an
 eyepatch, a bushy ginger beard that stretches with the jaw, a gold hoop and a navy coat with a red sash.
 Signature: Polly the parrot on his shoulder squawks the format name (the eat pose shows a "PNG!"
 bubble).
 
-**10 · Fridge Frank** (a grumpy 1950s fridge, non-human). The freezer door is his forehead, with two
-ice-cube eyes, chrome trim strips for angry eyebrows, a chrome handle for a moustache and a FRANK badge.
-The main door is his mouth: the gasket seam frowns when it is shut. To eat, the door swings wide open
-to show icicle teeth, a lit interior with shelves (milk, cheese, jelly) and frosty breath. Fridge
-magnets (PNG, JPG, PDF, MP3, WEBP) are his format buttons. He has rubber-hose arms with white cartoon
-gloves.
+**09 · Pehlwan Pappu** (India). A village akhada wrestler-uncle with a buzz cut, a curled moustache
+and a big round belly in a blue-striped vest over red langot-style shorts. Akhada mitti (dust) sits on
+his shoulders and arm. Signature: a tall glass of milk with a foamy top. In idle he flexes one arm and
+raises the glass with the other. While he chews he grunts every 10 %, and dust puffs off his shoulders.
+
+**10 · Abuela Rosa** (Mexico). A chubby abuela with a grey bun, a big red flower and gold drop
+earrings. She wears an embroidered blouse under a striped rebozo shawl. Signature: her clay olla,
+steaming, and the wooden spoon she points with. While she chews, the steam curls into the progress
+ring, and the result comes out ladled from the olla.
 
 ## Mapping onto the existing animation rig
 
@@ -121,12 +127,9 @@ What porting one would take:
   `moustache` and `mouth`. Hats, buns, topknots and the toupee are separate groups, so they can take
   the hair depth plus their own spring (secondary motion, like the Uncle's comb-over).
 - **Signature props are separate groups with obvious state hooks:** `cooker` (whistle and steam per
-  25 %), `meter` (flag rotation + digits = progress), `sign`/`coin`, `ladle`/`tray`, `parrot` (beak +
+  25 %), `meter` (flag rotation + digits = progress), `sign`/`coin`, `parrot` (beak +
   bubble text = target format), `rollingPin`, `jalebi`, `stompDust`/`topknot` (chew beat), `toupee`
-  (lifts at `jaw > 0.8`), `magnets` (Fridge Frank: these could *be* the option bubbles).
-- **Fridge Frank is the one exception.** His jaw is the `jaw` door group swinging open (scaleX
-  1 → −0.35 about the hinge at x = 104), not a dropping chin. His `mouth` group is the fridge interior,
-  with icicle `upperTeeth` and a `tongue`.
+  (lifts at `jaw > 0.8`), `milk`, `olla`/`spoon`, `strainButton` (Motu Uncle, pops at 100 %).
 - **Canvas.** The viewBox is `-220 -206 440 440`, with the face origin at (0, 0) as in the Uncle, so
   `HEAD_CENTER` and the options ring carry over. Captain Chomp's 3/4 figure is wrapped in a 0.92 scale
   group, and his head sits higher (face centre ≈ (0, −50)).

@@ -1,10 +1,10 @@
-// 07 — Sumo-san: a gentle giant of a Japanese sumo wrestler. Oiled black hair in a neat topknot,
+// 06 — Sumo-san: a gentle giant of a Japanese sumo wrestler. Oiled black hair in a neat topknot,
 // calm happy eyes, big round belly, navy mawashi with hanging sagari cords. Signature: the stomp
 // (shiko) — the topknot boings and dust puffs fly when he chews.
 import { INK, arm, clip, ears, ell, eye, fileCard, fillP, hand, happyEye, head, headD, inked, line, mirror, mouthClosed, mouthOpen, part } from '../lib.mjs'
 
 export const meta = {
-  num: '07',
+  num: '06',
   slug: 'sumo-san',
   name: 'Sumo-san',
   origin: 'Japan — a gentle, very polite giant of the dohyō',

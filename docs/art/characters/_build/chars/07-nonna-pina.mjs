@@ -1,9 +1,9 @@
-// 08 — Nonna Pina: Italian grandma. White curly perm, rosy cheeks dusted with flour, pearl necklace,
+// 07 — Nonna Pina: Italian grandma. White curly perm, rosy cheeks dusted with flour, pearl necklace,
 // black dress under a red gingham apron. Signature: the rolling pin (and the flour on her cheeks).
 import { INK, P, arm, circle, clip, ears, ell, eye, fileCard, fillP, hand, happyEye, head, headD, inked, line, mirror, mouthClosed, mouthOpen, part } from '../lib.mjs'
 
 export const meta = {
-  num: '08',
+  num: '07',
   slug: 'nonna-pina',
   name: 'Nonna Pina',
   origin: 'Italy — a nonna from a little town where Sunday lunch lasts until dinner',

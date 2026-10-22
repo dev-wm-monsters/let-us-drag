@@ -39,7 +39,7 @@ export async function storyboard(chars, drawPose, out, viewBox) {
   })
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
 <rect width="${W}" height="${H}" fill="#fbf4ea"/>
-<text x="${PAD + 4}" y="62" font-family="${FONT}" font-weight="900" font-size="40" fill="#2b1a14">Let us drag! — 10 alternative characters</text>
+<text x="${PAD + 4}" y="62" font-family="${FONT}" font-weight="900" font-size="40" fill="#2b1a14">Let us drag! — Motu Uncle + 10 alternative characters</text>
 <text x="${W - PAD - 4}" y="62" font-family="${FONT}" font-weight="600" font-size="18" fill="#8a7468" text-anchor="end">concept art · idle (mouth closed) / eat (mouth open, looking up-left at the incoming file)</text>
 ${cells}
 </svg>`
@@ -110,7 +110,7 @@ ${cells}
 </head>
 <body>
 <main>
-  <h1>Let us drag! — 10 alternative characters</h1>
+  <h1>Let us drag! — Motu Uncle + 10 alternative characters</h1>
   <p class="lede">Concept art for a vote. Each character keeps the Uncle’s construction (bold variable-weight ink, flat warm colours, cel shading, layered rig) and has a huge mouth that opens wide to eat files. Left: idle. Right: eating, eyes up-left on the incoming file.</p>
   <nav>${toc}</nav>
   <section class="grid">

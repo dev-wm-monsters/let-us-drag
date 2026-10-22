@@ -1,10 +1,10 @@
-// 09 — Captain Chomp: a jolly pirate captain drawn as a stocky 3/4 figure so the peg leg shows.
+// 08 — Captain Chomp: a jolly pirate captain drawn as a stocky 3/4 figure so the peg leg shows.
 // Tricorn, eyepatch, bushy ginger beard, gold hoop, navy coat with a red sash, striped trousers,
 // one boot + one peg leg. Signature: Polly the parrot, who squawks the target format.
 import { INK, arm, circle, clip, ell, eye, fileCard, fillP, hand, head, headD, inked, line, mirror, mouthOpen, part } from '../lib.mjs'
 
 export const meta = {
-  num: '09',
+  num: '08',
   slug: 'captain-chomp',
   name: 'Captain Chomp',
   origin: 'The Seven Seas — a jolly (and slightly lost) pirate captain',
