@@ -73,6 +73,7 @@ describe('IPC policy (SEC-11, SEC-12)', () => {
       IPC.getPlatformStatus,
       IPC.requestAccessibility,
       IPC.overlayInteractive,
+      IPC.overlayClickThrough,
       IPC.overlayDone,
       IPC.overlayEngaged,
       IPC.openFeedWindow,

@@ -32,6 +32,7 @@ export interface IpcDeps {
   requestAccessibility(): boolean
   overlay: {
     setInteractive(v: boolean): void
+    setClickThrough(v: boolean): void
     done(): void
     engaged(): void
   }
@@ -106,6 +107,9 @@ export function registerIpc(deps: IpcDeps): () => void {
 
   handle(IPC.overlayInteractive, (_e, raw) => {
     deps.overlay.setInteractive(parseOrThrow(booleanSchema, raw, 'flag'))
+  })
+  handle(IPC.overlayClickThrough, (_e, raw) => {
+    deps.overlay.setClickThrough(parseOrThrow(booleanSchema, raw, 'flag'))
   })
   handle(IPC.overlayDone, () => deps.overlay.done())
   handle(IPC.overlayEngaged, () => deps.overlay.engaged())
