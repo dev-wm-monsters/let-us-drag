@@ -25,39 +25,151 @@ export function numberedName(base: string, ext: string, n: number): string {
   return ext ? `${stem}.${ext}` : stem
 }
 
+// --- name length (B-053 / QA3-08, TPM D23) ---------------------------------------------------
+// A file name may hold at most 255 bytes on ext4/btrfs and APFS (UTF-8) and 255 UTF-16 units on
+// NTFS/exFAT. UTF-8 never needs fewer bytes than UTF-16 needs units, so 255 UTF-8 bytes is safe on
+// every OS. Output names are built from the input's stem plus a tail we add ("-compressed",
+// " (pages)", ".ext"); when that is too long, the STEM is shortened (at a character boundary) and
+// the tail is kept. Room for a collision number " (9999)" is always reserved.
+
+/** Longest file name, in UTF-8 bytes, that works on every OS. */
+export const MAX_NAME_BYTES = 255
+/** What commitFile/commitDir may still append: " (9999)". */
+const COLLISION_RESERVE = ` (${MAX_COLLISIONS - 1})`
+/** A path budget never shortens the stem below this many characters (the name rule always applies). */
+const MIN_STEM_CHARS = 16
+/** Windows: classic MAX_PATH (260 incl. the terminating NUL). Explorer and many apps still need it. */
+export const WIN_MAX_PATH = 259
+/** macOS PATH_MAX 1024 / Linux PATH_MAX 4096 bytes (incl. NUL). */
+const POSIX_MAX_PATH: Partial<Record<NodeJS.Platform, number>> = { darwin: 1023 }
+const DEFAULT_POSIX_MAX_PATH = 4095
+
+export function utf8Bytes(s: string): number {
+  return Buffer.byteLength(s, 'utf8')
+}
+
+/** User-perceived characters (grapheme clusters) where Intl.Segmenter exists, else code points. */
+function characters(s: string): string[] {
+  const Seg = (Intl as { Segmenter?: typeof Intl.Segmenter }).Segmenter
+  if (typeof Seg === 'function') return Array.from(new Seg(undefined, { granularity: 'grapheme' }).segment(s), (x) => x.segment)
+  return Array.from(s) // code points: never splits a surrogate pair
+}
+
+/**
+ * Longest prefix of `s` that fits `max` units of `measure` (default UTF-8 bytes). Cuts only between
+ * characters: never inside a multi-byte sequence, a surrogate pair or an emoji/accent cluster.
+ */
+export function truncateTo(s: string, max: number, measure: (x: string) => number = utf8Bytes): string {
+  if (measure(s) <= max) return s
+  let out = ''
+  let used = 0
+  for (const ch of characters(s)) {
+    const n = measure(ch)
+    if (used + n > max) break
+    out += ch
+    used += n
+  }
+  return out
+}
+
+/** Where the output will be written, for the full-path budget. */
+export interface NameTarget {
+  /** Folder the output goes to. */
+  dir: string
+  /** Default process.platform. */
+  platform?: NodeJS.Platform
+  /** Extra path length needed below the output (files inside an output folder). */
+  childReserve?: number
+}
+
+function endsWithSeparator(dir: string): boolean {
+  return dir.endsWith('/') || dir.endsWith('\\')
+}
+
+/**
+ * Shorten `stem` so that `stem + tail` (tail = what we append, incl. ".ext") stays within
+ * MAX_NAME_BYTES with room for a collision number and, when `at` is given, within the platform's
+ * full-path limit (Windows MAX_PATH unless the input's own path is already longer; macOS/Linux
+ * PATH_MAX). Never returns an empty stem for a non-empty one.
+ */
+export function fitStem(stem: string, tail: string, at?: NameTarget, inputName?: string): string {
+  const reserve = COLLISION_RESERVE + tail
+  let fitted = truncateTo(stem, MAX_NAME_BYTES - utf8Bytes(reserve))
+  if (at) {
+    const platform = at.platform ?? process.platform
+    const win = platform === 'win32'
+    const measure = win ? (x: string): number => x.length : utf8Bytes
+    const dirPart = endsWithSeparator(at.dir) ? at.dir : `${at.dir}/`
+    const limit = win ? WIN_MAX_PATH : (POSIX_MAX_PATH[platform] ?? DEFAULT_POSIX_MAX_PATH)
+    // Windows: an input path already beyond MAX_PATH means long paths work there (NTFS allows
+    // ~32 767 units), so MAX_PATH is not a limit worth shortening for.
+    const longPathsWork = win && !!inputName && measure(dirPart + inputName) > limit
+    const room = limit - measure(dirPart) - measure(reserve) - (at.childReserve ?? 0)
+    if (!longPathsWork && measure(fitted) > room) {
+      const minimal = characters(fitted).slice(0, MIN_STEM_CHARS).join('')
+      const byPath = truncateTo(fitted, room, measure)
+      fitted = measure(byPath) >= measure(minimal) ? byPath : minimal
+    }
+  }
+  if (fitted !== stem) {
+    // Windows drops trailing dots and spaces from names: never end a shortened stem with them.
+    fitted = fitted.replace(/[. ]+$/u, '') || fitted
+  }
+  return fitted || characters(stem).slice(0, 1).join('')
+}
+
+/** stem + tail with the stem shortened as needed (see fitStem). */
+function fitName(stem: string, tail: string, at: NameTarget | undefined, inputName: string | undefined): string {
+  return fitStem(stem, tail, at, inputName) + tail
+}
+
 /** "photo.png" → "photo.jpg" */
-export function convertedName(inputName: string, newExt: string): string {
-  return `${splitName(inputName).base}.${newExt}`
+export function convertedName(inputName: string, newExt: string, at?: NameTarget): string {
+  return fitName(splitName(inputName).base, `.${newExt}`, at, inputName)
 }
 
 /** "photo.png", "-nobg", "png" → "photo-nobg.png" */
-export function suffixedName(inputName: string, suffix: string, newExt?: string): string {
+export function suffixedName(inputName: string, suffix: string, newExt?: string, at?: NameTarget): string {
   const { base, ext } = splitName(inputName)
   const e = newExt ?? ext
-  return e ? `${base}${suffix}.${e}` : `${base}${suffix}`
+  return fitName(base, e ? `${suffix}.${e}` : suffix, at, inputName)
 }
 
 /** Folder for multi-output conversions: "doc.pdf" → "doc (pages)". */
-export function pagesFolderName(inputName: string): string {
-  return `${splitName(inputName).base} (pages)`
+export function pagesFolderName(inputName: string, at?: NameTarget): string {
+  // Room for the page files inside ("/page-0001.png").
+  return fitName(splitName(inputName).base, ' (pages)', at && { childReserve: 16, ...at }, inputName)
 }
 
 /** Merge outputs are named after the first input: "photo.png" → "photo (merged).pdf". */
-export function mergedName(firstInputName: string, ext: string): string {
-  return `${splitName(firstInputName).base} (merged).${ext}`
+export function mergedName(firstInputName: string, ext: string, at?: NameTarget): string {
+  return fitName(splitName(firstInputName).base, ` (merged).${ext}`, at, firstInputName)
 }
 
 /** Unzip target folder: "photos.zip" → "photos". */
-export function unzipFolderName(zipName: string): string {
-  return splitName(zipName).base || 'Archive'
+export function unzipFolderName(zipName: string, at?: NameTarget): string {
+  const base = splitName(zipName).base
+  return base ? fitName(base, '', at, zipName) : 'Archive'
 }
 
 /** ZIP name: a single input "photo.png"/"Folder" → "photo.zip"/"Folder.zip"; several → "Archive.zip". */
-export function zipName(inputNames: readonly string[], firstIsDirectory: boolean): string {
+export function zipName(inputNames: readonly string[], firstIsDirectory: boolean, at?: NameTarget): string {
   if (inputNames.length !== 1) return 'Archive.zip'
-  const only = inputNames[0]!
-  const base = firstIsDirectory ? basename(only) : splitName(only).base
-  return `${base || 'Archive'}.zip`
+  const only = basename(inputNames[0]!)
+  const base = firstIsDirectory ? only : splitName(only).base
+  return base ? fitName(base, '.zip', at, only) : 'Archive.zip'
+}
+
+/**
+ * Safety net for commitFile/commitDir ("base (n).ext"), for names that did not come through the
+ * builders above: shortens the END of the base when the name would exceed MAX_NAME_BYTES.
+ */
+export function numberedFitting(base: string, ext: string, n: number): string {
+  const name = numberedName(base, ext, n)
+  const over = utf8Bytes(name) - MAX_NAME_BYTES
+  if (over <= 0) return name
+  const short = truncateTo(base, utf8Bytes(base) - over)
+  return short ? numberedName(short, ext, n) : name
 }
 
 function writeError(err: unknown, dir: string): EngineError {
@@ -67,6 +179,9 @@ function writeError(err: unknown, dir: string): EngineError {
   }
   if (code === 'ENOENT') {
     return new EngineError('OUTPUT_NOT_WRITABLE', 'The folder of the original file is gone, so I could not save the result.', String(err))
+  }
+  if (code === 'ENAMETOOLONG') {
+    return new EngineError('OUTPUT_NOT_WRITABLE', 'The name or folder path is too long here, so I could not save the result.', String(err))
   }
   return new EngineError('OUTPUT_NOT_WRITABLE', undefined, `${dir}: ${String(err)}`)
 }
@@ -85,7 +200,7 @@ export async function commitFile(tempPath: string, dir: string, name: string, li
   const { base, ext } = splitName(name)
   let linkWorks = true
   for (let n = 0; n < MAX_COLLISIONS; n++) {
-    const finalPath = join(dir, numberedName(base, ext, n))
+    const finalPath = join(dir, numberedFitting(base, ext, n))
     if (linkWorks) {
       try {
         await linkFile(tempPath, finalPath)
@@ -151,7 +266,7 @@ async function moveChildren(from: string, to: string): Promise<void> {
  */
 export async function commitDir(tempDir: string, parent: string, name: string): Promise<string> {
   for (let n = 0; n < MAX_COLLISIONS; n++) {
-    const finalPath = join(parent, numberedName(name, '', n))
+    const finalPath = join(parent, numberedFitting(name, '', n))
     try {
       await mkdir(finalPath)
     } catch (err) {

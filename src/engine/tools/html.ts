@@ -229,10 +229,17 @@ export function textContent(node: HtmlNode): string {
 // ---------------------------------------------------------------------------------------------
 // Sanitizer (for rendering untrusted HTML into a PDF)
 
-/** Elements removed together with everything inside them. */
+/**
+ * Elements removed together with everything inside them.
+ * svg/math (B-060, Security F-25): inside foreign content the browser parses differently from
+ * this tokenizer (<style> is not raw text there, CDATA sections exist, HTML "breakout" tags leave
+ * it), the root of every mutation-XSS trick. Never emitting <svg>/<math> means the output can
+ * never enter foreign content. SVG images still work as <img src="data:image/svg+xml,…">, where
+ * no script runs.
+ */
 const DROP_WITH_CONTENT = new Set([
   'script', 'iframe', 'frame', 'frameset', 'object', 'embed', 'applet', 'noscript', 'template', 'base', 'link', 'meta',
-  'title', 'portal', 'audio', 'video', 'source', 'track'
+  'title', 'portal', 'audio', 'video', 'source', 'track', 'svg', 'math'
 ])
 /** Wrapper elements that are unwrapped (content kept) because we provide our own document shell. */
 const UNWRAP = new Set(['html', 'head', 'body'])
@@ -294,6 +301,7 @@ export function sanitizeHtml(html: string): string {
   let out = ''
   let dropDepth = 0
   let dropTag = ''
+  let openRaw = '' // raw-text element (style, textarea, …) whose end tag has not been seen yet
   for (const t of tokenize(html)) {
     if (dropDepth > 0) {
       if (t.type === 'start' && t.name === dropTag && !t.selfClosing && !VOID_ELEMENTS.has(t.name)) dropDepth++
@@ -305,7 +313,9 @@ export function sanitizeHtml(html: string): string {
         out += t.raw.replace(/</g, '&lt;')
         break
       case 'rawtext':
-        out += t.parent === 'style' ? sanitizeCss(t.raw).replace(/<\//g, '<\\/') : escapeHtml(decodeEntities(t.raw))
+        // CSS never needs a raw '<' ("\3c " is the same character inside CSS strings): nothing in a
+        // <style> can close it early or look like markup to any parser (B-060).
+        out += t.parent === 'style' ? sanitizeCss(t.raw).replace(/</g, '\\3c ') : escapeHtml(decodeEntities(t.raw))
         break
       case 'start': {
         if (DROP_WITH_CONTENT.has(t.name)) {
@@ -318,16 +328,24 @@ export function sanitizeHtml(html: string): string {
         if (UNWRAP.has(t.name)) break
         const attrs = sanitizeAttrs(t.name, t.attrs)
         out += `<${t.name}${attrs.map((a) => ` ${a.name}="${escapeAttr(a.value)}"`).join('')}${t.selfClosing && VOID_ELEMENTS.has(t.name) ? ' /' : ''}>`
+        if (RAW_TEXT.has(t.name)) {
+          // "<style/>" is an OPEN <style> for a browser: close it ourselves.
+          if (t.selfClosing) out += `</${t.name}>`
+          else openRaw = t.name
+        }
         break
       }
       case 'end':
         if (DROP_WITH_CONTENT.has(t.name) || UNWRAP.has(t.name)) break
+        if (t.name === openRaw) openRaw = ''
         out += `</${t.name}>`
         break
       default:
         break
     }
   }
+  // An unterminated raw-text element would swallow whatever follows the fragment.
+  if (openRaw && openRaw !== 'plaintext') out += `</${openRaw}>`
   return out
 }
 
@@ -466,34 +484,73 @@ function escapeLineStart(line: string): string {
     .replace(/^(\s*\d+)([.)]\s)/, (_m, num: string, rest: string) => `${num}\\${rest}`)
 }
 
+/** Emphasis elements → Markdown delimiter and the HTML tag used when delimiters would not work. */
+const EMPHASIS: Readonly<Record<string, { delim: string; tag: string }>> = {
+  strong: { delim: '**', tag: 'strong' },
+  b: { delim: '**', tag: 'strong' },
+  em: { delim: '*', tag: 'em' },
+  i: { delim: '*', tag: 'em' },
+  s: { delim: '~~', tag: 'del' },
+  del: { delim: '~~', tag: 'del' },
+  strike: { delim: '~~', tag: 'del' }
+}
+
+interface EmphasisPart {
+  delim: string
+  tag: string
+  core: string
+}
+
+const MD_WS = /\s/u
+const MD_PUNCT = /[\p{P}\p{S}]/u
+const MD_DELIM_CHARS = /[*_~]/
+
+/**
+ * Whether `delim + core + delim` between the characters `prev` and `next` ('' = line edge) parses
+ * as emphasis (CommonMark/GFM flanking rules) without merging with a neighbouring delimiter run.
+ * Otherwise the span is written as inline HTML (<strong>…</strong>), which Markdown allows.
+ */
+function delimitersWork(prev: string, core: string, next: string): boolean {
+  if (MD_DELIM_CHARS.test(prev) || MD_DELIM_CHARS.test(next)) return false
+  const first = core[0] ?? ''
+  const last = core[core.length - 1] ?? ''
+  const prevOk = prev === '' || MD_WS.test(prev) || MD_PUNCT.test(prev)
+  const nextOk = next === '' || MD_WS.test(next) || MD_PUNCT.test(next)
+  const leftFlanking = !MD_PUNCT.test(first) || prevOk
+  const rightFlanking = !MD_PUNCT.test(last) || nextOk
+  return leftFlanking && rightFlanking
+}
+
 function inlineMd(nodes: readonly HtmlNode[]): string {
-  let out = ''
+  // Emphasis spans are resolved at the end, once their neighbouring characters are known.
+  const parts: (string | EmphasisPart)[] = []
+  const pushSpace = (): void => {
+    const last = parts[parts.length - 1]
+    if (typeof last === 'string' && /\s$/.test(last)) return
+    parts.push(' ')
+  }
   for (const node of nodes) {
     if (node.type === 'text') {
-      out += escapeMd(node.text.replace(/[ \t\r\n\f]+/g, ' '))
+      let text = escapeMd(node.text.replace(/[ \t\r\n\f]+/g, ' '))
+      const last = parts[parts.length - 1]
+      if (typeof last === 'string' && / $/.test(last)) text = text.replace(/^ /, '')
+      if (text) parts.push(text)
       continue
     }
     const inner = (): string => inlineMd(node.children)
+    const emphasis = EMPHASIS[node.name]
+    if (emphasis) {
+      // Word processors put the space between runs inside a run ("<b>great </b><i>this</i>",
+      // "<b>great</b><i> this</i>"): keep it, outside the delimiters (B-054).
+      const m = /^(\s*)([\s\S]*?)(\s*)$/.exec(inner())!
+      const [, lead = '', core = '', trail = ''] = m
+      if (lead || (!core && trail)) pushSpace()
+      if (core) parts.push({ ...emphasis, core })
+      if (core && trail) pushSpace()
+      continue
+    }
+    let out = ''
     switch (node.name) {
-      case 'strong':
-      case 'b': {
-        const s = inner().trim()
-        if (s) out += `**${s}**`
-        break
-      }
-      case 'em':
-      case 'i': {
-        const s = inner().trim()
-        if (s) out += `*${s}*`
-        break
-      }
-      case 's':
-      case 'del':
-      case 'strike': {
-        const s = inner().trim()
-        if (s) out += `~~${s}~~`
-        break
-      }
       case 'code': {
         const s = textContent(node)
         const fence = s.includes('`') ? '``' : '`'
@@ -519,8 +576,22 @@ function inlineMd(nodes: readonly HtmlNode[]): string {
         if (INVISIBLE.has(node.name)) break
         out += inner()
     }
+    if (out) parts.push(out)
   }
-  return out
+  let result = ''
+  for (let k = 0; k < parts.length; k++) {
+    const part = parts[k]!
+    if (typeof part === 'string') {
+      result += part
+      continue
+    }
+    const after = parts[k + 1]
+    // An adjacent emphasis span starts with a delimiter (or '<'): treat it as a delimiter char.
+    const next = after === undefined ? '' : typeof after === 'string' ? (after[0] ?? '') : '*'
+    const prev = result[result.length - 1] ?? ''
+    result += delimitersWork(prev, part.core, next) ? `${part.delim}${part.core}${part.delim}` : `<${part.tag}>${part.core}</${part.tag}>`
+  }
+  return result
 }
 
 function indent(text: string, prefix: string, firstPrefix = prefix): string {
