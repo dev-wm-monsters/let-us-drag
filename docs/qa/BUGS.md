@@ -68,3 +68,4 @@
 | B-064 | Medium | Frontend | Fixed | QA-P4-02: in feedMe the held-files card covers the bottom option bubbles (overlay and Feed Window) | QA phase-4 regression, P4-HELD-COVER | 9faccf0 |
 | B-065 | Low | Engine | Fixed | QA-P4-01: an unclosed `<svg>/<math>/<noscript>/<template>` in MD/HTML input drops the rest of the document from HTML/PDF output | QA, tests/engine/qa-sanitizer-truncation.test.ts | 0e04761 |
 | B-066 | Low | TPM | Fixed | QA-P4-03: ESLint only caught literal `shell: true` | QA | this commit |
+| B-067 | High | Engine | Fixed | Remove-BG model download aborted after 30 s on connections slower than ~6 MB/s (connect timeout stayed attached to the body stream) | Product owner, macOS screen recording | 2c629a6 |
