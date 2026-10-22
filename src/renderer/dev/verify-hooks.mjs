@@ -8,7 +8,10 @@
 // data-uncle-mood = hamster|struggle|none, and (phase 4) at the real 560x560 overlay size:
 // D20 click-through toggling (QA3-06/07), D21 arm over a result card (QA3-11), the chew stage
 // caption (QA3-02), option hints inside the window and off other bubbles (QA3-03), long error
-// cards inside the window (QA3-04).
+// cards inside the window (QA3-04); (phase 5, B-064) in feedMe with held files every option bubble
+// is reachable at its centre (document.elementFromPoint), off the held-files chip and inside the
+// window / drop zone, in the 560 px overlay and the Feed Window at its default and minimum sizes,
+// and a scaled-down Feed Window still hit-tests drags and clicks on the right bubble.
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { chromium } from 'playwright'
@@ -117,6 +120,7 @@ try {
     await ctx.close()
   }
   await phase4Checks()
+  await heldChecks()
 } finally {
   await browser.close()
   await server.close()
@@ -272,5 +276,129 @@ async function phase4Checks() {
       }
       await ctx.close()
     }
+  }
+}
+
+// B-064 (QA-P4-02): the held-files chip never covers an option bubble (1..8 options).
+async function heldChecks() {
+  const HELD_FILES = {
+    'photo (8)': [{ name: 'holiday-photo.png', type: 'image/png' }],
+    '2 photos (8)': [
+      { name: 'a.png', type: 'image/png' },
+      { name: 'b.png', type: 'image/png' }
+    ],
+    'video (7)': [{ name: 'birthday.mp4', type: 'video/mp4' }],
+    'audio (6)': [{ name: 'voice-memo.wav', type: 'audio/wav' }],
+    'markdown (5)': [{ name: 'notes.md', type: '' }],
+    'pdf (4)': [{ name: 'contract.pdf', type: 'application/pdf' }],
+    'archive (1)': [{ name: 'pack.zip', type: 'application/zip' }],
+    'mixed (1)': [
+      { name: 'a.png', type: 'image/png' },
+      { name: 'b.csv', type: 'text/csv' }
+    ]
+  }
+  // Overlay (fixed 560 px) and the Feed Window: 380x460 = its default size (Linux content size),
+  // 364x421 ≈ the same window on Windows (frame), 300x340 = its minimum size.
+  const VIEWS = [
+    ['overlay', 560, 560],
+    ['feed', 380, 460],
+    ['feed', 364, 421],
+    ['feed', 300, 340]
+  ]
+  const counts = new Set()
+  for (const [view, w, h] of VIEWS) {
+    for (const [label, files] of Object.entries(HELD_FILES)) {
+      const ctx = await browser.newContext({ viewport: { width: w, height: h } })
+      const page = await ctx.newPage()
+      await page.goto(`${base}?view=${view}`)
+      await page.waitForFunction(() => !!window.__harness && !!document.querySelector('[data-uncle-state]'))
+      const c = await page.evaluate(() => window.__harness.center())
+      await page.evaluate(([x, y, f]) => {
+        window.__harness.drag('dragenter', x, y, f)
+        window.__harness.drag('dragover', x, y, f)
+        window.__harness.drag('drop', x, y, f)
+      }, [c.x, c.y, files])
+      await waitState(page, 'feedMe')
+      await page.waitForTimeout(900) // bubbles fan out
+      const res = await page.evaluate(() => {
+        const stage = document.querySelector('[data-uncle-state]').getBoundingClientRect()
+        const held = document.querySelector('[data-testid="held-files"]')
+        const hb = held ? held.getBoundingClientRect() : null
+        const out = []
+        for (const btn of document.querySelectorAll('[data-option-id]')) {
+          const b = btn.querySelector('.lud-option-bubble').getBoundingClientRect()
+          const cx = (b.left + b.right) / 2
+          const cy = (b.top + b.bottom) / 2
+          const top = document.elementFromPoint(cx, cy)
+          // Room the hovered (×1.24) bubble and its shadow take; the chip must stay off it.
+          const rad = (b.width / 2) * 1.24 + 4
+          const nx = hb ? Math.max(hb.left, Math.min(cx, hb.right)) : cx
+          const ny = hb ? Math.max(hb.top, Math.min(cy, hb.bottom)) : cy
+          out.push({
+            id: btn.getAttribute('data-option-id'),
+            reachable: btn.contains(top),
+            by: btn.contains(top) ? null : (top?.getAttribute('data-testid') ?? top?.className ?? null),
+            underChip: !!hb && Math.hypot(cx - nx, cy - ny) < rad,
+            inZone: b.left >= stage.left - 0.5 && b.top >= stage.top - 0.5 && b.right <= stage.right + 0.5 && b.bottom <= stage.bottom + 0.5
+          })
+        }
+        const inWindow = !!hb && hb.left >= 0 && hb.top >= 0 && hb.right <= innerWidth && hb.bottom <= innerHeight
+        return { out, inWindow, clickThrough: held ? getComputedStyle(held).pointerEvents === 'none' : false }
+      })
+      counts.add(res.out.length)
+      const where = `${view} ${w}x${h} ${label}`
+      const blocked = res.out.filter((o) => !o.reachable).map((o) => `${o.id} (by ${o.by})`)
+      const covered = res.out.filter((o) => o.underChip).map((o) => o.id)
+      const outside = res.out.filter((o) => !o.inZone).map((o) => o.id)
+      check(`B-064 ${where}: held chip shown inside the window, click-through`, res.inWindow && res.clickThrough)
+      check(`B-064 ${where}: ${res.out.length} bubbles reachable at their centre`, res.out.length > 0 && blocked.length === 0, blocked.join(', '))
+      check(`B-064 ${where}: no bubble under the held chip`, covered.length === 0, covered.join(', '))
+      check(`B-064 ${where}: every bubble inside the ${view === 'feed' ? 'drop zone' : 'window'}`, outside.length === 0, outside.join(', '))
+      await ctx.close()
+    }
+  }
+  check('B-064 checked 1, 4, 5, 6, 7 and 8 options', [1, 4, 5, 6, 7, 8].every((n) => counts.has(n)), [...counts].join(','))
+
+  // A Feed Window at its minimum size draws the stage scaled down: drags and clicks must still land
+  // on the bubble under the pointer.
+  {
+    const ctx = await browser.newContext({ viewport: { width: 300, height: 340 } })
+    const page = await ctx.newPage()
+    await page.goto(`${base}?view=feed`)
+    await page.waitForFunction(() => !!window.__harness && !!document.querySelector('[data-uncle-state]'))
+    const scale = await page.evaluate(() => Number(document.querySelector('[data-uncle-state]').dataset.stageScale))
+    check('B-064 minimum Feed Window scales the stage down', scale > 0 && scale < 1, String(scale))
+    const png = [{ name: 'holiday-photo.png', type: 'image/png' }]
+    const c = await page.evaluate(() => window.__harness.center())
+    await page.evaluate(([x, y, f]) => {
+      window.__harness.drag('dragenter', x, y, f)
+      window.__harness.drag('dragover', x, y, f)
+    }, [c.x, c.y, png])
+    await page.waitForTimeout(700)
+    const ico = await page.evaluate(() => window.__harness.optionPoint('to-ico'))
+    await page.evaluate(([x, y, f]) => window.__harness.drag('dragover', x, y, f), [ico.x, ico.y, png])
+    await page.waitForTimeout(60)
+    const hovered = await page.evaluate(() => document.querySelector('.lud-option.is-hover')?.getAttribute('data-option-id') ?? null)
+    check('B-064 scaled feed: dragging over ICO hovers ICO', hovered === 'to-ico', String(hovered))
+    await page.evaluate(([x, y, f]) => window.__harness.drag('drop', x, y, f), [ico.x, ico.y, png])
+    check('B-064 scaled feed: drop on ICO eats', await waitState(page, 'eat', 1500))
+    const job = await page.evaluate(() => window.__harness.jobs.at(-1)?.optionId ?? null)
+    check('B-064 scaled feed: the job is ICO', job === 'to-ico', String(job))
+    await ctx.close()
+  }
+  {
+    const ctx = await browser.newContext({ viewport: { width: 300, height: 340 } })
+    const page = await ctx.newPage()
+    await page.goto(`${base}?view=feed`)
+    await page.waitForFunction(() => !!window.__harness && !!document.querySelector('[data-uncle-state]'))
+    await page.evaluate(() => window.__harness.testFeedDrop({ paths: ['/tmp/holiday-photo.png'], optionId: null }))
+    await waitState(page, 'feedMe')
+    await page.waitForTimeout(900)
+    const rb = await page.evaluate(() => window.__harness.optionPoint('remove-bg'))
+    await page.mouse.click(rb.x, rb.y)
+    check('B-064 scaled feed: clicking Remove BG with held files eats', await waitState(page, 'eat', 1500))
+    const job = await page.evaluate(() => window.__harness.jobs.at(-1)?.optionId ?? null)
+    check('B-064 scaled feed: the job is Remove BG', job === 'remove-bg', String(job))
+    await ctx.close()
   }
 }

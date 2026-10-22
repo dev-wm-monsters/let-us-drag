@@ -1,9 +1,9 @@
 // The stage: Uncle (or Plain Mode target) + options ring + progress ring + speech + result cards.
 // Shared by the overlay window and the Feed Window. Pure presentation driven by the session model.
 import { type CSSProperties, memo, type ReactNode, type RefObject, useCallback, useLayoutEffect, useMemo, useRef } from 'react'
-import type { ConversionOption, OptionId } from '../../shared/types'
+import type { ConversionOption, DroppedItem, OptionId } from '../../shared/types'
 import { chewCaption, type Model, speech, uncleMoodAttr, visibleOptions } from '../overlay/state'
-import { placeHint, ringLayout } from './geometry'
+import { heldChipTop, placeHint, ringLayout } from './geometry'
 import { baseName, LINES, shortName } from './text'
 import { Uncle } from './uncle/Uncle'
 import type { Mood } from './uncle/pose'
@@ -15,12 +15,18 @@ export const EDGE_MARGIN = 8
 /** Radius kept free around a bubble (80 px circle + ink shadow + a little air), and the hovered one (×1.24). */
 const BUBBLE_R = 48
 const BUBBLE_HOVER_R = 50
+/** Room kept between a bubble centre and the held-files chip below the ring (B-064). */
+const HELD_CLEARANCE = BUBBLE_HOVER_R + 6
 
-/** Size of the stage (the window, or the Feed Window's drop zone) an element belongs to. */
+/**
+ * Size of the stage (the window, or the Feed Window's drop zone) an element belongs to, in the
+ * unscaled px of .lud-center (a small Feed Window scales the drawing down, B-064).
+ */
 function stageSizeOf(el: HTMLElement): { w: number; h: number } | null {
   const stage = el.closest('.lud-stage')
   if (!(stage instanceof HTMLElement) || stage.clientWidth === 0 || stage.clientHeight === 0) return null
-  return { w: stage.clientWidth, h: stage.clientHeight }
+  const k = Number(stage.dataset.stageScale) || 1
+  return { w: stage.clientWidth / k, h: stage.clientHeight / k }
 }
 
 /**
@@ -210,6 +216,21 @@ function FileGlyph({ ext }: { ext: string }) {
   )
 }
 
+/**
+ * "Holding these files, pick an option" chip (feedMe after a drop on the mouth). Compact and
+ * click-through, placed where it covers no option bubble (B-064): under the ring in the overlay,
+ * in the header of the Feed Window.
+ */
+export function HeldChip({ held, className, style }: { held: readonly DroppedItem[]; className?: string; style?: CSSProperties }) {
+  return (
+    <div className={`lud-held ${className ?? ''}`} style={style} data-testid="held-files">
+      <span className="lud-file-ext">{held[0]?.ext.slice(0, 4).toUpperCase() || 'FILE'}</span>
+      <strong>{held.length === 1 ? shortName(held[0]!.name, 26) : `${held.length} files`}</strong>
+      <small>Pick an option · Esc to cancel</small>
+    </div>
+  )
+}
+
 function PlainTarget({ state }: { state: Model['state'] }) {
   return (
     <div className={`lud-plain lud-plain-${state}`} data-testid="plain-target">
@@ -236,10 +257,12 @@ export interface StageProps {
   reducedMotion: boolean
   /** Extra content shown while idle (Feed Window). */
   idleExtra?: ReactNode
+  /** Show the held-files chip under the ring (default). The Feed Window shows it in its header. */
+  showHeld?: boolean
   className?: string
 }
 
-export function Stage({ s, testId, uncleWidth, ring, reducedMotion, idleExtra, className }: StageProps) {
+export function Stage({ s, testId, uncleWidth, ring, reducedMotion, idleExtra, showHeld = true, className }: StageProps) {
   const { model } = s
   const plain = model.settings.plainMode
   const opts = visibleOptions(model)
@@ -258,8 +281,9 @@ export function Stage({ s, testId, uncleWidth, ring, reducedMotion, idleExtra, c
     const el = s.stageRef.current
     const r = el?.getBoundingClientRect()
     const from = s.dropPointRef.current
-    let fx = r && from ? from.x - (r.left + r.width / 2) : 0
-    let fy = r && from ? from.y - (r.top + r.height / 2) : 0
+    // Client px → the (possibly scaled) .lud-center's px.
+    let fx = r && from ? (from.x - (r.left + r.width / 2)) / ring.scale : 0
+    let fy = r && from ? (from.y - (r.top + r.height / 2)) / ring.scale : 0
     if (model.state === 'cancel' && Math.hypot(fx, fy) < 60) {
       // Dropped on the mouth (or unknown): spit it up and to the left, away from the cancel button.
       fx = -ring.radius * 0.8
@@ -287,9 +311,10 @@ export function Stage({ s, testId, uncleWidth, ring, reducedMotion, idleExtra, c
       data-struggle={model.struggle ? 'true' : 'false'}
       data-plain={plain ? 'true' : 'false'}
       data-uncle-mood={uncleMoodAttr(model)}
+      data-stage-scale={ring.scale}
       style={{ '--uncle-scale': scale } as CSSProperties}
     >
-      <div className="lud-center">
+      <div className="lud-center" style={ring.scale !== 1 ? { transform: `scale(${ring.scale})` } : undefined}>
         <ProgressRing
           radius={ring.radius}
           progress={model.state === 'eat' ? 0 : model.progress}
@@ -338,16 +363,8 @@ export function Stage({ s, testId, uncleWidth, ring, reducedMotion, idleExtra, c
           </div>
         )}
 
-        {clickable && model.held && (
-          <div className="lud-held" data-testid="held-files">
-            <FileGlyph ext={model.held[0]?.ext ?? ''} />
-            <span>
-              {model.held.length === 1
-                ? shortName(model.held[0]!.name, 26)
-                : `${model.held.length} files`}
-              <small>Pick an option · Esc to cancel</small>
-            </span>
-          </div>
+        {clickable && model.held && showHeld && (
+          <HeldChip held={model.held} className="is-under-ring" style={{ top: heldChipTop(ring.radius, HELD_CLEARANCE) }} />
         )}
 
         {model.state === 'chew' && <CancelButton radius={ring.radius} onCancel={s.cancelJob} onOver={s.setOverInteractive} />}
