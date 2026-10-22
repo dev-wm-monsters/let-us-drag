@@ -55,3 +55,9 @@ Each agent appends: date, role, what was done, files touched, open issues.
 - **Platform** (fix/platform-p4): click-through overlay outside the gesture + no focus stealing (D20), re-arm over result cards (D21), packaged app refuses debug switches and makes zero network requests at launch (D22, proven with a logging proxy), feed-drop test hook fix, acceptFirstMouse for clicks on the inactive overlay.
 - **Frontend** (fix/frontend-p4): renderer side of D20/D21, model-download stage text, hints and cards always inside the window, capture-script output paths.
 - **TPM**: merged, removed a duplicated mock method, fixed the stale-overlayDone race after re-arm. 549 unit/engine tests ✓, **63/63 E2E ✓ incl. real-model Remove-BG repeat** (Linux).
+
+## 2026-10-22 · Phase 4b + 5 · QA regression and final polish
+- **QA** (qa/regression): every phase-4 fix independently re-verified (Remove BG 8× in one session, zero network at launch, debug switches refused, hints/cards inside the window, re-arm over cards); 23/23 exploratory tests, 101/103 checks; confidence 72/100. Found B-064..B-066.
+- **Frontend** (fix/frontend-p5): held-files chip never covers an option bubble (overlay + Feed Window at every size).
+- **Engine** (fix/engine-p5): unclosed svg/math/noscript/template no longer truncates documents; mXSS protections intact.
+- **TPM**: stricter shell lint rule, Windows long-path messages, final merge (574 tests ✓), report, release tag v0.1.0-beta.1.

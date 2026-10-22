@@ -55,7 +55,7 @@ Who did what (details per phase in [docs/TEAM_LOG.md](TEAM_LOG.md)):
 
 ## 4. Bugs
 
-**66 bugs logged, 61 fixed**; the rest are decided/deferred (see [docs/qa/BUGS.md](qa/BUGS.md)).
+**66 bugs logged, 62 fixed**; the other 4 are mostly fixed (2), decided (1) or deferred to the public release (1) (see [docs/qa/BUGS.md](qa/BUGS.md)).
 By severity: 1 critical, 13 high, 30 medium, 22 low.
 
 Most important ones found and fixed:
@@ -78,7 +78,7 @@ Most important ones found and fixed:
 | CI Windows | unit/engine ✓ (platform-specific skips only) |
 | CI macOS | unit/engine ✓ |
 | E2E (Playwright, real app, Linux) | 63 passed, 1 skipped (needs non-root) — stable across repeated runs |
-| QA exploratory suite | 101/103 checks passed in the last run; both failures fixed in phase 5 |
+| QA exploratory suite | 101/103 checks passed in the last run; both failures fixed in phase 5 (held-files card, sanitizer edge case) |
 | Packaging (all 4 targets) | built, launched (smoke start), fuses verified, QA artifact checks passed |
 | Security (packaged app probes) | 12/12 bypass probes blocked, zero network requests at launch |
 
