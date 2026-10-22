@@ -1,4 +1,4 @@
-// QA phase 3b: cancel at every stage, Esc reachability, Remove-BG first-use download, settings
+// QA phase 3b (updated phase 4): cancel at every stage, no focus while chewing (D19/D20), Remove-BG first-use download, settings
 // persistence, Feed Window conversions.
 import type { ElectronApplication, TestInfo } from '@playwright/test'
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
@@ -86,9 +86,9 @@ test('QA-FLOW cancel at eat / early chew / late chew; Esc reachability', async (
     return `chew, progress ${last.toFixed(2)}`
   })
 
-  // Esc: can the key reach the overlay while chewing? In real use the overlay is shown inactive and
-  // made non-focusable while a job runs (focus stays in Finder/Explorer).
-  const armed = await armOverlay(app, testInfo, 'esc')
+  // TPM D19/D20 (phase 4): no global Esc while chewing; the overlay must NOT take focus (the user's
+  // app keeps the keyboard) and the "Spit it out" button must work without focus.
+  const armed = await armOverlay(app, testInfo, 'no-focus-chew')
   await hook(app, 'dropFiles', [long], 'to-webm')
   await expectUncleState(armed.overlay, 'chew')
   const info = await windowInfo(app, 'overlay')
@@ -96,15 +96,15 @@ test('QA-FLOW cancel at eat / early chew / late chew; Esc reachability', async (
     const w = BrowserWindow.getAllWindows().find((x) => /\/overlay\/index\.html/.test(x.webContents.getURL()))
     return w ? w.isFocusable() : null
   })
-  await armed.overlay.keyboard.press('Escape')
+  await armed.overlay.getByTestId('cancel-job').click()
   const ev = await waitForTerminalEvent(app, armed.eventsBefore)
   await armed.stopScreens()
   await expectOverlayHidesItself(app)
   record({
-    id: 'FLOW-ESC',
-    what: 'Esc during chew (overlay drop on an option, not the held-files flow)',
-    result: info.focused || focusable ? 'PASS' : 'FAIL',
-    evidence: `overlay focused=${info.focused}, focusable=${String(focusable)} while chewing → a real Esc key press goes to the app under the cursor, not to the Uncle. Synthetic Esc delivered to the page: ${describe(ev)}`
+    id: 'FLOW-NOFOCUS-CHEW',
+    what: 'D19/D20: while chewing the overlay is not focused/focusable; the cancel button works without focus',
+    result: !info.focused && focusable === false && ev.type === 'error' && ev.error.code === 'CANCELLED' ? 'PASS' : 'FAIL',
+    evidence: `overlay focused=${info.focused}, focusable=${String(focusable)} while chewing; click on "Spit it out" without focus: ${describe(ev)}`
   })
   // After all the cancels the engine still works.
   const p = await makePng(d('after.png'))
@@ -127,11 +127,13 @@ test('QA-FLOW Remove BG first use: real download from upstream, cancel during do
     const armed = await armOverlay(app, testInfo, 'rmbg-dl-cancel')
     await hook(app, 'dropFiles', [photo], 'remove-bg')
     await expect
-      .poll(async () => (await newJobEvents(app, armed.eventsBefore)).some((e) => e.type === 'progress' && e.progress > 0.02), { timeout: 120_000 })
+      // Cancel at the FIRST download progress event: on a fast line the whole 179 MB take ~5 s.
+      .poll(async () => (await newJobEvents(app, armed.eventsBefore)).some((e) => e.type === 'progress' && /One-time download/.test(e.stage ?? '')), { timeout: 120_000, intervals: [50] })
       .toBe(true)
     const stages = [...new Set((await newJobEvents(app, armed.eventsBefore)).flatMap((e) => (e.type === 'progress' && e.stage ? [e.stage] : [])))]
-    const bubble = await armed.overlay.getByTestId('speech-bubble').textContent().catch(() => null)
-    const ringText = await armed.overlay.getByTestId('progress-ring').textContent().catch(() => null)
+    const bubble = await armed.overlay.getByTestId('speech-bubble').textContent({ timeout: 300 }).catch(() => null)
+    // B-047 (phase 4): the stage text is rendered under the ring as data-testid="stage-text".
+    const ringText = await armed.overlay.getByTestId('stage-text').textContent({ timeout: 1_000 }).catch(() => null)
     await hookP2(app, 'cancelActive')
     const ev = await waitForTerminalEvent(app, armed.eventsBefore)
     await armed.stopScreens()
@@ -201,11 +203,7 @@ test('QA-FLOW settings persistence + Feed Window conversions', async ({ lud }) =
   // Feed Window: drop → option, then mouth → pick, in Plain+Hungry mode.
   const d = (n: string): string => join(lud.workDir, n)
   const png = await makePng(d('feed me.png'))
-  // Open the Feed Window first: dropFilesOnFeed on a window it has to open itself never resolves
-  // (see docs/qa/QA_REPORT.md, test-hook finding).
-  await hook(app, 'openFeedWindow')
-  await waitForPage(app, 'feed')
-  await new Promise((r) => setTimeout(r, 1_000))
+  // No openFeedWindow() first: dropFilesOnFeed opens the Feed Window itself (B-055, fixed in phase 4).
   const before = (await hook(app, 'jobEvents')).length
   await hook(app, 'dropFilesOnFeed', [png], 'to-webp')
   const ev = await waitForTerminalEvent(app, before)
