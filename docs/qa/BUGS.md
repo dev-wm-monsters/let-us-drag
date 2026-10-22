@@ -47,21 +47,21 @@
 | B-043 | Medium | TPM/QA | Fixed | Packaging checks failed on macOS: no FFMPEG-LICENSE.txt for bare-binary source; Intel Mac has no onnxruntime-node binary (wasm fallback expected) | Package CI | e9b692e |
 | B-044 | Medium | Platform | Fixed | IPC accepted drive-less rooted Windows paths ('\\b'); two platform tests assumed POSIX paths | Windows CI | a3012ec |
 | B-045 | High | Engine | Fixed | Windows: libvips operation cache kept converted originals open/locked (EBUSY on delete/rename) | Windows CI (security.test cleanup) | 5afa281 |
-| B-046 | High | Engine | Open | QA3-01: Remove BG fails every second time in an app session (onnxruntime-node session reused in utilityProcess → exit 5) | QA exploratory, tests/qa/probes/ort-utility | D24 |
-| B-047 | Medium | Frontend | Open | QA3-02: model-download stage text never shown (D15 second half) | QA exploratory | — |
-| B-048 | Medium | Frontend | Open | QA3-03: option hints clipped at overlay edges (Remove BG hint loses its first words) | QA visual review | — |
-| B-049 | Medium | Frontend | Open | QA3-04: long error messages run off the bottom of the overlay | QA exploratory | — |
+| B-046 | High | Engine | Fixed | QA3-01: Remove BG fails every second time in an app session (onnxruntime-node session reused in utilityProcess → exit 5) | QA exploratory, tests/qa/probes/ort-utility | 42f98c3 (fresh InferenceSession per inference, released; E2E-RMBG-REPEAT) |
+| B-047 | Medium | Frontend | Fixed | QA3-02: model-download stage text never shown (D15 second half) | QA exploratory | b74d9a8 (stage text under the progress ring) |
+| B-048 | Medium | Frontend | Fixed | QA3-03: option hints clipped at overlay edges (Remove BG hint loses its first words) | QA visual review | b74d9a8 (placeHint keeps hints inside the window) |
+| B-049 | Medium | Frontend | Fixed | QA3-04: long error messages run off the bottom of the overlay | QA exploratory | b74d9a8 (wrapped, clamped, kept-inside cards) |
 | B-050 | Medium | Frontend/Platform | Decided | QA3-05: Esc cannot cancel during chew (overlay not focusable) | QA exploratory | D19 (button only) |
-| B-051 | Medium | Platform/Frontend | Open | QA3-06: overlay catches clicks for the whole duration of long jobs | QA code review | D20 |
-| B-052 | Low | Platform | Open | QA3-07: overlay takes keyboard focus for ~2.5 s after every conversion | QA code review | D20 |
-| B-053 | Low | Engine | Open | QA3-08: output names over 255 bytes fail with a misleading "folder doesn't let me write" | QA exploratory | D23 |
-| B-054 | Low | Engine | Open | QA3-09: DOCX→Markdown loses the space between bold and italic runs | QA exploratory | — |
-| B-055 | Low | Platform | Open | QA3-10: test hook dropFilesOnFeed never resolves when it must open the Feed Window | QA exploratory | — |
-| B-056 | Low | Platform/Frontend | Open | QA3-11: a new gesture is ignored while a result card is shown | QA exploratory | D21 |
-| B-057 | Low | Frontend | Open | QA3-12: capture script overwrites docs/art GIFs even with LUD_SCREENS_DIR set | QA | — |
-| B-058 | Medium | Platform | Open | F-23: packaged app honours --remote-debugging-port | Security probe | D22 |
-| B-059 | Medium | Platform | Open | F-24: spell-check dictionary download at every launch (network request) | Security netlog probe | D22 |
-| B-060 | Low | Engine | Open | F-25: sanitizer passes `<svg><style>` mutation-XSS payloads (CSP still blocks) | Security review | — |
-| B-061 | Low | TPM | Open | F-26/F-27: ffmpeg licence gate fails open; LICENSE/README extras not hashed | Security review | — |
-| B-062 | Medium | TPM | Open | F-08/SEC-146: ESLint gate misses node:child_process exec, shell:true | Security review | — |
+| B-051 | Medium | Platform/Frontend | Fixed | QA3-06: overlay catches clicks for the whole duration of long jobs | QA code review | 2416927 + b74d9a8 (click-through except interactive elements; macOS/Windows only) |
+| B-052 | Low | Platform | Fixed | QA3-07: overlay takes keyboard focus for ~2.5 s after every conversion | QA code review | 2416927 + b74d9a8 (no focus except feedMe) |
+| B-053 | Low | Engine | Fixed | QA3-08: output names over 255 bytes fail with a misleading "folder doesn't let me write" | QA exploratory | e8cdb35 (stems shortened to 255 bytes / path budgets) |
+| B-054 | Low | Engine | Fixed | QA3-09: DOCX→Markdown loses the space between bold and italic runs | QA exploratory | 5b50f74 |
+| B-055 | Low | Platform | Fixed | QA3-10: test hook dropFilesOnFeed never resolves when it must open the Feed Window | QA exploratory | 2416927 |
+| B-056 | Low | Platform/Frontend | Fixed | QA3-11: a new gesture is ignored while a result card is shown | QA exploratory | 2416927 + b74d9a8 + ba36ffa (stale overlayDone ignored) |
+| B-057 | Low | Frontend | Fixed | QA3-12: capture script overwrites docs/art GIFs even with LUD_SCREENS_DIR set | QA | b74d9a8 |
+| B-058 | Medium | Platform | Fixed | F-23: packaged app honours --remote-debugging-port | Security probe | 2416927 (packaged app refuses debug switches) |
+| B-059 | Medium | Platform | Fixed | F-24: spell-check dictionary download at every launch (network request) | Security netlog probe | 2416927 (spell checker off; zero requests at launch) |
+| B-060 | Low | Engine | Fixed | F-25: sanitizer passes `<svg><style>` mutation-XSS payloads (CSP still blocks) | Security review | 2acc16f (svg/math dropped, style hardened) |
+| B-061 | Low | TPM | Fixed | F-26/F-27: ffmpeg licence gate fails open; LICENSE/README extras not hashed | Security review | 93089d1 |
+| B-062 | Medium | TPM | Fixed | F-08/SEC-146: ESLint gate misses node:child_process exec, shell:true | Security review | 93089d1 |
 | B-063 | Low | Engine | Deferred (public release) | SEC-105: unzip does not propagate Mark-of-the-Web / quarantine | Security review | public-release list |

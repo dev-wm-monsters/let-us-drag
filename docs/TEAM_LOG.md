@@ -41,3 +41,17 @@ Each agent appends: date, role, what was done, files touched, open issues.
 - Found QA3-01..QA3-12 (docs/qa/QA_REPORT.md §4): High QA3-01 Remove BG fails every second time (onnxruntime-node crashes the engine utilityProcess on the 2nd run; minimal repro tests/qa/probes/ort-utility); Medium: download text not shown (D15), hint and error card clipped, Esc cannot cancel while chewing, overlay blocks clicks during long jobs.
 - Rewrote docs/qa/MANUAL_CHECKLIST.md as the single checklist for the product owner (Platform manual items, Gatekeeper/SmartScreen, logs, bug reporting). Confidence 62/100 (QA_REPORT §5).
 - Files: docs/qa/QA_REPORT.md, docs/qa/MANUAL_CHECKLIST.md, tests/qa/**, tests/engine/qa-removebg-repeat.test.ts.
+
+## 2026-10-21/22 · TPM (CI-driven fixes)
+- Windows CI exposed two more issues, fixed and proven on all three OSes: drive-less rooted paths accepted by IPC (B-044) and libvips' operation cache keeping converted originals locked on Windows (B-045, `sharp.cache(false)`). First all-green CI on Linux/Windows/macOS at 5afa281.
+- Supply chain: fail-closed ffmpeg licence gate, hashed licence/readme extras, stricter no-shell ESLint gate (B-061, B-062).
+
+## 2026-10-21/22 · Phase 3b · Final verification (2 agents)
+- **QA** (qa/final): 4× E2E runs without flakes; new exploratory suite — all 30 options converted end-to-end in the real app and validated with independent decoders, plus nasty names/paths/sizes/batches/cancel at every stage; visual review over light/dark desktops; single manual checklist. Found 12 issues incl. **QA3-01 (High): Remove BG failed every second time inside the app**. Confidence 62/100 before fixes.
+- **Security** (security/final): final status per SEC id, packaged-build probes (all env/debug bypasses closed except `--remote-debugging-port`), real conversions via CDP in the packaged app, THIRD_PARTY_NOTICES for the macOS FFmpeg builds, public-release blocker list. Verdict: private test build OK.
+
+## 2026-10-22 · Phase 4 · Fix round 2 (3 agents) + integration
+- **Engine** (fix/engine-p4): fresh ONNX session per inference (B-046, proven with 3 consecutive in-app Remove-BG jobs), long-name shortening (B-053), Markdown emphasis spacing (B-054), sanitizer mXSS hardening (B-060).
+- **Platform** (fix/platform-p4): click-through overlay outside the gesture + no focus stealing (D20), re-arm over result cards (D21), packaged app refuses debug switches and makes zero network requests at launch (D22, proven with a logging proxy), feed-drop test hook fix, acceptFirstMouse for clicks on the inactive overlay.
+- **Frontend** (fix/frontend-p4): renderer side of D20/D21, model-download stage text, hints and cards always inside the window, capture-script output paths.
+- **TPM**: merged, removed a duplicated mock method, fixed the stale-overlayDone race after re-arm. 549 unit/engine tests ✓, **63/63 E2E ✓ incl. real-model Remove-BG repeat** (Linux).
