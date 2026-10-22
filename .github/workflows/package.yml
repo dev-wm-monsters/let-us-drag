@@ -6,6 +6,11 @@ on:
     branches: [main]
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Create a DRAFT release with this tag (e.g. v0.1.0-beta.1) on the dispatched commit; empty = artifacts only'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -104,7 +109,7 @@ jobs:
 
   draft-release:
     needs: package
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -116,7 +121,8 @@ jobs:
       - name: Create draft release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag || github.ref_name }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" dist/* --repo "$GITHUB_REPOSITORY" \
-            --draft --prerelease --title "Let us drag! ${GITHUB_REF_NAME}" \
-            --notes "Pre-release test build. See docs/REPORT.md for the manual test checklist."
+          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --draft --prerelease --title "Let us drag! $TAG" \
+            --notes "Private test build. Install notes and the manual test checklist: docs/qa/MANUAL_CHECKLIST.md. Project report: docs/REPORT.md."
