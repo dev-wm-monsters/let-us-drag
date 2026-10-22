@@ -38,13 +38,18 @@ function descendants(pid) {
   const set = new Set([pid])
   for (let grew = true; grew; ) {
     grew = false
-    for (const p of all) if (set.has(p.ppid) && !set.has(p.pid)) (set.add(p.pid), (grew = true))
+    for (const p of all) {
+      if (set.has(p.ppid) && !set.has(p.pid)) {
+        set.add(p.pid)
+        grew = true
+      }
+    }
   }
   set.delete(pid)
   return [...set]
 }
 
-/** Any process of the tree listening on a TCP port (from /proc/<pid>/net/tcp is per-netns; use the global table). */
+/** TCP ports in LISTEN state (global table; compared before/after each launch). */
 function listeningPorts() {
   const out = new Set()
   for (const f of ['/proc/net/tcp', '/proc/net/tcp6']) {
