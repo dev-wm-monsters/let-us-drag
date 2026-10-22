@@ -1,8 +1,111 @@
-# QA report — phase 3b (final verification before the product owner's v0.1 run)
+# QA report — phase 4 regression + phase 3b final verification (v0.1, product-owner run)
 
 QA engineer, 2026-10-21. Branch `qa/final`, based on `origin/develop` @ `5afa281` (rebased from `c2c4bfa`
 when develop moved on during this phase; all numbers below are from `5afa281` unless marked).
 Environment: Linux container + Xvfb only. macOS/Windows evidence comes from GitHub CI (not re-run here).
+
+> **Read this first.** Section 0 is the phase-4 regression run (2026-10-22) on the fixes for B-046..B-063.
+> Sections 1-5 below are the phase-3b report (2026-10-21) and are kept as history; where they disagree,
+> section 0 wins.
+
+## 0. Phase 4 regression (2026-10-22)
+
+QA engineer, branch `qa/regression` from `origin/develop`. Gates and exploratory runs on `ba36ffa`
+(phase-4 integration), then gates repeated on `a2fd77d` (develop moved on during the run: TPM ledger +
+an Engine change to the Windows ENOENT message for over-long paths). Linux container + Xvfb
+(1920x1080) only; macOS/Windows come from GitHub CI and the manual checklist.
+
+### 0.1 Gates
+
+| Gate | Command | `ba36ffa` | `a2fd77d` + this branch |
+|---|---|---|---|
+| Typecheck | `npm run typecheck` | exit 0 | exit 0 |
+| Lint | `npm run lint` | exit 0 | exit 0 |
+| Unit + engine, **real model** | `LUD_FFMPEG_PATH=/usr/bin/ffmpeg LUD_MODEL_PATH=<isnet-general-use.onnx> npm test` | 38 files, **551 passed, 1 skipped** (read-only folder test: container runs as root). Real-model tests ran: `removebg.test.ts` 20/20 incl. D24 session lifecycle, `qa-removebg-repeat.test.ts` 1/1 | 39 files, **551 passed, 5 expected-fail, 1 skipped** (the 5 are QA's new `it.fails` repro of QA-P4-01) |
+| Build | `npm run build` | exit 0 | exit 0 |
+| E2E run 1 / 2 | `LUD_FFMPEG_PATH=/usr/bin/ffmpeg LUD_MODEL_PATH=<model> xvfb-run -a npx playwright test` | **63 passed, 1 skipped** (E2E-33, root) each, 3.9 min each; includes the new E2E-RMBG-REPEAT (3 Remove BG in one session, 24 s) | **63 passed, 1 skipped** each (3.8 min, 3.9 min) |
+| Packaged Linux build | `node scripts/fetch-ffmpeg.mjs && npx electron-builder --linux --dir` then `xvfb-run -a node scripts/ci-smoke-packaged.mjs` | built (fuses applied), smoke: boots, settings written, alive after grace period | — |
+| Security probes (packaged) | `node docs/security/tools/probes/run-probes.mjs release/linux-unpacked/let-us-drag` | 12/12 PASS (LUD_* stripped from the engine, ELECTRON_RUN_AS_NODE, NODE_OPTIONS, --inspect, --remote-debugging-port, cmd-prefix switches) | — |
+| GitHub CI | `gh run list --branch develop` | CI on `ba36ffa` **failed** (Windows: over-long path reported as ENOENT), fixed by `a2fd77d`: CI on `a2fd77d` **success**. Package workflow on develop (00:46) success | — |
+
+Flakiness: 4 E2E runs (2 per commit), identical results, no retries.
+
+### 0.2 Phase-4 fixes, verified independently
+
+Exploratory suite: `tests/qa/explore/*.spec.ts` incl. the new `phase4.spec.ts`, run with
+`LUD_FFMPEG_PATH=/usr/bin/ffmpeg QA_MODEL_PATH=<model> QA_PHOTOS=girl-1.jpg,animal-1.jpg QA_DOWNLOAD=1 xvfb-run -a -s "-screen 0 1920x1080x24" npx playwright test -c tests/qa/playwright.qa.config.ts`
+→ **23/23 tests passed, 103 recorded checks: 101 PASS, 2 FAIL** (both FAILs are the new bugs QA-P4-01/02 below;
+two checks first failed for test reasons and were fixed in the test and re-run: FLOW-RMBG-DL-CANCEL, which sent
+its cancel after the 179 MB had already arrived in ~5 s, and P4-MXSS, which put all payloads in one file so the
+first unclosed `<math>` hid the rest). All 30 options of PLAN §5 still convert and validate with independent
+decoders (CAT-*), all nasty inputs and cancel flows still PASS (no regression from phase 3b). `phase4.spec.ts`
+re-run on the rebuilt `a2fd77d` (no download): 10/10 tests passed, same 12 verdicts.
+
+| Bug | Verdict | My repro and evidence |
+|---|---|---|
+| B-046 Remove BG every 2nd time | **Fixed** | P4-RMBG-REPEAT, one app session, real ISNet model, real photos: girl → animal → girl again → *to-webp* → rotated photo → animal → **batch of 3** → girl: 8/8 jobs `done`, every cut-out 74-83 % transparent, 4-6 s each (batch 13 s), no `engine exited` in the log. Also CAT-IMG-RMBG-1/2 and FLOW-RMBG-DL/CACHED (5 Remove BG in the flows session). |
+| B-047 download text | **Fixed** | P4-DL-STAGE: fresh userData, no `LUD_MODEL_PATH`, real download from github.com/danielgatis/rembg: caption "One-time download of my scissors (179 MB AI model) · N%" visible 0.8 s after the drop, 14-17 distinct rising values (1 % → 95 %), then "Finding the subject…"; box always inside the 560x560 window; job `done`. FLOW-RMBG-DL-CANCEL: cancel at the first download event → `CANCELLED`, caption read "· 4%", `models/` empty, no output. |
+| B-048 hints clipped | **Fixed** | P4-HINTS (real app, feedMe, every option of image/video/audio/pdf/docx/md/csv/zip/folder/2 images, 49 hints): all inside the window, none covers another bubble, no text overflow. Remove BG hint fully readable ("Remove the background (first use downloads a 179 MB AI model, once)", x 92-322). Visual harness over white, black and grey: all hints readable (`tests/qa/visual-contrast.mjs`). Cosmetic: the Remove BG pill now sits over the Uncle's moustache. |
+| B-049 long error cards | **Fixed** | P4-ERR-CARDS: real 138-char engine message (batch of two JSON → CSV, the second `42`) and an injected 200-char message (the engine's cap) on a running job: card 404-546 px of 560, inside, text not clipped, full text shown. |
+| B-050 Esc during chew | Decided (D19) | FLOW-NOFOCUS-CHEW: while chewing the overlay is not focused and not focusable; the "Spit it out" click cancels without focus. |
+| B-051 overlay catches clicks | **Fixed in code, Linux N/A by design; macOS/Windows = manual** | P4-CLICKTHROUGH-LINUX (real X11 clicks via XTest, another app window focused behind the overlay): the renderer requests click-through after the drop (`T`) and turns it off over the cancel button (`F`); main ignores it on Linux (0 native `setIgnoreMouseEvents(true)`), so a click next to the Uncle still hits the overlay (as before D20); a real click on "Spit it out" cancels. P4-CLICKTHROUGH-EMU (the test applies the renderer's requests to the real window, i.e. what main does on macOS/Windows, minus `forward`): a real click next to the chewing Uncle **reaches the window behind**, then moving onto "Spit it out" makes it clickable and the real click cancels. Not verifiable here: `forward: true` mouse-move forwarding on macOS/Windows, acceptFirstMouse, Windows UIPI. Checklist A.16/A.18b/B.14/B.16b. |
+| B-052 focus after conversions | **Fixed** (Linux), manual on macOS/Windows | Both click-through tests sample the focused window every 100 ms through a cancel and a full conversion with spit card: overlay focused 0/43 samples, the other app window kept focus. Remaining by design (D20): feedMe (drop on the mouth) takes focus. |
+| B-053 names > 255 bytes | **Fixed** | P4-LONG-NAMES: 246×"L" → Compress (248 B, `…-compressed.png`), 250×"W" → WEBP twice (248 B, then 252 B `… (1).webp`), 125×"é" → Compress (247 B), 61×"😀" → Compress (247 B, no split surrogate, valid UTF-8), 246×"M" → JPG, 246×"P" PDF → PNG pages; all exist and are ≤ 255 bytes. NASTY-LONG-2 (was FAIL) PASS. Windows: CI only (`a2fd77d`). |
+| B-054 bold+italic → MD | **Fixed** | P4-MD-EMPHASIS: own DOCX with bold→italic (space in either run), bold+italic run, touching bold/italic in one word, literal `*`/`_`: Markdown renders back (marked) to exactly the original sentences. CAT-DOC-MD now `**great** *this time.*`. |
+| B-055 dropFilesOnFeed | **Fixed** | P4-FEED-FIRST: right after launch, without opening the window: resolves in ~250 ms, converts (option) / shows held files (null). Workaround removed from `flows.spec.ts`; FLOW-FEED-1/2 PASS without it. |
+| B-056 new gesture over a card | **Fixed** | P4-REARM: arm over a spit card, a choke card and the leave animation: card dismissed immediately, new drop converts (3/3); arm 120-360 ms after leave started (stale `overlayDone` race, `ba36ffa`): 5/5 OK. NASTY-B2B (was NOTE) PASS. |
+| B-057 capture overwrites docs/art | **Fixed** | `LUD_SCREENS_DIR=<scratch> node src/renderer/dev/capture.mjs`: 35 files written there, `git status` clean. |
+| B-058 --remote-debugging-port | **Fixed** | `node tests/qa/probes/debug-switches.mjs release/linux-unpacked/let-us-drag`: 11 spellings (`--remote-debugging-port=N`, with a space, single dash, UPPER CASE, `=0`, `-pipe`, with `-address=0.0.0.0`, after `--`, `--inspect`, `--inspect-brk`, `--js-flags`): every one exits 1 with "refusing to start with --…", no CDP answer, no new listening port; control run without switches stays up. Polling the port every 10 ms during startup: 0/925 connects. |
+| B-059 dictionary download | **Fixed** | `node docs/security/tools/probes/netlog-proxy.mjs release/linux-unpacked/let-us-drag 30` → `[]` (zero requests in 30 s, first-run welcome window open). Positive control, stock Electron through the same proxy: `CONNECT redirector.gvt1.com:443` at 0.36 s. macOS uses the OS spell checker (not affected); Windows = same code path as Linux. |
+| B-060 svg/math mXSS | **Fixed** (security); see QA-P4-01 | P4-MXSS: 17 payloads (svg/math/style/noscript/template/foreignObject/annotation-xml/xlink javascript:/entity-obfuscated javascript:/srcdoc/xmp/select-style), one Markdown file each, batch → HTML; every output rendered **without its CSP** in a throw-away window and re-parsed: no script ran, no svg/math/script/iframe/template/noscript, no `on*`, no `javascript:` (also after the second parse); CSP meta in 17/17. |
+| B-061 licence gate | Happy path only | `fetch-ffmpeg.mjs` linux-x64: SHA-256 verified, "licence gate: ok (GPL build, no nonfree)". Fail-closed branches not exercised here. |
+| B-062 ESLint child_process | **Fixed**, small gap (QA-P4-03) | default/namespace import, `exec`, `require()`, `shell: true` all rejected. `shell: '/bin/sh'` and a variable options object pass. |
+
+### 0.3 Uncle visuals (regression look)
+
+`LUD_SCREENS_DIR=<scratch> node src/renderer/dev/capture.mjs` (35 shots + 2 GIFs) and
+`tests/qa/visual-contrast.mjs` (126 shots, white / near-black / grey): the Uncle is unchanged (bald head, wild
+hair, moustache, glasses, gold tooth, mole with its hair in every state, head turn, happy squint, sweat + cough on
+choke). New: the download caption is a dark pill under the ring with the percentage (readable on all three
+backgrounds); hints stay inside the window; long error cards are moved up to stay inside. No visual regression.
+Cosmetic only: the Remove BG hint now covers the moustache/mouth while hovered; a 200-char error card covers the
+Uncle's coughing hand. **Found:** the held-files card covers bubbles (QA-P4-02, below), invisible in `docs/art`
+because that capture holds a `.md` (5 options).
+
+### 0.4 New bugs (proposed for docs/qa/BUGS.md; IDs to be assigned by the TPM)
+
+| QA ID | Sev | Owner | Summary | Exact repro |
+|---|---|---|---|---|
+| QA-P4-02 | **Medium** | Frontend | **Held-files card covers option bubbles.** After dropping files on the Uncle's mouth (feedMe "Pick an option"), the `lud-held` card sits on the bottom of the ring and captures the mouse: overlay (560 px) with a picture: **ICO and Remove BG** centres covered (labels hidden, only the lower rim clickable); video: **MOV and ZIP**; 2+ pictures: ICO, Remove BG. **Feed Window** (default size) with a picture: **PDF, ICO, Remove BG, Compress** covered. Pre-existing (CSS unchanged since phase 2), not a phase-4 regression. Workaround: drop directly on the bubble, or Esc and redo. | Overlay: arm → `__ludTest.dropFiles([photo.png], null)` → `document.elementFromPoint(centre of option-to-ico)` is inside `[data-testid=held-files]` (P4-HELD-COVER). Feed: `__ludTest.dropFilesOnFeed([photo.png], null)` → same check, 4 of 8 covered. Manually: Feed Window → drop `photo.png` on the Uncle → try to click ICO / Remove BG. |
+| QA-P4-01 | Low | Engine | **Unclosed `<svg>`/`<math>`/`<noscript>`/`<template>` swallows the rest of the document** in MD/HTML → HTML/PDF: the sanitizer drops "with content" until the matching end tag, so with no end tag everything after it is silently missing from the output (a browser would end it at the enclosing block). Not a security issue. svg/math are new in this list (B-060 fix `2acc16f`); noscript/template were already affected. | `notes.md` = `Before.\n\n<svg><circle r="4">\n\nAfter.\n` → HTML (or PDF): output has "Before." only. `npx vitest run tests/engine/qa-sanitizer-truncation.test.ts` (5 cases as `it.fails`; flip to `it` when fixed). P4-SANITIZER-TRUNCATION. |
+| QA-P4-03 | Low | TPM | ESLint SEC-146 rule matches only the literal `shell: true`; `spawn(f, a, { shell: '/bin/sh' })` and `spawn(f, a, opts)` with `opts.shell = true` pass. No such code exists today. | `printf "import { spawn } from 'node:child_process'\nspawn('x', [], { shell: '/bin/sh' })\n" \| npx eslint --stdin --stdin-filename src/main/x.ts` → no error. |
+
+Observations (not filed): the click-through state only re-evaluates on a pointer move or a cursor-poll
+change, so if the pointer already rests exactly on "Spit it out" when it appears, the very first click without
+moving could pass through on macOS/Windows (very unlikely: the button appears away from the drop point).
+`docs/qa/BUGS.md` already lists B-046..B-062 as Fixed (TPM, `018dc7c`); my verdicts above agree, with the B-051/
+B-052 macOS/Windows parts still to be confirmed by hand.
+
+### 0.5 Confidence that v0.1 works for the product owner (macOS + Windows), phase 4
+
+**Overall: 72 / 100** (was 62).
+
+| Area | Score | Why |
+|---|---|---|
+| Install + first launch | 80 | Unchanged: packaged apps smoke-start in CI on macOS arm64/x64 and Windows; packaged Linux build re-checked here (smoke, 12/12 security probes, debug switches refused, zero network at launch). Gatekeeper "Open Anyway" (macOS 15) and SmartScreen remain the friction. |
+| The gesture (Shift-drag summons the Uncle) | 60 | Still never run on real macOS/Windows hardware by us: uiohook during OS drags, a 1 %-alpha window as drop target, Accessibility grant. Phase 4 adds a new native path in the same window (`setIgnoreMouseEvents` toggled per state, `acceptFirstMouse`); it is reset to "clickable" on every arm, which I verified at the logic level only. The Feed Window remains a working fallback. |
+| Conversions (all §5 options) | 90 | All options convert and validate independently; no regression; long/multibyte names fixed; Windows path fixes CI-verified only. |
+| Remove BG | 80 | Was 40. 13 Remove BG jobs incl. a batch of 3 in single sessions, all correct, engine never restarts; download caption visible; cancel during the download clean. Not verified on Apple silicon / Windows natively (same onnxruntime-node path as Linux, CI engine tests green), Intel-Mac wasm speed unknown. |
+| Cancel / errors / robustness | 85 | Cancel at every stage, friendly errors, long cards fit, re-arm over cards works. Esc during chew is by design button-only. Risk: the cancel button's first click without focus on macOS (acceptFirstMouse) and Windows is manual-only. |
+| The Uncle (look and feel) | 80 | Charming and unchanged; hints/cards now fit. Down from 85 because of QA-P4-02: in the Feed Window "drop on the Uncle, then pick" (checklist A.23) half the bubbles are hidden under the file card. |
+| Settings, modes, tray, Feed Window | 80 | Persistence, Plain/Hungry, Feed conversions verified; tray, login items, window-to-front manual-only; QA-P4-02 hits the Feed Window's held flow. |
+| Click-through / no focus (new D20 behaviour) | 60 | Renderer logic verified end to end with real X11 clicks (emulated macOS/Windows semantics); the OS-specific parts (`forward` move events, first click on an inactive window, focus staying in Finder/Explorer) can only be checked by hand. If it misbehaves, the likely symptom is a cancel button that needs two clicks, or clicks next to the Uncle that do nothing (the pre-phase-4 state). |
+
+The score rises mainly because B-046 (the bug the PO was most likely to hit) is fixed and verified in depth. It
+stays below 80 because the gesture and the new click-through/no-focus behaviour exist only on macOS/Windows and
+have no automated coverage there, and because QA-P4-02 is visible in a flow the checklist asks for.
+
+---
 
 ## 1. Automated gates (exact numbers)
 

@@ -1,8 +1,9 @@
-// QA phase 3b (QA3-01): Remove BG three times in one engine with the REAL model.
-// In the Electron app the second Remove-BG job of a session ends with INTERNAL ("The converter
-// stopped unexpectedly"): the engine utilityProcess dies. This test runs the same two jobs in one
-// engine instance in plain Node, where it PASSES (so this cannot catch QA3-01; the Electron-level repro is
-// tests/qa/probes/ort-utility). Keeps the plain-Node behaviour pinned. Needs LUD_MODEL_PATH=<isnet-general-use.onnx> (scripts/fetch-model.mjs).
+// QA (B-046 / QA3-01, fixed in phase 4 by D24: one fresh InferenceSession per job): Remove BG three
+// times in a row in one engine instance with the REAL model, in plain Node. Plain Node never showed the
+// bug (it was the second session.run() of a reused onnxruntime-node session inside Electron's
+// utilityProcess), so this only pins the engine-level behaviour; the in-app regression test is
+// tests/e2e/removebg-repeat.spec.ts (QA phase 4: tests/qa/explore/phase4.spec.ts P4-RMBG-REPEAT), the
+// minimal ORT repro tests/qa/probes/ort-utility. Needs LUD_MODEL_PATH=<isnet-general-use.onnx> (scripts/fetch-model.mjs).
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import sharp from 'sharp'
@@ -32,8 +33,8 @@ async function subject(path: string, w: number, h: number): Promise<string> {
   return path
 }
 
-describe.skipIf(!hasRealModel)('QA: Remove BG twice in one engine (real model)', () => {
-  it('two different photos in a row both succeed', async () => {
+describe.skipIf(!hasRealModel)('QA: Remove BG three times in one engine (real model)', () => {
+  it('three different pictures in a row all succeed', async () => {
     const opts = { options: { env: { LUD_MODEL_PATH: realModel } } }
     const a = await runOption('remove-bg', [await subject(join(dir, 'a.jpg'), 1000, 667)], opts)
     expect(a.error, JSON.stringify(a.error)).toBeUndefined()
@@ -45,7 +46,7 @@ describe.skipIf(!hasRealModel)('QA: Remove BG twice in one engine (real model)',
 })
 
 if (!hasRealModel) {
-  describe('QA: Remove BG twice (real model)', () => {
+  describe('QA: Remove BG three times (real model)', () => {
     it.skip('skipped: set LUD_MODEL_PATH to the real isnet-general-use.onnx', () => undefined)
   })
 }
