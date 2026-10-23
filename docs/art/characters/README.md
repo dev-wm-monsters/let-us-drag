@@ -1,8 +1,8 @@
 # Alternative character concepts
 
-![Motu Uncle and the ten alternative characters, idle and eat](storyboard.png)
+![Motu Uncle and the nine alternative characters, idle and eat](storyboard.png)
 
-Motu Uncle (a chubby version of the current Uncle) and ten alternative characters to choose from. **Concept art only:** nothing here is
+Motu Uncle (a chubby version of the current Uncle) and nine alternative characters to choose from (round 3: Chacha Gappu restyled, Captain Chomp and Abuela Rosa dropped, Biscuit the cat added). The rules for new art are in [`../STYLE_GUIDE.md`](../STYLE_GUIDE.md). **Concept art only:** nothing here is
 wired into the app. Open [`storyboard.html`](storyboard.html) for the full sheet (it is self-contained,
 with inline SVG and no external resources): name, origin, signature detail, how each one eats, chews
 and spits a file, and both poses side by side.
@@ -33,12 +33,15 @@ and thick sausage fingers. The layer names match the existing rig one-to-one, so
 option to ship. Swap the `headPath` proportions, the torso and the hands, and keep `pose.ts` as it is.
 
 
-**01 · Chacha Gappu** (India). The neighbourhood chacha: thick, oiled, side-parted hair with grey
-temples, a short bushy moustache and a paan-red grin. He wears a cream kurta under a teal Nehru vest
-whose buttons strain over his round belly, with little gaps of kurta showing between them. Signature:
-the folded paan in his fist, plus the paan-stained grin. He pats his belly, says "Arre wah!" and slurps
-the file down. While he chews, the belly jiggles (in the eat pose, motion marks sit beside the belly),
-and at 100 % a vest button pings off.
+**01 · Chacha Gappu** (India; restyled in round 3 so he no longer reads like Halwai Bhaiya). The
+retired colony chacha: older and lanky, with a tall egg-shaped head, a shiny bald dome, grey side hair
+with a side parting (and three brave strands across the top), bushy grey brows, heavy-lidded eyes with
+crow's feet, a long narrow nose and a neat grey moustache. Thick black reading glasses sit pushed up on
+his forehead (in the eat pose they have slid halfway down). He wears a cream kurta under an open navy
+waistcoat, has the morning paper under one arm and a steel tumbler of cutting chai in his hand.
+Signature: the glasses on the forehead plus the paan-red grin. The palette is cool (navy, steel, cream
+on a pale teal background) where Halwai is warm white and red, and the silhouette is tall and narrow
+where Halwai is round. He sips chai between bites, and the glasses slide down at every chew.
 
 **02 · Dadi Amma** (India). A silver bun with a jasmine gajra, big maroon cat-eye glasses on a beaded
 gold chain, a magenta saree with a gold-bordered pallu, gold bangles and stud earrings. Her smile is
@@ -76,21 +79,22 @@ pearls and a lace collar, a black dress and a red gingham apron with a floury ha
 rolling pin, and flour dusted on her rosy cheeks. She rolls the file flat like pasta dough and slurps
 it like tagliatelle. The progress ring could fill like rising dough.
 
-**08 · Captain Chomp** (the Seven Seas). The only 3/4 figure in the set, so that the peg leg shows: one
-boot and one wooden peg under striped trousers. He has a tricorn with a small skull-and-bones, an
-eyepatch, a bushy ginger beard that stretches with the jaw, a gold hoop and a navy coat with a red sash.
-Signature: Polly the parrot on his shoulder squawks the format name (the eat pose shows a "PNG!"
-bubble).
-
 **09 · Pehlwan Pappu** (India). A village akhada wrestler-uncle with a buzz cut, a curled moustache
 and a big round belly in a blue-striped vest over red langot-style shorts. Akhada mitti (dust) sits on
 his shoulders and arm. Signature: a tall glass of milk with a foamy top. In idle he flexes one arm and
 raises the glass with the other. While he chews he grunts every 10 %, and dust puffs off his shoulders.
 
-**10 · Abuela Rosa** (Mexico). A chubby abuela with a grey bun, a big red flower and gold drop
-earrings. She wears an embroidered blouse under a striped rebozo shawl. Signature: her clay olla,
-steaming, and the wooden spoon she points with. While she chews, the steam curls into the progress
-ring, and the result comes out ladled from the olla.
+**11 · Biscuit** (the sofa). An original chubby, lazy orange tabby. Separate almond eyes with heavy
+sleepy lids and green irises (slit pupils in idle, round and wide when he eats), a small pink nose, a
+little "w" mouth with a smug smile, cream chin, throat, belly and feet, darker-orange tabby bars on the
+cheeks, brow, flanks and the curled tail, and chunky paws with pink beans. Signature: a cream heart on
+his forehead, plus a teal collar with a gold bell that rings once per file. He is deliberately not a
+famous comic cat: no big conjoined round eyes, no muzzle blob, no black head stripes. **Lighting
+variant:** Biscuit is lit like a soft vinyl toy, with the key light from the left (a rim light on the
+left edges and a soft specular top-left), smooth radial form shadows falling to the right, and a soft
+contact shadow under his feet. All of it is done with gradients, not filters (see `vinyl()` in
+`_build/chars/11-biscuit-cat.mjs`). He also uses rig groups that the people don't have: `tail`,
+`footL`/`footR`, `collar`, `bell`, `heart`, `whiskers` and `contactShadow`.
 
 ## Mapping onto the existing animation rig
 
@@ -102,12 +106,12 @@ root
 ├─ body                         (bodyY bob; clothing, belly, props attached to the body)
 ├─ arm L/R  → arm L/R ink+sleeve paths (armPath: shoulder → wrist, rubber hose)
 ├─ head                         (headX/headY/headRot/squash, pivot near the neck)
-│  ├─ earL/earR, hair / bun / topknot / toupee / cap / hat   (parallax "behind" layers)
+│  ├─ earL/earR, hair / bun / topknot / toupee / cap / glasses   (parallax "behind" layers)
 │  ├─ skull                     (headInk/headFill/headClip: one jaw-aware path per character)
 │  └─ face                      (turnRig foreshortening)
 │     ├─ cheeks (blush, smile creases)   ├─ chin
 │     ├─ mouth > mouthFill, throat, uvula, tongue, lowerTeeth, upperTeeth, mouthLine, lip
-│     ├─ moustache / beard / nose / signature face detail (paan stain, flour, eyepatch …)
+│     ├─ moustache / beard / nose / signature face detail (paan stain, flour, heart patch …)
 │     ├─ eyes > eyeL/eyeR > pupilL/pupilR, lidL/lidR (+ lowerL/lowerR smile lids)
 │     └─ brows > browL/browR
 └─ handL/handR                  (open palm or fist; same HAND/THUMB shapes as the Uncle)
@@ -119,7 +123,7 @@ What porting one would take:
   `paths.ts → headPath` (chin drop = `jaw × drop`, jowl easing). The eat mouth (`mouthOpen`) is
   `mouthPath` with a wider `w` and a deeper `bottom`. A port turns both into procedural functions of
   `pose.jaw` and `pose.smile`, then tweens between the two poses drawn here (idle `mouthClosed`, eat
-  `mouthOpen`). The beard (Captain Chomp) and stubble (Halwai) are already parameterised by the jaw.
+  `mouthOpen`). Halwai's stubble is already parameterised by the jaw.
 - **Eyes.** These are the same parts the Uncle uses: clipped pupils, which `pupilOffset` can drive
   directly, and an upper lid (`lidPath`). The new lower "smile" lid (`lowerL/lowerR`) maps to
   `pose.happy`. In idle, Sumo-san and Nonna draw closed happy arcs, which is the Uncle's `happyL/happyR` state.
@@ -127,9 +131,7 @@ What porting one would take:
   `moustache` and `mouth`. Hats, buns, topknots and the toupee are separate groups, so they can take
   the hair depth plus their own spring (secondary motion, like the Uncle's comb-over).
 - **Signature props are separate groups with obvious state hooks:** `cooker` (whistle and steam per
-  25 %), `meter` (flag rotation + digits = progress), `sign`/`coin`, `parrot` (beak +
-  bubble text = target format), `rollingPin`, `jalebi`, `stompDust`/`topknot` (chew beat), `toupee`
-  (lifts at `jaw > 0.8`), `milk`, `olla`/`spoon`, `strainButton` (Motu Uncle, pops at 100 %).
+  25 %), `meter` (flag rotation + digits = progress), `sign`/`coin`, `rollingPin`, `jalebi`, `stompDust`/`topknot` (chew beat), `toupee`
+  (lifts at `jaw > 0.8`), `milk`, `tumbler`/`newspaper`/`glasses` (Chacha), `bell`/`tail` (Biscuit), `strainButton` (Motu Uncle, pops at 100 %).
 - **Canvas.** The viewBox is `-220 -206 440 440`, with the face origin at (0, 0) as in the Uncle, so
-  `HEAD_CENTER` and the options ring carry over. Captain Chomp's 3/4 figure is wrapped in a 0.92 scale
-  group, and his head sits higher (face centre ≈ (0, −50)).
+  `HEAD_CENTER` and the options ring carry over.
