@@ -5,6 +5,7 @@ Owner: Backend dev, Platform (docs/PLAN.md section 7). The preload lives in `src
 | File | What it does |
 |---|---|
 | `index.ts` | Registers the `lud-sandbox:` scheme; a packaged build quits at once (exit 1) when started with a remote-debugging / inspector switch (TPM D22, F-23; `debug-switches.ts` is the pure check); single-instance lock, then `startApp()` (never overrides userData, TPM D5). Launching the app again opens Settings: `second-instance` on Windows/Linux, `activate` (LaunchServices "reopen") on macOS |
+| `debug-overrides.ts`, `logger.ts` | Pure: field diagnostics switch + overlay variant overrides (env / `debug-overrides.json`); the stderr + `debug.log` logger (see "Field diagnostics") |
 | `e2e-mode.ts` | Pure: E2E mode = `LUD_E2E=1` AND not packaged (TPM D12, SEC-18) |
 | `app.ts` | Wiring: windows, tray, engine host, gesture, IPC, settings side effects, quit cleanup |
 | `paths.ts` | Pure: renderer page / preload / worker / resources / tray icon paths; `rendererPageOf()` (which of our pages a URL is); dev server URL ignored when packaged (F-09) |
@@ -139,10 +140,64 @@ restart…") for the others. Deliberate kills do not count towards the crash-res
   codes to an abstract `{ key, held }` event and returns at once for every other key.
 - `trigger-logic.ts` only sees abstract events (`down/up/move` with modifier flags, `modifier`).
 - No hook data is stored, logged, sent over IPC or the network. Arm/disarm side effects run
-  outside the hook callback (`setImmediate`).
+  outside the hook callback (`setImmediate`). Exception, only while field diagnostics are on (see
+  below): abstract trigger transitions (left down/up, drag threshold passed, trigger key down/up,
+  ARM/DISARM) are logged locally, never coordinates or any other key.
 - The hook runs only when the gesture is available and not paused; it is stopped on pause, on quit,
   and when macOS Accessibility is revoked (checked every 5 s while the hook runs).
 - The overlay is hidden on `lock-screen` and `suspend`.
+
+## Field diagnostics
+
+For bugs we cannot reproduce (e.g. a macOS-only gesture problem). Off by default; no effect on
+normal runs.
+
+**Turning it on** (either is enough; read once at startup, restart the app after changing):
+
+- `LUD_DEBUG=1` in the environment, e.g.
+  `LUD_DEBUG=1 "/Applications/Let us drag!.app/Contents/MacOS/Let us drag!"`, or
+- an (empty) file `debug.flag` in userData, no Terminal launch needed:
+  `touch ~/Library/Application\ Support/Let\ us\ drag\!/debug.flag` (macOS),
+  `%APPDATA%\Let us drag!\debug.flag` (Windows), `~/.config/Let us drag!/debug.flag` (Linux).
+
+**Output:** timestamped lines (`[lud <ISO time>] …`) on stderr and appended to
+`app.getPath('logs')/debug.log`: macOS `~/Library/Logs/Let us drag!/debug.log`, Windows
+`%APPDATA%\Let us drag!\logs\debug.log`, Linux `~/.config/Let us drag!/logs/debug.log`. A file
+over 5 MB is moved to `debug.old.log` at startup. All normal log lines go there too.
+
+**What is logged:** app/Electron version, platform, displays (size, scale); the effective overlay
+variants and where each came from; every `isTrustedAccessibilityClient` result; gesture refresh
+decisions, input hook start/stop; trigger transitions (see privacy above); overlay arm (bounds,
+display scale, level, `isAlwaysOnTop`, focusable/focused, visible), follow moves (at most every
+250 ms, with a count), session phase changes, `setIgnoreMouseEvents` changes, setInteractive,
+`overlayEngaged` / `overlayDone` received, safety timeouts, hide; overlay page load / renderer
+crash / console warnings and errors; and, from the overlay renderer, every `dragenter`,
+`dragleave`, `drop` and `dragover` (first, then every 500 ms) with `dataTransfer.types`, item
+kinds/MIME types, file count (drop only), effectAllowed/dropEffect, `defaultPrevented` after the
+page's handlers, document visibility/focus. Never file names, paths, pointer coordinates or other
+keys.
+
+The renderer report is debug-only plumbing: main adds `--lud-debug` (`src/shared/debug.ts`) to
+the overlay's `additionalArguments` only while diagnostics are on; only then does the preload
+install capture-phase drag listeners and `ipcRenderer.send` on `lud:debug-drag`, and only then does
+main listen (`ipcMain.on`, overlay webContents only, text capped at 600 chars). Not part of
+`LudApi`; the page cannot reach it.
+
+**Overlay variants** (`debug-overrides.ts`), from the main process environment (readable in
+packaged builds; the engine worker still gets every `LUD_*` key stripped, `worker-env.ts`) or from
+`debug-overrides.json` in userData with the same keys, e.g.
+`{"LUD_OVERLAY_LEVEL": "floating", "LUD_SENSOR_FOLLOW": 0}`. The environment wins over the file;
+invalid values keep the default and are logged. They apply with diagnostics off too. Read once at
+startup.
+
+| Key | Values (default first) | Effect |
+|---|---|---|
+| `LUD_OVERLAY_LEVEL` | `screen-saver` \| `pop-up-menu` \| `floating` \| `normal` | `setAlwaysOnTop(true, level)` at creation and at every arm |
+| `LUD_SENSOR_FOLLOW` | `1` \| `0` | `0`: the sensor is placed once at arm and never moves until engaged |
+| `LUD_OVERLAY_FOCUSABLE` | `0` \| `1` | `1`: the overlay window is focusable all the time (still never focused by us, except feedMe) |
+| `LUD_OVERLAY_PANEL` | `0` \| `1` | macOS only: `type: 'panel'` (Electron adds `NSWindowStyleMaskNonactivatingPanel`; `electron.d.ts` types `type` as `string`, the value is documented in Electron's BrowserWindow options) |
+
+Flags accept `1/0`, `true/false`, `yes/no`, `on/off` (JSON: also numbers and booleans).
 
 ## Launch at login
 

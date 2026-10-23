@@ -23,7 +23,7 @@
 //   the hook callback (SEC-35).
 
 import type { TriggerKey } from '../../shared/types'
-import { initialTriggerState, triggerReducer, type ModifierFlags, type MouseButton, type TriggerInput, type TriggerState } from './trigger-logic'
+import { describeTriggerTransition, initialTriggerState, triggerReducer, type ModifierFlags, type MouseButton, type TriggerInput, type TriggerState } from './trigger-logic'
 
 interface HookMouseEvent {
   button: unknown
@@ -76,6 +76,12 @@ export interface GestureTriggerDeps {
   /** Runs arm/disarm side effects outside the hook callback (default: setImmediate). */
   schedule?: (fn: () => void) => void
   log?: (message: string) => void
+  /**
+   * Field diagnostics only (LUD_DEBUG=1 / debug.flag): abstract trigger transitions
+   * (describeTriggerTransition: left down/up, drag threshold, trigger key down/up, arm/disarm; no
+   * coordinates, no other keys). Called through `schedule`, i.e. outside the hook callback (SEC-35).
+   */
+  debug?: (message: string) => void
 }
 
 async function defaultLoadHook(): Promise<HookLike> {
@@ -109,11 +115,17 @@ export class GestureTrigger {
 
   /** Feed one abstract input (exposed for tests). */
   feed(input: TriggerInput): void {
-    const r = triggerReducer(this.state, input)
+    const prev = this.state
+    const r = triggerReducer(prev, input)
     this.state = r.state
+    const schedule = this.deps.schedule ?? ((f: () => void) => void setImmediate(f))
+    const debug = this.deps.debug
+    if (debug) {
+      const changes = describeTriggerTransition(prev, r.state, r.action)
+      if (changes.length > 0) schedule(() => debug(`trigger: ${changes.join(', ')}`))
+    }
     if (r.action === null) return
     const fn = r.action === 'arm' ? this.deps.onArm : this.deps.onDisarm
-    const schedule = this.deps.schedule ?? ((f: () => void) => void setImmediate(f))
     schedule(() => fn())
   }
 
@@ -150,6 +162,7 @@ export class GestureTrigger {
       }
       hook.start()
       this.running = true
+      this.deps.debug?.(`input hook started (trigger key ${this.state.triggerKey})`)
       return { ok: true }
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err)
@@ -161,6 +174,7 @@ export class GestureTrigger {
   stop(): void {
     if (!this.running || !this.hook) return
     this.running = false
+    this.deps.debug?.('input hook stopping')
     try {
       this.hook.stop()
     } catch (err) {

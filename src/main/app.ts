@@ -1,11 +1,14 @@
 // Application wiring: windows, tray, engine, gesture, IPC, settings. Called once the app is ready
 // and the single-instance lock is held (see index.ts).
 
-import { app, BrowserWindow, Menu, powerMonitor, screen, session, utilityProcess } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, powerMonitor, screen, session, utilityProcess } from 'electron'
+import { readFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 import { IPC } from '../shared/api'
+import { DEBUG_DRAG_CHANNEL, DEBUG_REPORT_MAX } from '../shared/debug'
 import { TEST_CANCEL_CHANNEL, type TestDropPayload } from '../shared/test-hooks'
 import type { JobEvent, JobRequest, PlatformStatus, Settings } from '../shared/types'
+import { OVERRIDES_FILE_NAME, parseOverlayOverrides, type ParsedOverrides } from './debug-overrides'
 import { launchCommand, linuxAutostartPath, loginItemSettings, setLinuxAutostart } from './autostart'
 import { EngineHost, type WorkerLike } from './engine-host'
 import { HtmlToPdf } from './html-to-pdf'
@@ -29,6 +32,21 @@ import { createSettingsWindow } from './windows/settings'
 export interface AppOptions {
   e2e: boolean
   log: (message: string) => void
+  /** Field diagnostics (LUD_DEBUG=1 or userData/debug.flag); undefined = off. */
+  debug?: (message: string) => void
+}
+
+/** Overlay variants from the environment and userData/debug-overrides.json (README "Field diagnostics"). */
+function readOverlayOverrides(userData: string): ParsedOverrides {
+  let file: unknown
+  const warnings: string[] = []
+  try {
+    file = JSON.parse(readFileSync(join(userData, OVERRIDES_FILE_NAME), 'utf8'))
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') warnings.push(`${OVERRIDES_FILE_NAME}: ${String(err)}`)
+  }
+  const parsed = parseOverlayOverrides(process.env, file)
+  return { ...parsed, warnings: [...warnings, ...parsed.warnings] }
 }
 
 export interface RunningApp {
@@ -49,7 +67,7 @@ function forkEngine(modulePath: string, env: Record<string, string> | undefined)
 }
 
 export async function startApp(opts: AppOptions): Promise<RunningApp> {
-  const { e2e, log } = opts
+  const { e2e, log, debug } = opts
   const platform = process.platform
   // Quit can be requested at any time, even while we are still starting up: register the
   // handler first and give every component a cleanup as soon as it exists.
@@ -108,7 +126,22 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
     }
   }
 
-  const overlay = new OverlayController({ ctx, getSettings: () => settings.get(), isQuitting: () => quitting, log })
+  const variants = readOverlayOverrides(userData)
+  for (const w of variants.warnings) log(`debug overrides: ${w}`)
+  if (debug) {
+    debug(`overlay overrides ${JSON.stringify(variants.overrides)} sources ${JSON.stringify(variants.sources)}`)
+    const displays = screen.getAllDisplays().map((d) => `${d.id}:${d.bounds.width}x${d.bounds.height}@${d.scaleFactor}`)
+    debug(`displays [${displays.join(' ')}]`)
+  }
+  const overlay = new OverlayController({
+    ctx,
+    getSettings: () => settings.get(),
+    isQuitting: () => quitting,
+    log,
+    overrides: variants.overrides,
+    debug
+  })
+  if (debug) watchOverlayRenderer(overlay, debug)
   cleanups.push(() => overlay.dispose())
   const feedWin = createFeedWindow(ctx)
   const settingsWin = createSettingsWindow(ctx)
@@ -158,7 +191,8 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
   // --- gesture + permissions --------------------------------------------------------------
   const permission = new AccessibilityPermission({
     platform,
-    onTrusted: () => void gesture.refresh()
+    onTrusted: () => void gesture.refresh(),
+    debug
   })
   const gesture: GestureManager = new GestureManager({
     platform,
@@ -168,6 +202,7 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
     triggerKey: settings.get().triggerKey,
     onArm: () => overlay.arm(),
     onDisarm: () => overlay.disarm(),
+    debug,
     onStatusChanged: (status: PlatformStatus) => {
       broadcast(IPC.platformStatusChanged, status)
       tray.update({ gestureUnavailable: unavailableLabel(status) })
@@ -299,6 +334,27 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
   }
 
   return { openSettingsWindow: () => settingsWin.open() }
+}
+
+/**
+ * Field diagnostics only: the overlay renderer's drag report (preload, DEBUG_DRAG_CHANNEL; sent only
+ * when main started it with DEBUG_RENDERER_ARG), its console warnings/errors and load events.
+ * Reports from any other sender are ignored.
+ */
+function watchOverlayRenderer(overlay: OverlayController, debug: (message: string) => void): void {
+  const wc = overlay.win.webContents
+  ipcMain.on(DEBUG_DRAG_CHANNEL, (event, text: unknown) => {
+    if (event.sender.id !== wc.id || typeof text !== 'string') return
+    debug(`overlay renderer: ${text.slice(0, DEBUG_REPORT_MAX)}`)
+  })
+  wc.on('console-message', (details) => {
+    if (details.level === 'warning' || details.level === 'error') {
+      debug(`overlay console ${details.level}: ${details.message.slice(0, DEBUG_REPORT_MAX)}`)
+    }
+  })
+  wc.on('did-finish-load', () => debug('overlay page loaded'))
+  wc.on('did-fail-load', (_e, code, description) => debug(`overlay page failed to load: ${code} ${description}`))
+  wc.on('render-process-gone', (_e, details) => debug(`overlay renderer gone: ${details.reason}`))
 }
 
 /** How often (macOS) we check that the Accessibility grant is still there while the hook runs. */

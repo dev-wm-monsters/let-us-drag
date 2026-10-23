@@ -12,6 +12,8 @@ export const POLL_MAX_MS = 120_000
 export interface PermissionsDeps {
   platform: NodeJS.Platform
   onTrusted(): void
+  /** Field diagnostics only: every isTrustedAccessibilityClient result. */
+  debug?: (message: string) => void
 }
 
 export class AccessibilityPermission {
@@ -22,13 +24,16 @@ export class AccessibilityPermission {
 
   isTrusted(): boolean {
     if (this.deps.platform !== 'darwin') return true
-    return systemPreferences.isTrustedAccessibilityClient(false)
+    const trusted = systemPreferences.isTrustedAccessibilityClient(false)
+    this.deps.debug?.(`isTrustedAccessibilityClient(false) = ${trusted}`)
+    return trusted
   }
 
   /** Prompt (macOS) and start polling. Returns whether the app is trusted right now. */
   request(): boolean {
     if (this.deps.platform !== 'darwin') return true
     const trusted = systemPreferences.isTrustedAccessibilityClient(true)
+    this.deps.debug?.(`isTrustedAccessibilityClient(true) = ${trusted}`)
     if (trusted) {
       this.stopPolling()
       this.deps.onTrusted()

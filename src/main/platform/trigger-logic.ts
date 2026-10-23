@@ -125,3 +125,23 @@ export function triggerReducer(state: TriggerState, input: TriggerInput): { stat
     }
   }
 }
+
+/**
+ * Field diagnostics only (LUD_DEBUG=1 / debug.flag): the transitions worth logging between two
+ * states, as short abstract phrases. Privacy (SEC-30..33): only the left button, the drag
+ * threshold, the TRIGGER key's held state and arm/disarm; never coordinates, other modifiers or
+ * keys. Empty when nothing relevant changed (plain moves, other modifiers).
+ */
+export function describeTriggerTransition(prev: TriggerState, next: TriggerState, action: TriggerAction): string[] {
+  const out: string[] = []
+  if (prev.triggerKey !== next.triggerKey) out.push(`trigger key set to ${next.triggerKey}`)
+  if (!prev.leftDown && next.leftDown) out.push('left down')
+  if (prev.leftDown && !next.leftDown) out.push('left up')
+  if (!prev.dragging && next.dragging) out.push('drag threshold passed')
+  const wasHeld = prev.modifiers[next.triggerKey]
+  const held = next.modifiers[next.triggerKey]
+  if (prev.triggerKey === next.triggerKey && wasHeld !== held) out.push(`${next.triggerKey} ${held ? 'down' : 'up'}`)
+  if (action === 'arm') out.push('ARM')
+  if (action === 'disarm') out.push('DISARM')
+  return out
+}

@@ -5,6 +5,8 @@ import { screen, type BrowserWindow } from 'electron'
 import { IPC, type OverlayArmInfo } from '../../shared/api'
 import { TEST_DROP_CHANNEL, type TestDropPayload } from '../../shared/test-hooks'
 import type { Settings } from '../../shared/types'
+import { DEBUG_RENDERER_ARG } from '../../shared/debug'
+import { DEFAULT_OVERLAY_OVERRIDES, type OverlayOverrides } from '../debug-overrides'
 import { createAppWindow, loadPage, type WindowContext } from './common'
 import { OVERLAY_SIZE, overlayBounds, samePoint, sameRect, toWindowPoint, type Point, type Rect } from './overlay-geometry'
 import {
@@ -27,7 +29,14 @@ export interface OverlayDeps {
   log?: (message: string) => void
   /** Defaults to process.platform (injectable for tests). */
   platform?: NodeJS.Platform
+  /** Field diagnostics variants (debug-overrides.ts); defaults = today's behaviour. */
+  overrides?: OverlayOverrides
+  /** Field diagnostics log (LUD_DEBUG=1 / debug.flag only); also turns on the renderer drag report. */
+  debug?: (message: string) => void
 }
+
+/** Follow moves are logged at most this often (with a count), not at 60 Hz. */
+const FOLLOW_LOG_MS = 250
 
 export class OverlayController {
   readonly win: BrowserWindow
@@ -38,10 +47,17 @@ export class OverlayController {
   private ignoringMouse = false
   private loaded: Promise<void>
   private readonly platform: NodeJS.Platform
+  private readonly ov: OverlayOverrides
+  private readonly dbg: ((message: string) => void) | null
+  private followMoves = 0
+  private lastFollowLog = 0
 
   constructor(private readonly deps: OverlayDeps) {
     this.platform = deps.platform ?? process.platform
+    this.ov = deps.overrides ?? DEFAULT_OVERLAY_OVERRIDES
+    this.dbg = deps.debug ?? null
     const isMac = this.platform === 'darwin'
+    const panel = isMac && this.ov.panel
     this.win = createAppWindow(
       deps.ctx,
       'overlay',
@@ -61,7 +77,9 @@ export class OverlayController {
         closable: true,
         skipTaskbar: true,
         alwaysOnTop: true,
-        focusable: false,
+        focusable: this.ov.focusable,
+        // LUD_OVERLAY_PANEL (macOS): NSWindowStyleMaskNonactivatingPanel, floats over full-screen apps.
+        ...(panel ? { type: 'panel' } : {}),
         title: 'Let us drag!',
         // acceptFirstMouse (macOS): the overlay is never key (focusable: false outside feedMe), so
         // without it the first click on the cancel button / a result card would only try to
@@ -69,11 +87,18 @@ export class OverlayController {
         ...(isMac ? { hiddenInMissionControl: true, roundedCorners: false, acceptFirstMouse: true } : {})
       },
       // Keep the hidden, preloaded page responsive so it can appear instantly.
-      { backgroundThrottling: false }
+      { backgroundThrottling: false },
+      this.dbg ? [DEBUG_RENDERER_ARG] : []
     )
-    this.win.setAlwaysOnTop(true, 'screen-saver')
+    this.win.setAlwaysOnTop(true, this.ov.level)
     // On macOS the app is a UI element (Dock hidden / LSUIElement) → no process-type transform needed.
     this.win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
+    this.debug(
+      () =>
+        `overlay created: level=${this.ov.level} sensorFollow=${this.ov.sensorFollow} focusable=${this.ov.focusable} ` +
+        `panel=${panel} transparent=true frame=false acceptFirstMouse=${isMac} hiddenInMissionControl=${isMac} ` +
+        `visibleOnAllWorkspaces=true(visibleOnFullScreen) isAlwaysOnTop=${this.win.isAlwaysOnTop()}`
+    )
     this.win.on('close', (event) => {
       if (!this.deps.isQuitting()) {
         event.preventDefault()
@@ -113,21 +138,39 @@ export class OverlayController {
   /** Trigger armed: place the (still transparent) sensor under the cursor and show it. */
   arm(at?: Point): void {
     if (this.win.isDestroyed()) return
-    const follow = at === undefined
+    // LUD_SENSOR_FOLLOW=0: place once at arm, never move until engaged.
+    const follow = at === undefined && this.ov.sensorFollow
     const prev = this.session
     const next = overlaySessionReducer(prev, { type: 'arm', follow })
-    if (next === prev) return // busy: ignore
+    if (next === prev) {
+      this.debug(() => `arm ignored (busy: phase=${prev.phase} jobs=${prev.jobs.length})`)
+      return // busy: ignore
+    }
     this.session = next
+    // macOS: a non-opaque window that was never explicitly told to accept the mouse decides per
+    // pixel, so drags fall through our near-transparent sensor to the app below. Always make the
+    // native call here (bypassing the cache) so the sensor is a real drop target.
+    if (this.platform === 'darwin') {
+      this.ignoringMouse = false
+      this.win.setIgnoreMouseEvents(false)
+      this.debug(() => 'setIgnoreMouseEvents(false) [forced at arm, macOS]')
+    }
     const cursor = at ?? screen.getCursorScreenPoint()
     const bounds = this.boundsFor(cursor)
     this.win.setBounds(bounds)
-    this.win.setFocusable(false)
+    this.debug(() => `arm: setBounds ${this.describeBounds(bounds)} follow=${follow} (from phase=${prev.phase})`)
+    this.win.setFocusable(this.ov.focusable)
     // D20/D16: the sensor (and a new gesture over a card that was click-through, D21) is a normal
     // drop target.
     this.setIgnoreMouse(false)
     this.win.showInactive()
     // Re-assert the level after showing (some window managers reset it).
-    this.win.setAlwaysOnTop(true, 'screen-saver')
+    this.win.setAlwaysOnTop(true, this.ov.level)
+    this.debug(
+      () =>
+        `arm: showInactive visible=${this.win.isVisible()} level=${this.ov.level} isAlwaysOnTop=${this.win.isAlwaysOnTop()} ` +
+        `focusable=${this.win.isFocusable()} focused=${this.win.isFocused()} ignoreMouse=${this.ignoringMouse} actual=${this.describeBounds(this.win.getBounds())}`
+    )
     const info: OverlayArmInfo = { cursor: toWindowPoint(cursor, bounds), settings: this.deps.getSettings() }
     this.send(IPC.overlayArm, info)
     this.lastCursor = null
@@ -137,11 +180,13 @@ export class OverlayController {
 
   /** Mouse released (trigger disarmed). */
   disarm(): void {
+    this.debug(() => `disarm (phase=${this.session.phase})`)
     this.apply({ type: 'disarm' })
   }
 
   /** Renderer saw a Files dragenter: stop following the cursor. */
   engaged(): void {
+    this.debug(() => `overlayEngaged received (phase=${this.session.phase})`)
     this.apply({ type: 'engaged' })
   }
 
@@ -153,8 +198,9 @@ export class OverlayController {
     if (this.session.phase === 'hidden') return
     this.apply({ type: 'interactive', value: interactive })
     if (this.win.isDestroyed()) return
+    this.debug(() => `setInteractive(${interactive}) phase=${this.session.phase}`)
     if (interactive) this.setIgnoreMouse(false)
-    this.win.setFocusable(interactive)
+    this.win.setFocusable(interactive || this.ov.focusable)
     if (interactive) this.win.focus()
   }
 
@@ -187,6 +233,7 @@ export class OverlayController {
    * A legitimate done never arrives in 'armed' (mouse-up moves the session to 'released' first).
    */
   done(): void {
+    this.debug(() => `overlayDone received (phase=${this.session.phase}${this.session.phase === 'armed' ? ', ignored' : ''})`)
     if (this.session.phase === 'armed') return
     this.hideNow()
   }
@@ -197,6 +244,7 @@ export class OverlayController {
    */
   forceHide(): void {
     if (this.session.phase === 'hidden' && !this.isVisible()) return
+    this.debug(() => `forceHide (phase=${this.session.phase})`)
     if (this.session.phase === 'armed' || this.session.phase === 'engaged') this.send(IPC.overlayDisarm)
     this.hideNow()
   }
@@ -229,6 +277,7 @@ export class OverlayController {
     const next = overlaySessionReducer(prev, event)
     if (next === prev) return
     this.session = next
+    this.debug(() => `session ${prev.phase} -> ${next.phase} (${event.type}) jobs=${next.jobs.length} interactive=${next.interactive}`)
     if (shouldSendDisarm(prev, next)) this.send(IPC.overlayDisarm)
     if (next.phase === 'hidden') this.hideNow()
     else this.resetSafetyTimer()
@@ -240,9 +289,10 @@ export class OverlayController {
     this.clearSafetyTimer()
     this.lastCursor = null
     if (this.win.isDestroyed()) return
-    this.win.setFocusable(false)
+    this.win.setFocusable(this.ov.focusable)
     this.setIgnoreMouse(false)
     this.win.hide()
+    this.debug(() => 'hide')
   }
 
   /**
@@ -252,6 +302,7 @@ export class OverlayController {
   private setIgnoreMouse(ignore: boolean): void {
     if (this.win.isDestroyed() || ignore === this.ignoringMouse) return
     this.ignoringMouse = ignore
+    this.debug(() => `setIgnoreMouseEvents(${ignore}${ignore ? ', forward' : ''})`)
     if (ignore) this.win.setIgnoreMouseEvents(true, { forward: true })
     else this.win.setIgnoreMouseEvents(false)
   }
@@ -278,6 +329,7 @@ export class OverlayController {
       if (!sameRect(next, bounds)) {
         this.win.setBounds(next)
         bounds = next
+        if (this.dbg) this.logFollow(next)
       }
     }
     const local = toWindowPoint(p, bounds)
@@ -285,6 +337,25 @@ export class OverlayController {
       this.lastCursor = local
       this.send(IPC.cursor, local)
     }
+  }
+
+  /** Field diagnostics only; `message` is built only when diagnostics are on. */
+  private debug(message: () => string): void {
+    if (this.dbg) this.dbg(`overlay: ${message()}`)
+  }
+
+  private describeBounds(b: Rect): string {
+    const display = screen.getDisplayMatching(b)
+    return `{x:${b.x},y:${b.y},w:${b.width},h:${b.height}} display=${display.id} scale=${display.scaleFactor}`
+  }
+
+  private logFollow(bounds: Rect): void {
+    this.followMoves++
+    const now = Date.now()
+    if (now - this.lastFollowLog < FOLLOW_LOG_MS) return
+    this.lastFollowLog = now
+    this.debug(() => `follow: setBounds ${this.describeBounds(bounds)} (${this.followMoves} moves)`)
+    this.followMoves = 0
   }
 
   private clearSafetyTimer(): void {
@@ -298,6 +369,7 @@ export class OverlayController {
     if (!t) return
     this.safetyTimer = setTimeout(() => {
       this.safetyTimer = null
+      this.debug(() => `safety timeout: ${t.action} after ${t.ms} ms (phase=${this.session.phase})`)
       if (t.action === 'disarm') this.apply({ type: 'disarm' })
       else this.hideNow()
     }, t.ms)
