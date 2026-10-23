@@ -1,5 +1,8 @@
 // Shared domain types. Imported by main, preload, renderer and engine.
 // Contract owner: TPM. Additive changes are fine; renames/removals need sign-off (docs/PLAN.md §4).
+import { type CharacterId, DEFAULT_CHARACTER } from './characters'
+
+export type { CharacterId } from './characters'
 
 export type Category =
   | 'image'
@@ -114,6 +117,8 @@ export interface Settings {
   plainMode: boolean
   launchAtLogin: boolean
   firstRunDone: boolean
+  /** Which character appears (see src/shared/characters.ts). */
+  character: CharacterId
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -122,7 +127,8 @@ export const DEFAULT_SETTINGS: Settings = {
   hungryMode: false,
   plainMode: false,
   launchAtLogin: false,
-  firstRunDone: false
+  firstRunDone: false,
+  character: DEFAULT_CHARACTER
 }
 
 /** Platform capability report shown in settings / used to pick fallbacks. */

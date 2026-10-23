@@ -1,11 +1,12 @@
 // The stage: Uncle (or Plain Mode target) + options ring + progress ring + speech + result cards.
 // Shared by the overlay window and the Feed Window. Pure presentation driven by the session model.
 import { type CSSProperties, memo, type ReactNode, type RefObject, useCallback, useLayoutEffect, useMemo, useRef } from 'react'
+import { DEFAULT_CHARACTER, isCharacterId } from '../../shared/characters'
 import type { ConversionOption, DroppedItem, OptionId } from '../../shared/types'
 import { chewCaption, type Model, speech, uncleMoodAttr, visibleOptions } from '../overlay/state'
 import { heldChipTop, placeHint, ringLayout } from './geometry'
 import { baseName, LINES, shortName } from './text'
-import { Uncle } from './uncle/Uncle'
+import { Character } from './character/Character'
 import type { Mood } from './uncle/pose'
 import { HEAD_CENTER, VIEWBOX } from './uncle/UncleSvg'
 import { INTERACTIVE_ATTR, type RingGeometry, type UncleSession } from './useUncleSession'
@@ -265,6 +266,7 @@ export interface StageProps {
 export function Stage({ s, testId, uncleWidth, ring, reducedMotion, idleExtra, showHeld = true, className }: StageProps) {
   const { model } = s
   const plain = model.settings.plainMode
+  const character = isCharacterId(model.settings.character) ? model.settings.character : DEFAULT_CHARACTER
   const opts = visibleOptions(model)
   const clickable = model.state === 'feedMe' && model.held !== null
   const say = opts.length === 0 ? speech(model) : null
@@ -310,6 +312,7 @@ export function Stage({ s, testId, uncleWidth, ring, reducedMotion, idleExtra, s
       data-hamster={model.hamster ? 'true' : 'false'}
       data-struggle={model.struggle ? 'true' : 'false'}
       data-plain={plain ? 'true' : 'false'}
+      data-character={character}
       data-uncle-mood={uncleMoodAttr(model)}
       data-stage-scale={ring.scale}
       style={{ '--uncle-scale': scale } as CSSProperties}
@@ -328,7 +331,8 @@ export function Stage({ s, testId, uncleWidth, ring, reducedMotion, idleExtra, s
             style={{ left: -uncleWidth / 2, top: -(HEAD_CENTER.y - VIEWBOX.y) * scale }}
             data-testid="uncle"
           >
-            <Uncle
+            <Character
+              id={character}
               mood={moodFor(model)}
               mods={mods}
               width={uncleWidth}

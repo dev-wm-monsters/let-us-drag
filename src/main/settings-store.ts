@@ -10,6 +10,7 @@ import { randomBytes } from 'node:crypto'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
+import { CHARACTER_IDS, type CharacterId } from '../shared/characters'
 import { DEFAULT_SETTINGS, type Settings } from '../shared/types'
 
 export const SETTINGS_FILE_NAME = 'settings.json'
@@ -42,6 +43,8 @@ export async function renameWithRetry(
 }
 
 const triggerKeySchema = z.enum(['shift', 'alt', 'ctrl', 'meta'])
+/** Known character ids only. On disk an unknown id (e.g. a removed character) falls back to the default. */
+const characterSchema = z.enum(CHARACTER_IDS as [CharacterId, ...CharacterId[]])
 
 /** Full settings object as stored on disk / returned to renderers. */
 const fieldSchemas = {
@@ -50,7 +53,8 @@ const fieldSchemas = {
   hungryMode: z.boolean(),
   plainMode: z.boolean(),
   launchAtLogin: z.boolean(),
-  firstRunDone: z.boolean()
+  firstRunDone: z.boolean(),
+  character: characterSchema
 } as const satisfies Record<keyof Settings, z.ZodType>
 
 /** A patch sent by a renderer: any subset of fields, nothing else. */

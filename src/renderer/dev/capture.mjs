@@ -16,6 +16,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { chromium } from 'playwright'
 import sharp from 'sharp'
+import { CHARACTERS } from '../../shared/characters.ts'
 import { artOutputPaths } from './art-paths.mjs'
 import { repoRoot, serverUrl, startRendererServer } from './vite-dev.mjs'
 
@@ -56,8 +57,11 @@ async function open(params, { width = 600, height = 600, reducedMotion = 'no-pre
   const page = await ctx.newPage()
   const errors = []
   page.on('pageerror', (e) => errors.push(String(e)))
+  page.on('response', (r) => {
+    if (r.status() >= 400) errors.push(`${r.status()} ${r.url()}`)
+  })
   page.on('console', (m) => {
-    if (m.type() === 'error') errors.push(m.text())
+    if (m.type() === 'error') errors.push(`${m.text()} [${m.location().url}]`)
   })
   await page.goto(`${base}?${new URLSearchParams(params)}`)
   await page.waitForFunction(() => !!window.__harness && !!document.querySelector('[data-uncle-state], [data-testid="settings-root"]'))
@@ -73,6 +77,31 @@ async function save(buf, name) {
 }
 async function shot(page, name) {
   await save(await page.screenshot(), name)
+}
+
+/** Contact sheet: one labelled column per character, one row per pose (tiles = saved screenshots). */
+async function contactSheet(name, ids, poses, tile = 220) {
+  const label = (text, w, h) =>
+    Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><text x="${w / 2}" y="${h - 9}" text-anchor="middle" font-family="sans-serif" font-weight="700" font-size="15" fill="#2b1a14">${text}</text></svg>`
+    )
+  const head = 28
+  const side = 70
+  const parts = []
+  for (const [col, id] of ids.entries()) {
+    parts.push({ input: label(id, tile, head), left: side + col * tile, top: 0 })
+    for (const [row, pose] of poses.entries()) {
+      const input = await sharp(join(outDir, `character-${id}-${pose}.png`)).resize(tile, tile).toBuffer()
+      parts.push({ input, left: side + col * tile, top: head + row * tile })
+    }
+  }
+  for (const [row, pose] of poses.entries()) parts.push({ input: label(pose, side, tile / 2 + 8), left: 0, top: head + row * tile })
+  const file = join(outDir, `${name}.png`)
+  await sharp({ create: { width: side + ids.length * tile, height: head + poses.length * tile, channels: 3, background: '#fbf3e6' } })
+    .composite(parts)
+    .png()
+    .toFile(file)
+  written.push(file)
 }
 
 const H = (page, fn, ...args) => page.evaluate(fn, ...args)
@@ -330,6 +359,42 @@ const scenarios = {
     await sleep(500)
     await shot(page, 'overlay-17-reduced-motion')
     await ctx.close()
+  },
+  async characters() {
+    // Every character in the overlay: appear (mouth closed, looking at the cursor), eat (mouth open),
+    // chew (mid-chew frame, progress ring + cancel button), spit (output card).
+    const ids = CHARACTERS.map((c) => c.id)
+    for (const id of ids) {
+      const { page, ctx, errors } = await open({ view: 'overlay', character: id })
+      const c = await center(page)
+      await enterAt(page, c.x + 120, c.y - 150, [PNG])
+      await sleep(650)
+      await expectState(page, 'appear')
+      const got = await page.getAttribute('[data-testid="overlay-root"]', 'data-character')
+      if (got !== id) throw new Error(`data-character=${got}, expected ${id}`)
+      await shot(page, `character-${id}-appear`)
+      const p = await optionPoint(page, 'to-jpg')
+      await overAt(page, p.x, p.y, [PNG])
+      await sleep(200)
+      await dropAt(page, p.x, p.y, [PNG])
+      await sleep(260)
+      await expectState(page, 'eat')
+      await shot(page, `character-${id}-eat`)
+      await sleep(650)
+      await emit(page, { type: 'progress', progress: 0.45 })
+      await sleep(400)
+      await expectState(page, 'chew')
+      await shot(page, `character-${id}-chew`)
+      await emit(page, { type: 'done', outputPaths: ['/Users/demo/Desktop/holiday-photo.jpg'] })
+      await sleep(800)
+      await expectState(page, 'spit')
+      await shot(page, `character-${id}-spit`)
+      const real = errors.filter((e) => !e.includes('favicon.ico'))
+      if (real.length) throw new Error(`${id}: page errors: ${real.join(' | ')}`)
+      await ctx.close()
+    }
+    await contactSheet('characters-sheet', ids, ['appear', 'eat'])
+    await contactSheet('characters-sheet-chew-spit', ids, ['chew', 'spit'])
   },
   async 'feed-01'() {
     const { page, ctx } = await open({ view: 'feed', jobs: 'manual' }, { width: 440, height: 600 })

@@ -1,11 +1,13 @@
 // Settings + onboarding window.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { CHARACTERS, type CharacterId, isCharacterId } from '../../shared/characters'
 import type { PlatformStatus, Settings, TriggerKey } from '../../shared/types'
 import { DEFAULT_SETTINGS } from '../../shared/types'
 import type { Point } from '../common/geometry'
 import { call, subscribe } from '../common/lud'
 import { createSoundPlayer } from '../common/sounds'
-import { Uncle } from '../common/uncle/Uncle'
+import { characterThumb } from '../characters'
+import { Character } from '../common/character/Character'
 import { usePrefersReducedMotion } from '../common/useUncleSession'
 import { gestureMessage, type Platform, triggerKeyLabels } from './labels'
 
@@ -17,6 +19,8 @@ interface ToggleProps {
   onChange(k: ToggleProps['k'], v: boolean): void
   extra?: React.ReactNode
 }
+
+const IDLE_MODS = { hamster: false, struggle: false }
 
 function Toggle({ k, label, desc, value, onChange, extra }: ToggleProps) {
   return (
@@ -35,6 +39,33 @@ function Toggle({ k, label, desc, value, onChange, extra }: ToggleProps) {
         onChange={(e) => onChange(k, e.currentTarget.checked)}
       />
     </label>
+  )
+}
+
+/** Grid of character thumbnails (a radio group): the chosen one appears when you drag a file. */
+function CharacterPicker({ value, onChange }: { value: CharacterId; onChange(id: CharacterId): void }) {
+  return (
+    <div className="set-chars" role="radiogroup" aria-label="Character" data-testid="setting-character" data-value={value}>
+      {CHARACTERS.map((c) => {
+        const on = c.id === value
+        const thumb = characterThumb(c.id)
+        return (
+          <button
+            key={c.id}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            className={`set-char${on ? ' is-on' : ''}`}
+            data-testid={`character-${c.id}`}
+            title={c.blurb}
+            onClick={() => onChange(c.id)}
+          >
+            {thumb ? <img src={thumb} alt="" width={64} height={64} draggable={false} /> : <span className="set-char-blank" />}
+            <span className="set-char-name">{c.name}</span>
+          </button>
+        )
+      })}
+    </div>
   )
 }
 
@@ -86,12 +117,21 @@ export function SettingsApp() {
   const labels = triggerKeyLabels(platform)
   const gesture = gestureMessage(status)
   const showA11y = platform === 'darwin'
+  const character = isCharacterId(settings.character) ? settings.character : 'uncle'
 
   return (
     <div className="settings" data-testid="settings-root" data-loaded={loaded ? 'true' : 'false'}>
       <header className="set-head">
         <div className="set-uncle" aria-hidden>
-          <Uncle mood="idle" mods={{ hamster: false, struggle: false }} width={110} lookRef={lookRef} reducedMotion={reduced} seed={3} />
+          <Character
+            id={character}
+            mood="idle"
+            mods={IDLE_MODS}
+            width={110}
+            lookRef={lookRef}
+            reducedMotion={reduced}
+            seed={3}
+          />
         </div>
         <div>
           <h1>
@@ -180,6 +220,12 @@ export function SettingsApp() {
             Open Feed Window
           </button>
         </div>
+      </section>
+
+      <section className="set-card">
+        <h2>Character</h2>
+        <p className="set-small">Who pops up when you drag a file. Plain Mode hides the character.</p>
+        <CharacterPicker value={character} onChange={(id) => void patch({ character: id })} />
       </section>
 
       <section className="set-card">

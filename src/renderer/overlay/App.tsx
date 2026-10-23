@@ -2,7 +2,7 @@
 // Invisible "sensor" until a real file dragenter; then the Uncle pops in within one frame.
 import { useEffect, useState } from 'react'
 import { Stage } from '../common/Stage'
-import { overlayRing, uncleWidthFor } from '../common/layout'
+import { overlayCharacterWidth, overlayRing } from '../common/layout'
 import { usePrefersReducedMotion, useUncleSession } from '../common/useUncleSession'
 
 function useWindowSize() {
@@ -20,6 +20,6 @@ export function OverlayApp() {
   const ring = overlayRing(w, h)
   const s = useUncleSession('overlay', ring)
   const reduced = usePrefersReducedMotion()
-  const uncleWidth = uncleWidthFor(ring.radius, 250)
+  const uncleWidth = overlayCharacterWidth(ring.radius)
   return <Stage s={s} testId="overlay-root" uncleWidth={uncleWidth} ring={ring} reducedMotion={reduced} />
 }

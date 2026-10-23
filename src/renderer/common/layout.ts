@@ -30,3 +30,14 @@ export function feedRing(w: number, h: number): RingGeometry {
 export function uncleWidthFor(radius: number, max: number): number {
   return Math.round(Math.min(max, radius * 1.3))
 }
+
+/**
+ * The drag overlay draws the character this much smaller than the Feed Window does (product: it read
+ * too big on a real Mac). The ring radius is unchanged, so the bubbles get a little more room.
+ */
+export const OVERLAY_CHARACTER_SCALE = 0.85
+
+/** Character width in the drag overlay for a ring radius. */
+export function overlayCharacterWidth(radius: number): number {
+  return Math.round(uncleWidthFor(radius, 250) * OVERLAY_CHARACTER_SCALE)
+}
