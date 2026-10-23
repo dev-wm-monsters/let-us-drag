@@ -1,6 +1,7 @@
 import { resolve } from 'node:path'
 import { defineConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'
+import { characterSvgPlugin } from './scripts/lib/character-svg.mjs'
 
 export default defineConfig({
   main: {
@@ -25,7 +26,7 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(__dirname, 'src/renderer'),
-    plugins: [react()],
+    plugins: [react(), characterSvgPlugin()],
     build: {
       rollupOptions: {
         input: {

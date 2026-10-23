@@ -4,6 +4,14 @@ import type { LudApi, OverlayArmInfo } from '../../shared/api'
 import type { TestDropPayload } from '../../shared/test-hooks'
 import type { DroppedItem, JobEvent, JobRequest, OptionId, PlatformStatus, Settings } from '../../shared/types'
 import { DEFAULT_SETTINGS } from '../../shared/types'
+import { isCharacterId } from '../../shared/characters'
+
+/** Like main's settings store: an unknown character id is ignored (keeps the current one). */
+function applyPatch(settings: Settings, patch: Partial<Settings>): void {
+  const { character, ...rest } = patch
+  Object.assign(settings, rest)
+  if (character !== undefined && isCharacterId(character)) settings.character = character
+}
 
 type Listener<T> = (v: T) => void
 
@@ -172,7 +180,7 @@ export function createMockLud(opts: MockOptions = {}): MockControl {
     getSettings: async () => ({ ...settings }),
     setSettings: async (patch) => {
       log('setSettings', patch)
-      Object.assign(settings, patch)
+      applyPatch(settings, patch)
       settingsCh.emit({ ...settings })
       return { ...settings }
     },
@@ -225,7 +233,7 @@ export function createMockLud(opts: MockOptions = {}): MockControl {
     testFeedDrop: (p) => testFeedDropCh.emit(p),
     testCancel: () => testCancelCh.emit(),
     changeSettings: (patch) => {
-      Object.assign(settings, patch)
+      applyPatch(settings, patch)
       settingsCh.emit({ ...settings })
     },
     clickThrough: () => clickThrough

@@ -1,7 +1,8 @@
 // Visual QA harness entry: renders the real overlay / feed / settings UI in plain Chromium with a
 // mocked window.lud. Open via `node src/renderer/dev/serve.mjs` →
-//   http://127.0.0.1:5199/dev/harness.html?view=overlay|feed|settings[&plain=1&hungry=1&platform=darwin&reason=mac-permission&firstRun=1&jobs=auto&bg=flat]
+//   http://127.0.0.1:5199/dev/harness.html?view=overlay|feed|settings[&character=sumo-san&plain=1&hungry=1&platform=darwin&reason=mac-permission&firstRun=1&jobs=auto&bg=flat]
 // Drive it from Playwright through window.__harness (see src/renderer/dev/capture.mjs).
+import { type CharacterId, isCharacterId } from '../../shared/characters'
 import type { PlatformStatus, Settings } from '../../shared/types'
 import { createMockLud, type MockControl } from './mock-lud'
 
@@ -35,7 +36,8 @@ const settings: Partial<Settings> = {
   plainMode: q.get('plain') === '1',
   hungryMode: q.get('hungry') === '1',
   sounds: q.get('sounds') === '1',
-  firstRunDone: q.get('firstRun') !== '1'
+  firstRunDone: q.get('firstRun') !== '1',
+  ...(isCharacterId(q.get('character')) ? { character: q.get('character') as CharacterId } : {})
 }
 const platform: PlatformStatus = {
   platform: (q.get('platform') as PlatformStatus['platform']) ?? 'linux',

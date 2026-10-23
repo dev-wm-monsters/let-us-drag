@@ -214,6 +214,46 @@ kbd {
   color: var(--muted);
   font-weight: 600;
 }
+.set-chars {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+.set-char {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 4px 8px;
+  border: 3px solid rgba(43, 26, 20, 0.18);
+  border-radius: 14px;
+  background: #fff;
+  font: inherit;
+  cursor: pointer;
+  transition: transform 120ms, border-color 120ms;
+}
+.set-char:hover {
+  transform: translateY(-2px);
+  border-color: var(--ink);
+}
+.set-char.is-on {
+  border-color: var(--ink);
+  background: #fff1d8;
+  box-shadow: 2px 3px 0 var(--ink);
+}
+.set-char img,
+.set-char-blank {
+  width: 64px;
+  height: 64px;
+  display: block;
+}
+.set-char-name {
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.15;
+  text-align: center;
+}
 .set-select {
   font: inherit;
   font-weight: 800;

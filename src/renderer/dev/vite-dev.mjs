@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import { createServer } from 'vite'
 import react from '@vitejs/plugin-react'
+import { characterSvgPlugin } from '../../../scripts/lib/character-svg.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 export const rendererRoot = resolve(here, '..')
@@ -14,7 +15,7 @@ export async function startRendererServer({ port = 5199, ssrOnly = false } = {})
   const server = await createServer({
     configFile: false,
     root: rendererRoot,
-    plugins: [react()],
+    plugins: [react(), characterSvgPlugin()],
     logLevel: 'warn',
     server: ssrOnly ? { middlewareMode: true, hmr: false } : { port, strictPort: false, host: '127.0.0.1', hmr: false },
     appType: ssrOnly ? 'custom' : 'mpa',
