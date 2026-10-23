@@ -253,7 +253,7 @@ export function draw(ctx) {
   const J = ctx.jaw * 52
   // cream chin + throat (lower face only — no muzzle blob around the nose)
   const chinCream = `M -70,${46 + J * 0.7} C -50,${30 + J * 0.6} 50,${30 + J * 0.6} 70,${46 + J * 0.7} C 60,${70 + J} 30,${78 + J} 0,${78 + J} C -30,${78 + J} -60,${70 + J} -70,${46 + J * 0.7} Z`
-  const fluff = (s) => inked(`M ${s * 112},${30 + J * 0.5} L ${s * 144},${40 + J * 0.55} L ${s * 118},${48 + J * 0.6} L ${s * 140},${62 + J * 0.65} L ${s * 106},${62 + J * 0.7} Z`, s < 0 ? '#f7a85a' : FUR.shade, 6)
+  const _fluff = (s) => inked(`M ${s * 112},${30 + J * 0.5} L ${s * 144},${40 + J * 0.55} L ${s * 118},${48 + J * 0.6} L ${s * 140},${62 + J * 0.65} L ${s * 106},${62 + J * 0.7} Z`, s < 0 ? '#f7a85a' : FUR.shade, 6)
   const skull = part(
     ctx,
     'skull',
