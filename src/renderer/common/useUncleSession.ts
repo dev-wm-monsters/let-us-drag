@@ -23,6 +23,9 @@ import { call, callStrict, newJobId, pathsForFiles, subscribe } from './lud'
 import { createSoundPlayer, type SoundPlayer } from './sounds'
 import { LINES } from './text'
 
+/** How long a release may precede the drop event (macOS delivers the drop after the mouse-up). */
+const DISARM_DROP_GRACE_MS = 400
+
 export interface RingGeometry {
   radius: number
   hitRadius: number
@@ -330,6 +333,12 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
       }),
       subscribe('onOverlayDisarm', () => {
         const wasHidden = modelRef.current.state === 'hidden'
+        if (!wasHidden && (modelRef.current.state === 'appear' || modelRef.current.state === 'hover')) {
+          // macOS reports the global mouse-up a few ms BEFORE Chromium delivers the drop. Give the drop
+          // a moment to arrive; once it has, the reducer ignores DISARM (m.dropping / state changed).
+          setTimeout(() => dispatch({ type: 'DISARM' }), DISARM_DROP_GRACE_MS)
+          return
+        }
         dispatch({ type: 'DISARM' })
         if (wasHidden && host === 'overlay') void call('overlayDone', undefined)
       }),
