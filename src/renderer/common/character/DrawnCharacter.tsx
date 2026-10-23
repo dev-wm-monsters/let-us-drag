@@ -21,6 +21,17 @@ interface Layer {
   lids: { el: Bound; lid: Box; eye: Box }[]
 }
 
+/**
+ * The drawing's own transform per element, read once. The rig rebinds whenever it restarts (every
+ * gesture un-pauses it), and by then the DOM attribute holds the last composed transform: reading it
+ * again would stack the dynamic part on top of itself each time (the head drifted further every use).
+ */
+const OWN = new WeakMap<Element, string | null>()
+export function ownTransform(el: Element): string | null {
+  if (!OWN.has(el)) OWN.set(el, el.getAttribute('transform'))
+  return OWN.get(el) ?? null
+}
+
 const inner = (svg: string): string => svg.replace(/^\s*<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '')
 
 function bindLayer(g: SVGGElement): Layer {
@@ -28,7 +39,7 @@ function bindLayer(g: SVGGElement): Layer {
   for (const name of RIG_PARTS) {
     const list: Bound[] = []
     g.querySelectorAll<SVGGraphicsElement>(`[data-part="${name}"]`).forEach((el) => {
-      list.push({ el, own: el.getAttribute('transform'), last: '' })
+      list.push({ el, own: ownTransform(el), last: '' })
     })
     if (list.length) parts.set(name, list)
   }
@@ -67,9 +78,11 @@ export function DrawnCharacter(props: DrawnCharacterProps) {
   const rootRef = useRef<SVGGElement | null>(null)
   const idleRef = useRef<SVGGElement | null>(null)
   const eatRef = useRef<SVGGElement | null>(null)
+  // Keyed on the strings, not the art object: a new html object restarts the rig (fresh brain).
+  const { idle: idleSvg, eat: eatSvg } = art
   const html = useMemo(
-    () => ({ idle: { __html: prefixIds(inner(art.idle), `${uid}-i`) }, eat: { __html: prefixIds(inner(art.eat), `${uid}-e`) } }),
-    [art, uid]
+    () => ({ idle: { __html: prefixIds(inner(idleSvg), `${uid}-i`) }, eat: { __html: prefixIds(inner(eatSvg), `${uid}-e`) } }),
+    [idleSvg, eatSvg, uid]
   )
 
   const live = useRef({ mood, moodStart: 0, mods, reducedMotion, onChewBeat })
@@ -105,7 +118,11 @@ export function DrawnCharacter(props: DrawnCharacterProps) {
 
   useLayoutEffect(() => {
     if (paused || !idleRef.current || !eatRef.current || !rootRef.current) return
-    if (svgRef.current) rect.current = svgRef.current.getBoundingClientRect()
+    if (svgRef.current) {
+      rect.current = svgRef.current.getBoundingClientRect()
+      // How often the rig (re)started; E2E checks it restarts once per gesture, not per render.
+      svgRef.current.dataset.rigRuns = String(Number(svgRef.current.dataset.rigRuns ?? 0) + 1)
+    }
     const layers = { idle: bindLayer(idleRef.current), eat: bindLayer(eatRef.current) }
     const root = rootRef.current
     const brain = createBrain(seed ?? 7)
@@ -145,15 +162,17 @@ export function DrawnCharacter(props: DrawnCharacterProps) {
         root.setAttribute('opacity', ra.opacity)
         rootLast = rs
       }
+      // Both drawings follow the pose, so swapping idle <-> eat never shows a stale head or eyes.
       const xf = partTransforms(pose)
-      const layer = layers[want]
-      for (const [name, list] of layer.parts) {
-        const dyn = (xf as Record<string, string | undefined>)[name]
-        if (dyn === undefined) continue
-        for (const b of list) write(b, dyn)
-      }
       const blink = blinkAmount(pose.lid)
-      for (const l of layer.lids) write(l.el, lidTransform(blink, l.lid, l.eye))
+      for (const layer of [layers.idle, layers.eat]) {
+        for (const [name, list] of layer.parts) {
+          const dyn = (xf as Record<string, string | undefined>)[name]
+          if (dyn === undefined) continue
+          for (const b of list) write(b, dyn)
+        }
+        for (const l of layer.lids) write(l.el, lidTransform(blink, l.lid, l.eye))
+      }
       raf = requestAnimationFrame(frame)
     }
     frame(performance.now())

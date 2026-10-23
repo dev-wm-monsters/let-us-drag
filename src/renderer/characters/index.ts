@@ -15,14 +15,20 @@ export interface CharacterArt {
   scale: number
 }
 
-/** Art for a drawn character; null for the built-in Uncle (or if the files are missing). */
+const artCache = new Map<CharacterId, CharacterArt | null>()
+
+/**
+ * Art for a drawn character; null for the built-in Uncle (or if the files are missing). The same
+ * object every call: the rig restarts (fresh brain, rebinding) whenever it gets a new one.
+ */
 export function characterArt(id: CharacterId): CharacterArt | null {
+  if (artCache.has(id)) return artCache.get(id) ?? null
   const info = characterInfo(id)
-  if (info.art === null) return null
   const idle = svgs[`./${id}/idle.svg`]
   const eat = svgs[`./${id}/eat.svg`]
-  if (!idle || !eat) return null
-  return { id, idle, eat, scale: info.scale }
+  const art = info.art !== null && idle && eat ? { id, idle, eat, scale: info.scale } : null
+  artCache.set(id, art)
+  return art
 }
 
 export function characterThumb(id: CharacterId): string | undefined {

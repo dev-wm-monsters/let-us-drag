@@ -191,10 +191,14 @@ packaged builds; the engine worker still gets every `LUD_*` key stripped, `worke
 invalid values keep the default and are logged. They apply with diagnostics off too. Read once at
 startup.
 
-| Key | Values (default first) | Effect |
+Defaults: Windows/Linux use the first value of each row. **macOS defaults to field variant A**
+(`floating` + `LUD_SENSOR_FOLLOW=0`, `MAC_OVERLAY_OVERRIDES`): the owner's Mac only received Finder
+drags with it (2026-10-23).
+
+| Key | Values (Windows/Linux default first) | Effect |
 |---|---|---|
-| `LUD_OVERLAY_LEVEL` | `screen-saver` \| `pop-up-menu` \| `floating` \| `normal` | `setAlwaysOnTop(true, level)` at creation and at every arm |
-| `LUD_SENSOR_FOLLOW` | `1` \| `0` | `0`: the sensor is placed once at arm and never moves until engaged |
+| `LUD_OVERLAY_LEVEL` | `screen-saver` \| `pop-up-menu` \| `floating` (macOS default) \| `normal` | `setAlwaysOnTop(true, level)` at creation and at every arm |
+| `LUD_SENSOR_FOLLOW` | `1` \| `0` (macOS default) | `0`: the sensor is placed once at arm and never moves until engaged |
 | `LUD_OVERLAY_FOCUSABLE` | `0` \| `1` | `1`: the overlay window is focusable all the time (still never focused by us, except feedMe) |
 | `LUD_OVERLAY_PANEL` | `0` \| `1` | macOS only: `type: 'panel'` (Electron adds `NSWindowStyleMaskNonactivatingPanel`; `electron.d.ts` types `type` as `string`, the value is documented in Electron's BrowserWindow options) |
 

@@ -45,7 +45,7 @@ function readOverlayOverrides(userData: string): ParsedOverrides {
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') warnings.push(`${OVERRIDES_FILE_NAME}: ${String(err)}`)
   }
-  const parsed = parseOverlayOverrides(process.env, file)
+  const parsed = parseOverlayOverrides(process.env, file, process.platform)
   return { ...parsed, warnings: [...warnings, ...parsed.warnings] }
 }
 

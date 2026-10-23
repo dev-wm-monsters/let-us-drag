@@ -21,6 +21,13 @@ describe('overlay override parsing', () => {
     expect(r.sources).toEqual({})
     expect(r.warnings).toEqual([])
   })
+  it('macOS defaults to field variant A (floating, sensor placed once); other OSes unchanged', () => {
+    expect(parseOverlayOverrides({}, undefined, 'darwin').overrides).toEqual({ level: 'floating', sensorFollow: false, focusable: false, panel: false })
+    expect(parseOverlayOverrides({}, undefined, 'win32').overrides).toEqual(DEFAULT_OVERLAY_OVERRIDES)
+    expect(parseOverlayOverrides({}, undefined, 'linux').overrides).toEqual(DEFAULT_OVERLAY_OVERRIDES)
+    // An override file still wins on macOS (e.g. the old behaviour back for a test).
+    expect(parseOverlayOverrides({}, { LUD_OVERLAY_LEVEL: 'screen-saver', LUD_SENSOR_FOLLOW: 1 }, 'darwin').overrides).toEqual(DEFAULT_OVERLAY_OVERRIDES)
+  })
   it('reads every key from the environment', () => {
     const r = parseOverlayOverrides({
       LUD_OVERLAY_LEVEL: 'pop-up-menu',

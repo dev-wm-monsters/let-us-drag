@@ -5,7 +5,7 @@
 // worker-env.ts is unchanged) or from `debug-overrides.json` in userData, so a user can try a
 // variant without Terminal. The environment wins over the file. Unknown / invalid values are
 // ignored (default kept) and reported as warnings. With nothing set, the result is exactly
-// DEFAULT_OVERLAY_OVERRIDES (today's behaviour).
+// defaultOverlayOverrides(platform).
 
 export const OVERLAY_LEVELS = ['screen-saver', 'pop-up-menu', 'floating', 'normal'] as const
 export type OverlayLevel = (typeof OVERLAY_LEVELS)[number]
@@ -27,6 +27,21 @@ export const DEFAULT_OVERLAY_OVERRIDES: Readonly<OverlayOverrides> = Object.free
   focusable: false,
   panel: false
 })
+
+/**
+ * macOS default = field variant "A" (the one that made Finder drags reach the sensor on the owner's
+ * Mac, 2026-10-23): a `floating` level and a sensor placed once at arm instead of following the
+ * cursor. Windows/Linux keep DEFAULT_OVERLAY_OVERRIDES (verified there by CI and X11 E2E).
+ */
+export const MAC_OVERLAY_OVERRIDES: Readonly<OverlayOverrides> = Object.freeze({
+  ...DEFAULT_OVERLAY_OVERRIDES,
+  level: 'floating',
+  sensorFollow: false
+})
+
+export function defaultOverlayOverrides(platform?: string): Readonly<OverlayOverrides> {
+  return platform === 'darwin' ? MAC_OVERLAY_OVERRIDES : DEFAULT_OVERLAY_OVERRIDES
+}
 
 /** The keys read from the environment and from debug-overrides.json. */
 export const OVERRIDE_KEYS = ['LUD_OVERLAY_LEVEL', 'LUD_SENSOR_FOLLOW', 'LUD_OVERLAY_FOCUSABLE', 'LUD_OVERLAY_PANEL'] as const
@@ -63,7 +78,11 @@ export function parseLevel(raw: unknown): OverlayLevel | null {
  * (undefined when there is none; anything that is not a plain object is ignored with a warning).
  * Empty strings in the environment count as "not set".
  */
-export function parseOverlayOverrides(env: Readonly<Record<string, string | undefined>>, file?: unknown): ParsedOverrides {
+export function parseOverlayOverrides(
+  env: Readonly<Record<string, string | undefined>>,
+  file?: unknown,
+  platform?: string
+): ParsedOverrides {
   const warnings: string[] = []
   const sources: ParsedOverrides['sources'] = {}
   let fileObj: Record<string, unknown> = {}
@@ -96,7 +115,7 @@ export function parseOverlayOverrides(env: Readonly<Record<string, string | unde
     return fallback
   }
 
-  const d = DEFAULT_OVERLAY_OVERRIDES
+  const d = defaultOverlayOverrides(platform)
   const overrides: OverlayOverrides = {
     level: pick('LUD_OVERLAY_LEVEL', parseLevel, d.level),
     sensorFollow: pick('LUD_SENSOR_FOLLOW', parseFlag, d.sensorFollow),

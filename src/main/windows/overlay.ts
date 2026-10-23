@@ -6,7 +6,7 @@ import { IPC, type OverlayArmInfo } from '../../shared/api'
 import { TEST_DROP_CHANNEL, type TestDropPayload } from '../../shared/test-hooks'
 import type { Settings } from '../../shared/types'
 import { DEBUG_RENDERER_ARG } from '../../shared/debug'
-import { DEFAULT_OVERLAY_OVERRIDES, type OverlayOverrides } from '../debug-overrides'
+import { defaultOverlayOverrides, type OverlayOverrides } from '../debug-overrides'
 import { createAppWindow, loadPage, type WindowContext } from './common'
 import { OVERLAY_SIZE, overlayBounds, samePoint, sameRect, toWindowPoint, type Point, type Rect } from './overlay-geometry'
 import {
@@ -54,7 +54,7 @@ export class OverlayController {
 
   constructor(private readonly deps: OverlayDeps) {
     this.platform = deps.platform ?? process.platform
-    this.ov = deps.overrides ?? DEFAULT_OVERLAY_OVERRIDES
+    this.ov = deps.overrides ?? defaultOverlayOverrides(process.platform)
     this.dbg = deps.debug ?? null
     const isMac = this.platform === 'darwin'
     const panel = isMac && this.ov.panel

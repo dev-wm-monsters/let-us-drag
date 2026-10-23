@@ -70,4 +70,34 @@ test.describe('character picker', () => {
     }
     await expectOverlayHidesItself(app)
   })
+
+  test('E2E-CHAR-03 a drawn character does not drift over repeated gestures', async ({ lud }) => {
+    const app = await lud.launchReady()
+    await changeSettings(app, { character: 'great-uncle-nickels' })
+    const input = await makePng(join(lud.workDir, 'drift.png'))
+    // The rig rebinds on every gesture; it must compose with the drawing's own transform, not with
+    // what it wrote last time (that stacked a head turn per gesture until the face fell apart).
+    const headTransforms: string[] = []
+    let rigRuns: string | null = null
+    for (let i = 0; i < 3; i++) {
+      await hook(app, 'arm')
+      await expect.poll(() => hook(app, 'overlayVisible'), { timeout: T.state }).toBe(true)
+      const overlay = await waitForPage(app, 'overlay')
+      await hook(app, 'dropFiles', [input], null)
+      await expectUncleState(overlay, 'feedMe')
+      await overlay.waitForTimeout(400)
+      for (const pose of ['idle', 'eat']) {
+        const t = await overlay.locator(`[data-pose="${pose}"] [data-part="head"]`).getAttribute('transform')
+        headTransforms.push(`${pose}:${(t ?? '').split('rotate(').length - 1}`)
+      }
+      // Hovering an option re-renders the stage; the rig must keep running (no fresh brain = no jump).
+      await overlay.getByTestId('option-to-jpg').hover()
+      await overlay.waitForTimeout(300)
+      rigRuns = await overlay.locator('[data-character-art]').getAttribute('data-rig-runs')
+      await overlay.keyboard.press('Escape')
+      await expectOverlayHidesItself(app)
+    }
+    expect(rigRuns, 'the rig restarts once per gesture').toBe('3')
+    expect(headTransforms, headTransforms.join(' ')).toEqual([...headTransforms.slice(0, 2), ...headTransforms.slice(0, 2), ...headTransforms.slice(0, 2)])
+  })
 })
