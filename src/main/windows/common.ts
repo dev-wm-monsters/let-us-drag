@@ -18,7 +18,9 @@ export function createAppWindow(
   ctx: WindowContext,
   page: RendererPage,
   options: BrowserWindowConstructorOptions,
-  extraPrefs: { backgroundThrottling?: boolean; transparent?: boolean } = {}
+  extraPrefs: { backgroundThrottling?: boolean; transparent?: boolean } = {},
+  /** Extra renderer flags (field diagnostics only: DEBUG_RENDERER_ARG). */
+  rendererArgs: readonly string[] = []
 ): BrowserWindow {
   const win = new BrowserWindow({
     ...options,
@@ -26,7 +28,7 @@ export function createAppWindow(
       ...extraPrefs,
       preload: preloadPath(ctx.layout),
       // ctx.e2e is false in packaged builds (e2e-mode.ts), so this flag never reaches production.
-      additionalArguments: ctx.e2e && !ctx.layout.isPackaged ? [E2E_RENDERER_ARG] : [],
+      additionalArguments: [...(ctx.e2e && !ctx.layout.isPackaged ? [E2E_RENDERER_ARG] : []), ...rendererArgs],
       devTools: !ctx.layout.isPackaged
     })
   })

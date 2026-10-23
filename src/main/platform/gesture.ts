@@ -16,6 +16,8 @@ export interface GestureManagerDeps {
   onDisarm(): void
   onStatusChanged(status: PlatformStatus): void
   log?: (message: string) => void
+  /** Field diagnostics only (see GestureTriggerDeps.debug). */
+  debug?: (message: string) => void
 }
 
 export class GestureManager {
@@ -29,7 +31,8 @@ export class GestureManager {
       onArm: deps.onArm,
       onDisarm: deps.onDisarm,
       triggerKey: deps.triggerKey,
-      log: deps.log
+      log: deps.log,
+      debug: deps.debug
     })
     this.status = this.computeStatus()
   }
@@ -59,6 +62,10 @@ export class GestureManager {
       if (r.ok) this.deps.log?.('input hook started')
     }
     if (!decision.canStart && this.trigger.isRunning) this.trigger.stop()
+    this.deps.debug?.(
+      `gesture refresh: canStart=${decision.canStart}${decision.canStart ? '' : ` reason=${decision.reason}`} paused=${this.paused} ` +
+        `hookRunning=${this.trigger.isRunning} hookError=${this.hookError}`
+    )
     this.publish()
     return this.getStatus()
   }

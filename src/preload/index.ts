@@ -8,10 +8,13 @@
 
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
 import { IPC, type LudApi, type LudTestApi, type OverlayArmInfo } from '../shared/api'
+import { DEBUG_DRAG_CHANNEL, DEBUG_RENDERER_ARG } from '../shared/debug'
 import { TEST_CANCEL_CHANNEL, TEST_DROP_CHANNEL, TEST_FEED_DROP_CHANNEL, type TestDropPayload } from '../shared/test-hooks'
 import type { JobEvent, PlatformStatus, Settings } from '../shared/types'
 
 const E2E = process.argv.includes('--lud-e2e')
+// Field diagnostics (main passes this to the overlay only while LUD_DEBUG=1 / debug.flag).
+const DEBUG = process.argv.includes(DEBUG_RENDERER_ARG)
 
 function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
   const listener = (_event: IpcRendererEvent, payload: T): void => cb(payload)
@@ -50,3 +53,63 @@ const api: LudApi & LudTestApi = {
 }
 
 contextBridge.exposeInMainWorld('lud', api)
+
+// ——— field diagnostics: report the window's HTML5 drag events to main (debug runs only) ———
+// Only dataTransfer.types, item kinds/MIME types, file count, effects and whether the page
+// accepted the event (defaultPrevented). Never file names, paths or contents. Listeners are on
+// `window` in the capture phase, so they see every drag event that reaches this document, even if
+// the page's own handlers ignore it. dragover is summarised (first one, then every 500 ms).
+if (DEBUG) installDragDiagnostics()
+
+// The preload is compiled without the DOM lib: structural types for what we read.
+interface DragLike {
+  type: string
+  clientX: number
+  clientY: number
+  defaultPrevented: boolean
+  dataTransfer: {
+    types?: ArrayLike<string>
+    items?: ArrayLike<{ kind: string; type: string }>
+    files?: { length: number }
+    effectAllowed: string
+    dropEffect: string
+  } | null
+}
+interface WindowLike {
+  innerWidth: number
+  innerHeight: number
+  devicePixelRatio: number
+  document: { visibilityState: string; hasFocus(): boolean }
+  addEventListener(type: string, listener: (e: DragLike) => void, capture?: boolean): void
+}
+
+function installDragDiagnostics(): void {
+  const w = globalThis as unknown as WindowLike
+  const report = (text: string): void => ipcRenderer.send(DEBUG_DRAG_CHANNEL, text)
+  let overs = 0
+  let lastOverReport = 0
+  const describe = (e: DragLike): string => {
+    const dt = e.dataTransfer
+    if (!dt) return 'dataTransfer=null'
+    const items = Array.from(dt.items ?? [], (it) => `${it.kind}:${it.type || '?'}`)
+    const files = e.type === 'drop' ? ` files=${dt.files?.length ?? 0}` : ''
+    return `types=[${Array.from(dt.types ?? []).join(',')}] items=[${items.join(',')}]${files} effectAllowed=${dt.effectAllowed} dropEffect=${dt.dropEffect}`
+  }
+  const onEvent = (e: DragLike): void => {
+    if (e.type === 'dragover') {
+      overs++
+      const now = Date.now()
+      if (overs > 1 && now - lastOverReport < 500) return
+      lastOverReport = now
+    }
+    const extra = e.type === 'dragover' ? ` (#${overs})` : ''
+    if (e.type === 'dragenter' || e.type === 'drop') overs = 0
+    // dataTransfer is only readable during dispatch: read it now, check defaultPrevented after
+    // every listener (the page's included) has run.
+    const inWindow = e.clientX >= 0 && e.clientY >= 0 && e.clientX <= w.innerWidth && e.clientY <= w.innerHeight
+    const text = `${e.type}${extra} ${describe(e)} inWindow=${inWindow} visibility=${w.document.visibilityState} focus=${w.document.hasFocus()}`
+    setTimeout(() => report(`${text} defaultPrevented=${e.defaultPrevented}`), 0)
+  }
+  for (const type of ['dragenter', 'dragover', 'dragleave', 'drop']) w.addEventListener(type, onEvent, true)
+  w.addEventListener('DOMContentLoaded', () => report(`overlay page ready ${w.innerWidth}x${w.innerHeight} dpr=${w.devicePixelRatio}`))
+}
