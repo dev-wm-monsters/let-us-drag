@@ -15,7 +15,7 @@ import { HtmlToPdf } from './html-to-pdf'
 import { parseOrThrow } from './ipc-validation'
 import { registerIpc } from './ipc'
 import { JobRegistry } from './job-registry'
-import { devServerOrigin, engineWorkerPath, resourcesDir, type RendererPage, type RuntimeLayout } from './paths'
+import { devServerOrigin, engineWorkerPath, modifierHelperPath, resourcesDir, type RendererPage, type RuntimeLayout } from './paths'
 import { PdfRenderer } from './pdf-render'
 import { GestureManager } from './platform/gesture'
 import { AccessibilityPermission } from './platform/permissions'
@@ -202,6 +202,7 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
     triggerKey: settings.get().triggerKey,
     onArm: () => overlay.arm(),
     onDisarm: () => overlay.disarm(),
+    modifierHelperPath: modifierHelperPath(layout, process.arch),
     debug,
     onStatusChanged: (status: PlatformStatus) => {
       broadcast(IPC.platformStatusChanged, status)

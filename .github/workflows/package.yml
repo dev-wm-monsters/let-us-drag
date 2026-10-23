@@ -53,6 +53,16 @@ jobs:
             grep -q " $e " encoders.txt || { echo "missing encoder: $e" | tee -a ci-logs/ffmpeg.log; exit 1; }
           done
           echo "all required encoders present" | tee -a ci-logs/ffmpeg.log
+      - name: Build macOS modifier helper (lud-modifiers)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          case "${{ matrix.arch }}" in arm64) target=arm64 ;; x64) target=x86_64 ;; *) echo "unknown arch ${{ matrix.arch }}"; exit 1 ;; esac
+          out=resources/bin/darwin-${{ matrix.arch }}/lud-modifiers
+          mkdir -p "$(dirname "$out")"
+          swiftc -O -target "$target-apple-macos12" native/mac-modifiers/main.swift -o "$out"
+          codesign -s - --force "$out"
+          { lipo -archs "$out"; codesign -dv "$out" 2>&1 | head -5; } | tee ci-logs/modifier-helper.log
       - name: Build
         shell: bash
         run: set -o pipefail && npm run build 2>&1 | tee ci-logs/build.log

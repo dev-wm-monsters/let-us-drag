@@ -65,6 +65,16 @@ export function resourcesDir(layout: RuntimeLayout): string {
 }
 
 /**
+ * macOS mid-drag modifier helper (native/mac-modifiers, built in CI): packaged
+ * <resources>/bin/lud-modifiers (extraResources), in development resources/bin/darwin-<arch>/.
+ */
+export function modifierHelperPath(layout: RuntimeLayout, arch: string): string {
+  return layout.isPackaged
+    ? join(layout.resourcesPath, 'bin', 'lud-modifiers')
+    : join(layout.appPath, 'resources', 'bin', `darwin-${arch}`, 'lud-modifiers')
+}
+
+/**
  * Tray icon files to try, in order. The Frontend dev provides resources/tray/trayTemplate.png
  * (+ @2x, macOS template image) and resources/tray/tray.png (Windows/Linux). The last entry is the
  * app icon, which the caller must resize.

@@ -12,7 +12,7 @@ Owner: Backend dev, Platform (docs/PLAN.md section 7). The preload lives in `src
 | `security.ts` | Secure `webPreferences` (callers cannot weaken them), navigation / window.open / webview blocking for every webContents, deny-all permission / display-capture / download handlers, remote-request blocking for the app session (SEC-150), including `file:` URLs that name a server (Windows UNC → SMB/NTLM); spell checker off on every session and `spellcheck: false` in every window, so no Hunspell dictionary is downloaded (TPM D22, F-24: no network request at launch) |
 | `windows/overlay.ts` | Overlay window + sensor/engage flow (PLAN §3.5); `overlay-session.ts` is the pure state machine + safety timeouts; `overlay-geometry.ts` is the pure placement math |
 | `windows/feed.ts`, `windows/settings.ts` | Single-instance Feed and Settings windows (`singleton.ts`) |
-| `platform/trigger-logic.ts` | Pure trigger state machine (drag + key); `trigger.ts` adapts uiohook-napi; `gesture.ts` owns start/stop/pause + `PlatformStatus`; `gesture-env.ts` is the pure "may the hook start?" decision; `permissions.ts` handles macOS Accessibility |
+| `platform/trigger-logic.ts` | Pure trigger state machine (drag + key); `trigger.ts` adapts uiohook-napi; `gesture.ts` owns start/stop/pause + `PlatformStatus`; `gesture-env.ts` is the pure "may the hook start?" decision; `permissions.ts` handles macOS Accessibility; `modifier-probe.ts` (macOS) runs the `lud-modifiers` helper (`native/mac-modifiers/main.swift`, built and ad-hoc signed in `package.yml`, shipped as `<resources>/bin/lud-modifiers`) while a left-button drag is past the threshold and not yet armed, because the event tap goes silent during a Finder drag; its `shift=0|1 ctrl=0|1 alt=0|1 meta=0|1` lines are fed to trigger-logic as `{ type: 'modifiers' }`, so the trigger key pressed mid-drag arms. Missing binary: logged once (diagnostics), behaviour as before |
 | `engine-host.ts` | Host side of `src/engine/api.ts` (init + `hostAdapters`, queueing until ready, crash → INTERNAL + bounded restart, watchdog: kill + restart when a cancelled job is still running after 5 s or a job runs past 32 min) |
 | `html-to-pdf.ts` | `htmlToPdf` adapter: a hidden, JS-less, sandboxed window without preload in an in-memory session; the document is served from memory on `lud-sandbox://print/<uuid>.html` (never `file://`); every other request is cancelled; CSP injected by `pdf-csp.ts`; 64 MB cap; 30 s timeout; window destroyed after each job (SEC-82) |
 | `pdf-render.ts`, `pdf-render-plan.ts` | `renderPdfPages` adapter: pdf.js in one hidden, sandboxed window without preload, in an in-memory session that serves only pdf.js files + the current PDF on `lud-sandbox://pdf/`. See below. |
@@ -167,7 +167,8 @@ over 5 MB is moved to `debug.old.log` at startup. All normal log lines go there 
 
 **What is logged:** app/Electron version, platform, displays (size, scale); the effective overlay
 variants and where each came from; every `isTrustedAccessibilityClient` result; gesture refresh
-decisions, input hook start/stop; trigger transitions (see privacy above); overlay arm (bounds,
+decisions, input hook start/stop; macOS modifier helper started/stopped/exited/not found (never
+its flags); trigger transitions (see privacy above); overlay arm (bounds,
 display scale, level, `isAlwaysOnTop`, focusable/focused, visible), follow moves (at most every
 250 ms, with a count), session phase changes, `setIgnoreMouseEvents` changes, setInteractive,
 `overlayEngaged` / `overlayDone` received, safety timeouts, hide; overlay page load / renderer

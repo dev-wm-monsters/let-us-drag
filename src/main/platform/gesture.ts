@@ -3,7 +3,8 @@
 
 import type { PlatformStatus, TriggerKey } from '../../shared/types'
 import { decideGestureEnv, normalizePlatform } from './gesture-env'
-import { GestureTrigger } from './trigger'
+import { ModifierProbe } from './modifier-probe'
+import { GestureTrigger, type GestureTriggerDeps } from './trigger'
 
 export interface GestureManagerDeps {
   platform: NodeJS.Platform
@@ -18,6 +19,13 @@ export interface GestureManagerDeps {
   log?: (message: string) => void
   /** Field diagnostics only (see GestureTriggerDeps.debug). */
   debug?: (message: string) => void
+  /**
+   * macOS: path of the lud-modifiers helper (paths.ts modifierHelperPath). Polled mid-drag so a
+   * trigger key pressed during a Finder drag arms (modifier-probe.ts). Ignored on other platforms.
+   */
+  modifierHelperPath?: string
+  /** Tests only: replaces the default ModifierProbe factory (still darwin-only). */
+  createModifierProbe?: GestureTriggerDeps['createModifierProbe']
 }
 
 export class GestureManager {
@@ -27,7 +35,14 @@ export class GestureManager {
   private status: PlatformStatus
 
   constructor(private readonly deps: GestureManagerDeps) {
+    const helperPath = deps.modifierHelperPath
+    const createModifierProbe: GestureTriggerDeps['createModifierProbe'] =
+      deps.platform !== 'darwin'
+        ? undefined
+        : (deps.createModifierProbe ??
+          (helperPath ? (onModifiers) => new ModifierProbe({ helperPath, onModifiers, debug: deps.debug }) : undefined))
     this.trigger = new GestureTrigger({
+      createModifierProbe,
       onArm: deps.onArm,
       onDisarm: deps.onDisarm,
       triggerKey: deps.triggerKey,
