@@ -20,7 +20,7 @@ export interface CharacterInfo {
 
 export const CHARACTERS = [
   { id: 'uncle', name: 'The Uncle', blurb: 'The original. Glasses, moustache, gold tooth.', art: null, scale: 1 },
-  { id: 'motu-uncle', name: 'Motu Uncle', blurb: 'The Uncle, after a very good lunch.', art: '00-motu-uncle', scale: 0.9 },
+  { id: 'motu-uncle', name: 'Motu Uncle', blurb: 'Napkin tucked in, samosa in hand. Always hungry.', art: '00-motu-uncle', scale: 0.9 },
   { id: 'chacha-gappu', name: 'Chacha Gappu', blurb: 'Retired, with the morning paper and cutting chai.', art: '01-chacha-gappu', scale: 0.92 },
   { id: 'dadi-amma', name: 'Dadi Amma', blurb: 'Cat-eye glasses and a whistling cooker.', art: '02-dadi-amma', scale: 0.9 },
   { id: 'halwai-bhaiya', name: 'Halwai Bhaiya', blurb: 'Holds up a jalebi like a trophy.', art: '03-halwai-bhaiya', scale: 0.92 },
