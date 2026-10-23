@@ -2,7 +2,7 @@
 
 ![Motu Uncle and the nine alternative characters, idle and eat](storyboard.png)
 
-Motu Uncle (a chubby version of the current Uncle) and nine alternative characters to choose from (round 3: Chacha Gappu restyled, Captain Chomp and Abuela Rosa dropped, Biscuit the cat added). The rules for new art are in [`../STYLE_GUIDE.md`](../STYLE_GUIDE.md). **Concept art only:** nothing here is
+Motu Uncle (a chubby foodie uncle, redesigned to stand apart from the in-app Uncle) and nine alternative characters to choose from (round 3: Chacha Gappu restyled, Captain Chomp and Abuela Rosa dropped, Biscuit the cat added). The rules for new art are in [`../STYLE_GUIDE.md`](../STYLE_GUIDE.md). **Concept art only:** nothing here is
 wired into the app. Open [`storyboard.html`](storyboard.html) for the full sheet (it is self-contained,
 with inline SVG and no external resources): name, origin, signature detail, how each one eats, chews
 and spits a file, and both poses side by side.
@@ -24,14 +24,17 @@ that still reads at about 250 px.
 
 ## The characters
 
-**00 · Motu Uncle** (the key piece). This is our current in-app Uncle with the same parts and colours
-copied from `UncleSvg.tsx`: wild grey side tufts, a comb-over, round glasses, the bushy moustache, the
-gold tooth, and the mole with its one curly hair. He wears the same argyle vest, shirt and red bow
-tie. What changes is that he is much fatter: a wide, jowly head with a double chin, puffed cheeks, a
-huge round belly with a straining button (it hangs by a thread in the eat pose), short chubby arms,
-and thick sausage fingers. The layer names match the existing rig one-to-one, so he is the cheapest
-option to ship. Swap the `headPath` proportions, the torso and the hands, and keep `pose.ts` as it is.
-
+**00 · Motu Uncle** (India; redesigned so he no longer reads as "the Uncle, but fatter"). The
+neighbourhood's happiest foodie: a big round moon face with puffed rosy cheeks and a soft double chin,
+small squinty smiling eyes, short thick arched black brows, a little button nose and no moustache at
+all. His black hair is oiled flat with a side parting and a swept front, with short sideburns. He
+wears a bright turquoise half-sleeve bush shirt with a yellow-and-orange mango print, stretched over a
+huge round belly, and has short chubby arms with sausage fingers. Signature: the white napkin tucked
+into his collar (orange border, one permanent haldi stain), which flaps when he chews; in idle he
+holds up a steaming samosa. None of the Uncle's parts are reused (no glasses, mole, grey tufts,
+comb-over, bushy moustache, gold tooth, argyle vest or bow tie), and the palette (turquoise, mango
+yellow, black hair on a lavender background) sits apart from Chacha's cream-and-navy and Halwai's
+white-and-red.
 
 **01 · Chacha Gappu** (India; restyled in round 3 so he no longer reads like Halwai Bhaiya). The
 retired colony chacha: older and lanky, with a tall egg-shaped head, a shiny bald dome, grey side hair
@@ -132,6 +135,6 @@ What porting one would take:
   the hair depth plus their own spring (secondary motion, like the Uncle's comb-over).
 - **Signature props are separate groups with obvious state hooks:** `cooker` (whistle and steam per
   25 %), `meter` (flag rotation + digits = progress), `sign`/`coin`, `rollingPin`, `jalebi`, `stompDust`/`topknot` (chew beat), `toupee`
-  (lifts at `jaw > 0.8`), `milk`, `tumbler`/`newspaper`/`glasses` (Chacha), `bell`/`tail` (Biscuit), `strainButton` (Motu Uncle, pops at 100 %).
+  (lifts at `jaw > 0.8`), `milk`, `tumbler`/`newspaper`/`glasses` (Chacha), `bell`/`tail` (Biscuit), `napkin`/`samosa` (Motu Uncle: the napkin flaps on the chew beat).
 - **Canvas.** The viewBox is `-220 -206 440 440`, with the face origin at (0, 0) as in the Uncle, so
   `HEAD_CENTER` and the options ring carry over.
