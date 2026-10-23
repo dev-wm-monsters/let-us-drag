@@ -38,6 +38,11 @@ export type TriggerInput =
   | { type: 'move'; x: number; y: number; modifiers: ModifierFlags }
   /** A modifier key went down/up (the adapter maps modifier key codes to this; all other keys are dropped). */
   | { type: 'modifier'; key: TriggerKey; held: boolean }
+  /**
+   * A full modifier snapshot from outside the hook (macOS: the lud-modifiers helper polled while a
+   * drag is in progress, modifier-probe.ts). Treated like modifier key events: may arm.
+   */
+  | { type: 'modifiers'; modifiers: ModifierFlags }
   | { type: 'setTriggerKey'; key: TriggerKey }
   | { type: 'reset' }
 
@@ -116,6 +121,8 @@ export function triggerReducer(state: TriggerState, input: TriggerInput): { stat
       if (state.modifiers[input.key] === input.held) return withArming(state)
       return withArming({ ...state, modifiers: { ...state.modifiers, [input.key]: input.held } })
     }
+    case 'modifiers':
+      return withArming(withModifiers(state, input.modifiers))
     case 'setTriggerKey': {
       if (input.key === state.triggerKey) return { state, action: null }
       return withArming({ ...state, triggerKey: input.key })

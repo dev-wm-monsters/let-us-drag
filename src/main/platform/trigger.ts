@@ -16,6 +16,9 @@
 //   drag) arms at once. It maps the 8 modifier key codes to an abstract { key, held } event and
 //   returns immediately for every other key: no key code, character or timestamp is kept,
 //   logged, sent over IPC or written anywhere.
+// - macOS: during a Finder drag the event tap goes silent until the release, so mid-drag the
+//   modifier state comes from the lud-modifiers helper instead (modifier-probe.ts: the four
+//   modifier flags only, polled while a drag is in progress and the trigger has not armed).
 // - Coordinates are only compared against the press point (movement threshold), never stored
 //   beyond the current gesture, logged or sent. The overlay is positioned with
 //   screen.getCursorScreenPoint() (PLAN §3 decision 4).
@@ -23,6 +26,7 @@
 //   the hook callback (SEC-35).
 
 import type { TriggerKey } from '../../shared/types'
+import type { ModifierProbeLike } from './modifier-probe'
 import { describeTriggerTransition, initialTriggerState, triggerReducer, type ModifierFlags, type MouseButton, type TriggerInput, type TriggerState } from './trigger-logic'
 
 interface HookMouseEvent {
@@ -82,6 +86,12 @@ export interface GestureTriggerDeps {
    * coordinates, no other keys). Called through `schedule`, i.e. outside the hook callback (SEC-35).
    */
   debug?: (message: string) => void
+  /**
+   * macOS only (gesture.ts): creates the mid-drag modifier probe (modifier-probe.ts). It runs while
+   * the left button is held past the drag threshold and the trigger has not armed yet; its
+   * snapshots are fed as `{ type: 'modifiers' }`. Absent on Windows/Linux: behaviour unchanged.
+   */
+  createModifierProbe?: (onModifiers: (modifiers: ModifierFlags) => void) => ModifierProbeLike
 }
 
 async function defaultLoadHook(): Promise<HookLike> {
@@ -104,9 +114,15 @@ export class GestureTrigger {
   private listening = false
   private running = false
   private state: TriggerState
+  private readonly probe: ModifierProbeLike | null
+  private probeWanted = false
 
   constructor(private readonly deps: GestureTriggerDeps) {
     this.state = initialTriggerState(deps.triggerKey)
+    this.probe =
+      deps.createModifierProbe?.((modifiers) => {
+        if (this.running) this.feed({ type: 'modifiers', modifiers })
+      }) ?? null
   }
 
   get isRunning(): boolean {
@@ -124,9 +140,23 @@ export class GestureTrigger {
       const changes = describeTriggerTransition(prev, r.state, r.action)
       if (changes.length > 0) schedule(() => debug(`trigger: ${changes.join(', ')}`))
     }
+    this.syncProbe(schedule)
     if (r.action === null) return
     const fn = r.action === 'arm' ? this.deps.onArm : this.deps.onDisarm
     schedule(() => fn())
+  }
+
+  /** Start/stop the modifier probe (deferred like arm/disarm) when it becomes (un)needed. */
+  private syncProbe(schedule: (fn: () => void) => void): void {
+    if (!this.probe) return
+    const wanted = this.running && this.state.leftDown && this.state.dragging && !this.state.armed
+    if (wanted === this.probeWanted) return
+    this.probeWanted = wanted
+    const probe = this.probe
+    schedule(() => {
+      if (this.probeWanted) probe.start()
+      else probe.stop()
+    })
   }
 
   setTriggerKey(key: TriggerKey): void {
@@ -182,5 +212,7 @@ export class GestureTrigger {
     }
     // Forget held keys/buttons; disarm if a gesture was in progress.
     this.feed({ type: 'reset' })
+    this.probeWanted = false
+    this.probe?.stop()
   }
 }

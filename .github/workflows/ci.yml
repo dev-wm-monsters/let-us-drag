@@ -50,6 +50,20 @@ jobs:
       - name: Build
         shell: bash
         run: set -o pipefail && npm run build 2>&1 | tee ci-logs/build.log
+      - name: Compile check macOS modifier helper (lud-modifiers; shipped by package.yml)
+        if: runner.os == 'macOS'
+        shell: bash
+        timeout-minutes: 5
+        run: |
+          set -o pipefail
+          swiftc -O -target "$(uname -m)-apple-macos12" native/mac-modifiers/main.swift -o /tmp/lud-modifiers 2>&1 | tee ci-logs/modifier-helper.log
+          # stdin closed at once: the helper must exit 0 quickly (it dies with its parent)
+          /tmp/lud-modifiers </dev/null >/tmp/lud-modifiers.out & pid=$!
+          for _ in $(seq 50); do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
+          if kill -0 "$pid" 2>/dev/null; then kill "$pid"; echo "lud-modifiers did not exit after stdin closed" | tee -a ci-logs/modifier-helper.log; exit 1; fi
+          wait "$pid"
+          if grep -qvE '^shift=[01] ctrl=[01] alt=[01] meta=[01]$' /tmp/lud-modifiers.out; then echo "unexpected output" | tee -a ci-logs/modifier-helper.log; exit 1; fi
+          echo "lud-modifiers compiled and exited 0 on stdin EOF" | tee -a ci-logs/modifier-helper.log
       - name: Cache Remove-BG model (Linux only, used by the real-model test)
         if: runner.os == 'Linux'
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
