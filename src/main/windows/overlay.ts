@@ -147,6 +147,14 @@ export class OverlayController {
       return // busy: ignore
     }
     this.session = next
+    // macOS: a non-opaque window that was never explicitly told to accept the mouse decides per
+    // pixel, so drags fall through our near-transparent sensor to the app below. Always make the
+    // native call here (bypassing the cache) so the sensor is a real drop target.
+    if (this.platform === 'darwin') {
+      this.ignoringMouse = false
+      this.win.setIgnoreMouseEvents(false)
+      this.debug(() => 'setIgnoreMouseEvents(false) [forced at arm, macOS]')
+    }
     const cursor = at ?? screen.getCursorScreenPoint()
     const bounds = this.boundsFor(cursor)
     this.win.setBounds(bounds)
