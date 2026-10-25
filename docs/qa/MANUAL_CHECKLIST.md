@@ -141,6 +141,18 @@ unticked and describe it, that still helps. Send the file back to QA when done (
 23. [ ] *(Optional)* Portable `.exe` from Downloads (SmartScreen again → More info → Run anyway). Expect: works like the installed app.
 24. [ ] Quit; Task Manager shows no "Let us drag!" / `ffmpeg.exe`. Then **Settings → Apps → Installed apps → Let us drag! → Uninstall**. Expect: removed.
 
+**Windows-only checks from the code review** (things CI cannot see; just note what happens)
+
+25. [ ] After **every** Shift-drop (step 5/7), the **original file is still where it was** (Shift in Explorer means "move"; the Uncle must only ever copy).
+26. [ ] After clicking a result card or the red × (step 7/16): the window you were in keeps its **active title bar**; nothing else (taskbar, another window) jumps to the front. While the Uncle offers options after a drop on his **mouth**, he never appears as a button on the **taskbar** (B-073).
+27. [ ] Trigger key **Windows key** (Settings): Win-drag a file, drop, release the key. Note whether the **Start menu opens** after release (Windows does this when the key is pressed and released alone; the app cannot prevent it without faking key presses). Then press **Win+L**, log back in, and drag a window by its title bar **without** any key: the Uncle must **not** appear (B-074).
+28. [ ] Trigger key **Alt**: after an Alt-drop, note whether Explorer shows its menu/key tips when you release Alt. Trigger **Ctrl**: the drop still converts (no "link"/"shortcut" created).
+29. [ ] **Mixed scaling** (step 10) once more with **diagnostics on**: put an empty `debug.flag` in `%APPDATA%\Let us drag!`, do one drag that crosses from one screen to the other while holding Shift, quit, send `%APPDATA%\Let us drag!\logs\debug.log`. We look for `follow: setBounds … scale=` lines whose size stays 560×560 (Electron can mis-size a window moved between screens with different scaling).
+30. [ ] Press **Alt+Tab** while the Uncle (or a result card) is visible: note whether a "Let us drag!" entry appears.
+31. [ ] *(If you use a left-handed mouse setup — buttons swapped)* Shift-drag with the button you normally drag with: note whether the Uncle appears (the global hook may see the physical button).
+32. [ ] A file on a **network share** (`\\server\share\photo.png`) and a OneDrive file that is **"online-only"** (cloud icon) → JPG. Expect: converts (OneDrive downloads it first) or a friendly error; no hang. A file inside `C:\Program Files\…` → JPG: a friendly "can't save here" message.
+33. [ ] Cancel a long conversion (step 16), then check **Task Manager → Details** for a leftover `ffmpeg.exe`; also delete the source folder afterwards (no "file in use" error).
+
 **Uncle on Windows, 1–5 and why:** ______
 
 ---

@@ -26,6 +26,8 @@ export interface GestureManagerDeps {
   modifierHelperPath?: string
   /** Tests only: replaces the default ModifierProbe factory (still darwin-only). */
   createModifierProbe?: GestureTriggerDeps['createModifierProbe']
+  /** Tests only: replaces the uiohook-napi loader. */
+  loadHook?: GestureTriggerDeps['loadHook']
 }
 
 export class GestureManager {
@@ -46,6 +48,7 @@ export class GestureManager {
       onArm: deps.onArm,
       onDisarm: deps.onDisarm,
       triggerKey: deps.triggerKey,
+      ...(deps.loadHook ? { loadHook: deps.loadHook } : {}),
       log: deps.log,
       debug: deps.debug
     })
@@ -97,6 +100,21 @@ export class GestureManager {
 
   stop(): void {
     this.trigger.stop()
+  }
+
+  /**
+   * Windows (app.ts, on 'unlock-screen'): restart a running hook so libuiohook re-reads which
+   * modifiers are really held. Its modifier mask is only updated by key events
+   * (libuiohook/src/windows/input_hook.c) and re-read with GetAsyncKeyState at hook start. Keys
+   * released on the secure desktop (Win+L lock screen) never reach a low-level hook, so their key-up
+   * is lost: the Windows key then stayed "held" and, with it as trigger key, every left-drag armed
+   * the overlay (B-074). No-op while paused or when the hook is not running.
+   */
+  async restartHook(): Promise<void> {
+    if (this.paused || !this.trigger.isRunning) return
+    this.deps.debug?.('restarting input hook (modifier resync)')
+    this.trigger.stop()
+    await this.refresh()
   }
 
   private decide() {
