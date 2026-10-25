@@ -252,11 +252,12 @@ function resolve(m: Model): Model {
 
 /**
  * Cancel a meal in progress: no output, he spits the file back.
- * If the job already finished (we were only waiting for the minimum chew), there is nothing left to
+ * If the job already finished (we were only waiting for the eat animation or the minimum chew), there is nothing left to
  * cancel: show the result right away instead of pretending nothing was written.
  */
 function cancel(m: Model): Model {
-  if (m.state === 'chew' && m.outcome?.kind === 'done') return resolve({ ...m, minChewDone: true })
+  // Also while still eating: a fast job can finish during the eat animation (B-074).
+  if (isBusy(m) && m.outcome?.kind === 'done') return resolve({ ...m, state: 'chew', minChewDone: true })
   return { ...m, state: 'cancel', options: [], hovered: null, held: null, dropping: false, progress: 0, message: null }
 }
 

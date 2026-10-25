@@ -305,8 +305,15 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
   }, [cancelJob, dispatch])
 
   // ——— main → renderer channels ———
+  // Pending macOS disarm grace (see onOverlayDisarm). Cancelled by the next arm: a stale DISARM
+  // from the previous gesture must never dismiss a new one (B-073).
+  const disarmGrace = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     let alive = true
+    const clearDisarmGrace = () => {
+      if (disarmGrace.current) clearTimeout(disarmGrace.current)
+      disarmGrace.current = null
+    }
     // E2E simulated drop: same path as a real drop once the paths are known.
     const testDrop = (p: TestDropPayload) => {
       if (!p || !Array.isArray(p.paths) || isBusy(modelRef.current)) return
@@ -324,6 +331,7 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
       subscribe('onJobEvent', (ev) => dispatch({ type: 'JOB_EVENT', event: ev })),
       subscribe('onOverlayArm', (info) => {
         // Main made the overlay a normal drop target again (D20) and a result card is dropped (D21).
+        clearDisarmGrace()
         sentClickThrough.current = false
         setOverInteractive(false)
         dispatch({ type: 'ARM', settings: info.settings })
@@ -336,7 +344,13 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
         if (!wasHidden && (modelRef.current.state === 'appear' || modelRef.current.state === 'hover')) {
           // macOS reports the global mouse-up a few ms BEFORE Chromium delivers the drop. Give the drop
           // a moment to arrive; once it has, the reducer ignores DISARM (m.dropping / state changed).
-          setTimeout(() => dispatch({ type: 'DISARM' }), DISARM_DROP_GRACE_MS)
+          // Only for THIS session: a new gesture (arm + dragenter) inside the grace is left alone.
+          const session = modelRef.current.session
+          clearDisarmGrace()
+          disarmGrace.current = setTimeout(() => {
+            disarmGrace.current = null
+            if (modelRef.current.session === session) dispatch({ type: 'DISARM' })
+          }, DISARM_DROP_GRACE_MS)
           return
         }
         dispatch({ type: 'DISARM' })
@@ -359,6 +373,7 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
     ]
     return () => {
       alive = false
+      clearDisarmGrace()
       for (const off of offs) off()
     }
   }, [cancelJob, dispatch, engage, host, measure, optionCenter, resolveDrop, setOverInteractive, updateLook])

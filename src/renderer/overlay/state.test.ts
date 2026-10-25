@@ -280,6 +280,28 @@ describe('overlay state machine', () => {
     expect(m.outputPaths).toEqual(['/home/u/a.jpg'])
   })
 
+  it('cancelling while still eating after the job already finished shows the result, not "keep it" (B-074)', () => {
+    // A fast job can finish during the 480 ms eat animation: its output is already saved, so a
+    // cancel (Esc / button) must not claim nothing was written.
+    const m = run(
+      initialModel('overlay'),
+      png,
+      { type: 'DROP_RESOLVED', items: [item('a.png')], target: 'to-jpg', jobId: 'j' },
+      ev({ type: 'done', jobId: 'j', outputPaths: ['/home/u/a.jpg'] }),
+      { type: 'CANCEL' }
+    )
+    expect(m.state).toBe('spit')
+    expect(m.outputPaths).toEqual(['/home/u/a.jpg'])
+    // Same through Esc.
+    const esc = run(
+      initialModel('feed'),
+      { type: 'DROP_RESOLVED', items: [item('a.png')], target: 'to-jpg', jobId: 'j' },
+      ev({ type: 'done', jobId: 'j', outputPaths: ['/home/u/a.jpg'] }),
+      { type: 'ESC' }
+    )
+    expect(esc.state).toBe('spit')
+  })
+
   it('a new drag can engage while the spit-back is playing', () => {
     const m = run(
       initialModel('overlay'),

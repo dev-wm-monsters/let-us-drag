@@ -37,6 +37,26 @@ async function dispatchTextDrag(page: Page): Promise<string[]> {
   })
 }
 
+/** Dispatch a synthetic FILE dragenter (a PNG) on the overlay page: engages the Uncle (appear). */
+async function dispatchFileDragEnter(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    interface Target {
+      dispatchEvent(e: unknown): boolean
+    }
+    interface G {
+      document: { querySelector(s: string): Target | null; body: Target }
+      DataTransfer: new () => { items: { add(f: unknown): unknown } }
+      File: new (bits: string[], name: string, opts: { type: string }) => unknown
+      DragEvent: new (type: string, init: Record<string, unknown>) => unknown
+    }
+    const g = globalThis as unknown as G
+    const dt = new g.DataTransfer()
+    dt.items.add(new g.File(['x'], 'photo.png', { type: 'image/png' }))
+    const target = g.document.querySelector('[data-testid="overlay-root"]') ?? g.document.body
+    target.dispatchEvent(new g.DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: dt, clientX: 20, clientY: 20 }))
+  })
+}
+
 test.describe('overlay', () => {
   test('E2E-10 arm shows the overlay as a sensor (Uncle still hidden), on top, without focus', { tag: NEEDS_INTEGRATION }, async ({ lud }, testInfo) => {
     const app = await lud.launchReady()
@@ -121,5 +141,32 @@ test.describe('overlay', () => {
     expect(b.x + b.width).toBeLessThanOrEqual(display.x + display.width)
     expect(b.y + b.height).toBeLessThanOrEqual(display.y + display.height)
     await hook(app, 'disarm')
+  })
+
+  test('E2E-15 a disarm grace timer from the previous gesture never dismisses a quick new gesture', async ({ lud }) => {
+    // macOS grace (B-068): a disarm in appear/hover waits 400 ms for a late drop. A new gesture armed
+    // and engaged within that window (e.g. the file was released beside the bubbles and grabbed again
+    // with the trigger key still held) must not be dismissed when the old timer fires.
+    const app = await lud.launchReady()
+    await hook(app, 'arm')
+    await expect.poll(() => hook(app, 'overlayVisible'), { timeout: T.state }).toBe(true)
+    const overlay = await waitForPage(app, 'overlay')
+    await dispatchFileDragEnter(overlay)
+    await expectUncleState(overlay, 'appear')
+    // Release (disarm) and re-arm right away, in one main-process turn.
+    await app.evaluate(async () => {
+      const h = (globalThis as unknown as { __ludTest: { disarm(): Promise<void>; arm(): Promise<void> } }).__ludTest
+      await h.disarm()
+      await h.arm()
+    })
+    await expectUncleState(overlay, 'hidden')
+    await dispatchFileDragEnter(overlay)
+    await expectUncleState(overlay, 'appear')
+    // Well past the 400 ms grace + the 380 ms leave animation.
+    await overlay.waitForTimeout(1_200)
+    expect(await uncleState(overlay), 'the new gesture must still be on screen').toBe('appear')
+    expect(await hook(app, 'overlayVisible'), 'the overlay must not hide mid-gesture').toBe(true)
+    await hook(app, 'disarm')
+    await expect.poll(() => hook(app, 'overlayVisible'), { timeout: T.hide }).toBe(false)
   })
 })

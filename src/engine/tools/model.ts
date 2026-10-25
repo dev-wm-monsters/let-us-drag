@@ -120,14 +120,18 @@ export async function ensureModel(opts: ModelOptions): Promise<string> {
 /** Start or join the shared download of `target`, leaving it (without stopping it for others) on abort. */
 function joinDownload(target: string, expected: string, opts: ModelOptions): Promise<string> {
   let shared = inflight.get(target)
-  if (!shared) {
+  // A download whose last waiter left is being torn down: never join it (the new job would fail
+  // with CANCELLED although its user cancelled nothing, B-075); start a fresh one instead.
+  if (!shared || shared.controller.signal.aborted) {
     const controller = new AbortController()
     const listeners = new Set<(p: number) => void>()
     const s: SharedDownload = {
       controller,
       listeners,
       waiters: 0,
-      promise: download(target, expected, opts, controller.signal, (p) => listeners.forEach((l) => l(p))).finally(() => inflight.delete(target))
+      promise: download(target, expected, opts, controller.signal, (p) => listeners.forEach((l) => l(p))).finally(() => {
+        if (inflight.get(target) === s) inflight.delete(target)
+      })
     }
     s.promise.catch(() => undefined) // a waiter may have left already; never an unhandled rejection
     inflight.set(target, s)

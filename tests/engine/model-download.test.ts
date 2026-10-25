@@ -170,6 +170,31 @@ describe('model download timeouts (local HTTP server)', () => {
     expect(await readdir(cacheDir)).toEqual([])
   })
 
+  it('a new job right after the only waiter cancelled starts a fresh download instead of joining the aborted one (B-075)', async () => {
+    resetModelCacheState()
+    const cacheDir = join(dir, 'cancel-then-retry')
+    const ac = new AbortController()
+    const opts = { ...base, cacheDir, urls: ['https://github.com/slow'], connectTimeoutMs: 300, stallTimeoutMs: 5000 }
+    let second: Promise<string> | null = null
+    const first = ensureModel({
+      ...opts,
+      signal: ac.signal,
+      onProgress: (v) => {
+        if (v > 0.2 && !second) {
+          ac.abort()
+          // The user drops the image again before the aborted download has wound down.
+          second = ensureModel({ ...opts, signal: new AbortController().signal })
+        }
+      }
+    })
+    await expect(first).rejects.toMatchObject({ code: 'CANCELLED' })
+    expect(second).not.toBeNull()
+    const path = await second!
+    expect(await readFile(path)).toEqual(body)
+    await sleep(50)
+    expect(await readdir(cacheDir)).toEqual(['isnet-general-use.onnx'])
+  })
+
   it('an HTTP error says the server is unavailable; a timeout wins over a later source answering 404', async () => {
     resetModelCacheState()
     await expect(
