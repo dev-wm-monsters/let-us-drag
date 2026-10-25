@@ -110,7 +110,13 @@ export class SettingsStore {
     const prev = this.current
     const next = applySettingsPatch(prev, patch)
     this.current = next
-    await this.save()
+    try {
+      await this.save()
+    } catch (err) {
+      // Not persisted: keep main, the hook and every window on the saved value (the caller gets the error).
+      if (this.current === next) this.current = prev
+      throw err
+    }
     for (const l of this.listeners) l({ ...next }, { ...prev })
     return this.get()
   }

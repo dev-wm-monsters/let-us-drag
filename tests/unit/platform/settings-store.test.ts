@@ -38,6 +38,16 @@ describe('applySettingsPatch', () => {
 })
 
 describe('SettingsStore', () => {
+  it('keeps the saved value and notifies nobody when the write fails', async () => {
+    await writeFile(join(dir, 'a-file'), 'x')
+    const store = new SettingsStore(join(dir, 'a-file', 'nested')) // mkdir/write under a file fails
+    await store.load()
+    let notified = 0
+    store.onChange(() => notified++)
+    await expect(store.update({ triggerKey: 'alt' })).rejects.toThrow()
+    expect(store.get().triggerKey).toBe(DEFAULT_SETTINGS.triggerKey)
+    expect(notified).toBe(0)
+  })
   it('starts from defaults when the file is missing', async () => {
     const store = new SettingsStore(dir)
     expect(await store.load()).toEqual(DEFAULT_SETTINGS)
