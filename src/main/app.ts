@@ -315,6 +315,17 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
     powerMonitor.removeListener('lock-screen', hideOverlay)
     powerMonitor.removeListener('suspend', hideOverlay)
   })
+  // B-078 (Windows): key-ups that happen on the lock screen never reach the low-level hook (Win+L
+  // leaves the Windows key "held"); restarting the hook re-reads the real modifier state.
+  if (platform === 'win32') {
+    const resyncHook = (): void => void gesture.restartHook()
+    powerMonitor.on('unlock-screen', resyncHook)
+    powerMonitor.on('resume', resyncHook)
+    cleanups.push(() => {
+      powerMonitor.removeListener('unlock-screen', resyncHook)
+      powerMonitor.removeListener('resume', resyncHook)
+    })
+  }
   // SEC-34: stop the hook when macOS Accessibility is revoked while we run (refresh() stops it).
   if (platform === 'darwin') {
     const lossTimer = setInterval(() => {

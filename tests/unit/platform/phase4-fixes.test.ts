@@ -74,6 +74,9 @@ class FakeBrowserWindow {
   setFocusable(v: boolean): void {
     calls.push(['setFocusable', v])
   }
+  setSkipTaskbar(v: boolean): void {
+    calls.push(['setSkipTaskbar', v])
+  }
   setIgnoreMouseEvents(ignore: boolean, options?: { forward?: boolean }): void {
     calls.push(options === undefined ? ['setIgnoreMouseEvents', ignore] : ['setIgnoreMouseEvents', ignore, options])
   }

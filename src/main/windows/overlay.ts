@@ -45,6 +45,8 @@ export class OverlayController {
   private safetyTimer: ReturnType<typeof setTimeout> | null = null
   private lastCursor: Point | null = null
   private ignoringMouse = false
+  /** Last value given to setFocusable (cached like ignoringMouse; see setFocusableCached). */
+  private focusableNow: boolean
   private loaded: Promise<void>
   private readonly platform: NodeJS.Platform
   private readonly ov: OverlayOverrides
@@ -57,6 +59,7 @@ export class OverlayController {
     this.ov = deps.overrides ?? defaultOverlayOverrides(process.platform)
     this.dbg = deps.debug ?? null
     const isMac = this.platform === 'darwin'
+    this.focusableNow = this.ov.focusable
     const panel = isMac && this.ov.panel
     this.win = createAppWindow(
       deps.ctx,
@@ -159,7 +162,7 @@ export class OverlayController {
     const bounds = this.boundsFor(cursor)
     this.win.setBounds(bounds)
     this.debug(() => `arm: setBounds ${this.describeBounds(bounds)} follow=${follow} (from phase=${prev.phase})`)
-    this.win.setFocusable(this.ov.focusable)
+    this.setFocusableCached(this.ov.focusable)
     // D20/D16: the sensor (and a new gesture over a card that was click-through, D21) is a normal
     // drop target.
     this.setIgnoreMouse(false)
@@ -200,7 +203,11 @@ export class OverlayController {
     if (this.win.isDestroyed()) return
     this.debug(() => `setInteractive(${interactive}) phase=${this.session.phase}`)
     if (interactive) this.setIgnoreMouse(false)
-    this.win.setFocusable(interactive || this.ov.focusable)
+    // Windows: setFocusable(false) on a visible window also "deactivates" it, i.e. Chromium hands
+    // the foreground to whatever visible window is next in Z-order (possibly the taskbar or a cloaked
+    // window, not the app the user came from). The overlay is already the active window here, so
+    // it simply stays activatable until it hides (hideNow), where Windows picks the next window.
+    if (interactive || this.platform !== 'win32') this.setFocusableCached(interactive || this.ov.focusable)
     if (interactive) this.win.focus()
   }
 
@@ -289,9 +296,16 @@ export class OverlayController {
     this.clearSafetyTimer()
     this.lastCursor = null
     if (this.win.isDestroyed()) return
-    this.win.setFocusable(this.ov.focusable)
-    this.setIgnoreMouse(false)
-    this.win.hide()
+    if (this.platform === 'win32') {
+      // Hide first: on a hidden window setFocusable(false) does not deactivate (see setFocusableCached).
+      this.setIgnoreMouse(false)
+      this.win.hide()
+      this.setFocusableCached(this.ov.focusable)
+    } else {
+      this.setFocusableCached(this.ov.focusable)
+      this.setIgnoreMouse(false)
+      this.win.hide()
+    }
     this.debug(() => 'hide')
   }
 
@@ -305,6 +319,29 @@ export class OverlayController {
     this.debug(() => `setIgnoreMouseEvents(${ignore}${ignore ? ', forward' : ''})`)
     if (ignore) this.win.setIgnoreMouseEvents(true, { forward: true })
     else this.win.setIgnoreMouseEvents(false)
+  }
+
+  /**
+   * The only caller of setFocusable; on Windows no native call when nothing changes. There (Electron 45
+   * NativeWindowViews::SetFocusable) every call also toggles the taskbar button (SetSkipTaskbar(!focusable))
+   * and setFocusable(false) on a VISIBLE window calls Focus(false) -> Chromium's
+   * HWNDMessageHandler::Deactivate, which SetForegroundWindow()s the next visible window in Z-order.
+   * Repeating setFocusable(false) at every hide / D21 re-arm therefore moved the user's keyboard focus
+   * to an unrelated window (B-077), and setFocusable(true) in feedMe put the overlay on the taskbar.
+   */
+  private setFocusableCached(focusable: boolean): void {
+    if (this.win.isDestroyed()) return
+    if (this.platform !== 'win32') {
+      // macOS/Linux: unchanged behaviour (the call has no side effects there).
+      this.focusableNow = focusable
+      this.win.setFocusable(focusable)
+      return
+    }
+    if (focusable === this.focusableNow) return
+    this.focusableNow = focusable
+    this.win.setFocusable(focusable)
+    // The overlay never belongs on the taskbar (skipTaskbar: true), focusable or not.
+    this.win.setSkipTaskbar(true)
   }
 
   private startPolling(): void {
