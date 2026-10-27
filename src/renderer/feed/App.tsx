@@ -58,7 +58,7 @@ export function FeedApp() {
         </h1>
         <div className="feed-sub">
           <p className={held ? 'is-covered' : undefined}>Feed me a file. I'll cook it right next to the original.</p>
-          {held && <HeldChip held={held} className="is-in-head" />}
+          {held && <HeldChip held={held} className="is-in-head" onClose={s.dismiss} onOver={s.setOverInteractive} />}
         </div>
       </header>
       <div

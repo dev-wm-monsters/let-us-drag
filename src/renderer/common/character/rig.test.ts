@@ -74,9 +74,9 @@ describe('generic character rig', () => {
     expect(out).toBe('<clipPath id="p1-a"/><g clip-path="url(#p1-a)"><use href="#p1-a"/></g><g data-id="x"/>')
   })
 
-  it('overlay draws the character 15 % smaller (one constant), ring untouched', () => {
-    expect(OVERLAY_CHARACTER_SCALE).toBe(0.85)
-    expect(overlayCharacterWidth(190)).toBe(Math.round(uncleWidthFor(190, 250) * 0.85))
+  it('overlay draws the character 30 % smaller (one constant), ring untouched', () => {
+    expect(OVERLAY_CHARACTER_SCALE).toBe(0.7)
+    expect(overlayCharacterWidth(190)).toBe(Math.round(uncleWidthFor(190, 250) * 0.7))
     expect(overlayCharacterWidth(190)).toBeLessThan(uncleWidthFor(190, 250))
   })
 })

@@ -257,11 +257,17 @@ kbd {
 .set-select {
   font: inherit;
   font-weight: 800;
-  padding: 6px 10px;
+  color: var(--ink);
+  /* Own chevron with room on the right (the native arrow sat on the border). */
+  appearance: none;
+  padding: 6px 38px 6px 12px;
   border: 3px solid var(--ink);
   border-radius: 12px;
-  background: #fff;
+  background: #fff
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9'%3E%3Cpath d='M2 2l5 5 5-5' fill='none' stroke='%232b1a14' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    no-repeat right 14px center;
   box-shadow: 2px 3px 0 var(--ink);
+  cursor: pointer;
 }
 .set-switch {
   appearance: none;
@@ -277,22 +283,25 @@ kbd {
   margin: 0;
 }
 .set-switch::after {
+  /* Knob centred vertically in the track (it used to be taller than the track and sat low). */
   content: '';
   position: absolute;
-  top: 2px;
-  left: 2px;
+  box-sizing: border-box;
+  top: 50%;
+  left: 3px;
   width: 20px;
   height: 20px;
   border-radius: 50%;
   background: #fff;
   border: 2.5px solid var(--ink);
+  transform: translateY(-50%);
   transition: transform 180ms cubic-bezier(0.3, 1.6, 0.5, 1);
 }
 .set-switch:checked {
   background: var(--orange);
 }
 .set-switch:checked::after {
-  transform: translateX(21px);
+  transform: translate(20px, -50%);
 }
 .set-switch:focus-visible {
   outline: 3px dashed var(--ink);

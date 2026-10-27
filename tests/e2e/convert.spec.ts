@@ -94,6 +94,24 @@ test.describe('conversion flows', () => {
     expect(listNames(lud.workDir)).toEqual(['setup.exe'])
   })
 
+  test('E2E-83 drop on the mouth → the × on the held chip closes him, no job, nothing written', async ({ lud }, testInfo) => {
+    const app = await lud.launchReady()
+    const input = await makePng(join(lud.workDir, 'keep.png'))
+    const armed = await armOverlay(app, testInfo, 'held-close')
+    try {
+      await hook(app, 'dropFiles', [input], null)
+      await expectUncleState(armed.overlay, 'feedMe')
+      const close = armed.overlay.getByTestId('held-close')
+      await expect(close).toBeVisible()
+      await close.click()
+      await expectNoNewJob(app, armed.eventsBefore)
+    } finally {
+      await armed.stopScreens()
+    }
+    await expectOverlayHidesItself(app)
+    expect(listNames(lud.workDir)).toEqual(['keep.png'])
+  })
+
   test('E2E-23 blocked .exe dropped directly on an option is still refused', { tag: NEEDS_INTEGRATION }, async ({ lud }, testInfo) => {
     // Defence in depth: even if a caller names an option (here ZIP), blocked inputs never start a job.
     const app = await lud.launchReady()

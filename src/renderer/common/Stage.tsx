@@ -48,17 +48,24 @@ function useKeepInside(ref: RefObject<HTMLElement | null>, deps: readonly unknow
   }, deps)
 }
 
-const ACCENT: Partial<Record<OptionId, string>> = {}
-for (const id of ['to-png', 'to-jpg', 'to-webp', 'to-avif', 'to-ico', 'remove-bg', 'pdf-to-png', 'pdf-to-jpg'] as const)
-  ACCENT[id] = '#3fb6a8'
-for (const id of ['to-mp4', 'to-mov', 'to-webm', 'to-gif'] as const) ACCENT[id] = '#8a6fd6'
-for (const id of ['to-mp3', 'to-wav', 'to-m4a', 'to-ogg', 'to-flac'] as const) ACCENT[id] = '#e46a9b'
-for (const id of ['to-pdf', 'to-html', 'to-md', 'to-txt', 'to-docx'] as const) ACCENT[id] = '#4f8fdc'
-for (const id of ['to-csv', 'to-json', 'to-yaml', 'to-xlsx'] as const) ACCENT[id] = '#58b35a'
-for (const id of ['zip', 'unzip', 'compress', 'pdf-merge'] as const) ACCENT[id] = '#f08a3c'
+/**
+ * Hover colours. Each bubble in a ring gets its own colour (by position), so a ring is never mostly
+ * one hue (product feedback: image rings were all teal). Warm, saturated mid-tones that sit well on
+ * cream with ink outlines; neighbours are deliberately far apart on the colour wheel.
+ */
+export const ACCENTS = [
+  '#3fb6a8', // teal
+  '#f2694b', // tomato
+  '#8a6fd6', // violet
+  '#f2a93b', // saffron
+  '#4f8fdc', // blue
+  '#e46a9b', // pink
+  '#58b35a', // green
+  '#c0784a' // cinnamon
+] as const
 
-export function accentFor(id: OptionId): string {
-  return ACCENT[id] ?? '#f08a3c'
+export function accentFor(index: number): string {
+  return ACCENTS[((index % ACCENTS.length) + ACCENTS.length) % ACCENTS.length]!
 }
 
 /** Pixel offset of a viewBox point from the head centre for a given Uncle width. */
@@ -122,7 +129,7 @@ const OptionsRing = memo(function OptionsRing({ options, hovered, radius, clicka
         const style = {
           '--x': `${slot.x}px`,
           '--y': `${slot.y}px`,
-          '--accent': accentFor(o.id),
+          '--accent': accentFor(i),
           animationDelay: `${i * 28}ms`
         } as CSSProperties
         const isHover = hovered === o.id
@@ -222,12 +229,38 @@ function FileGlyph({ ext }: { ext: string }) {
  * click-through, placed where it covers no option bubble (B-064): under the ring in the overlay,
  * in the header of the Feed Window.
  */
-export function HeldChip({ held, className, style }: { held: readonly DroppedItem[]; className?: string; style?: CSSProperties }) {
+export function HeldChip({
+  held,
+  className,
+  style,
+  onClose,
+  onOver
+}: {
+  held: readonly DroppedItem[]
+  className?: string
+  style?: CSSProperties
+  /** × button: close without converting (same as Esc, which still works). */
+  onClose(): void
+  onOver(on: boolean): void
+}) {
   return (
     <div className={`lud-held ${className ?? ''}`} style={style} data-testid="held-files">
       <span className="lud-file-ext">{held[0]?.ext.slice(0, 4).toUpperCase() || 'FILE'}</span>
       <strong>{held.length === 1 ? shortName(held[0]!.name, 26) : `${held.length} files`}</strong>
       <small>Pick an option · Esc to cancel</small>
+      <button
+        type="button"
+        className="lud-held-close"
+        data-testid="held-close"
+        title="Close (Esc)"
+        aria-label="Close without converting"
+        onClick={onClose}
+        onPointerEnter={() => onOver(true)}
+        onPointerLeave={() => onOver(false)}
+        {...{ [INTERACTIVE_ATTR]: '' }}
+      >
+        <span aria-hidden>✕</span>
+      </button>
     </div>
   )
 }
@@ -368,7 +401,13 @@ export function Stage({ s, testId, uncleWidth, ring, reducedMotion, idleExtra, s
         )}
 
         {clickable && model.held && showHeld && (
-          <HeldChip held={model.held} className="is-under-ring" style={{ top: heldChipTop(ring.radius, HELD_CLEARANCE) }} />
+          <HeldChip
+            held={model.held}
+            className="is-under-ring"
+            style={{ top: heldChipTop(ring.radius, HELD_CLEARANCE) }}
+            onClose={s.dismiss}
+            onOver={s.setOverInteractive}
+          />
         )}
 
         {model.state === 'chew' && <CancelButton radius={ring.radius} onCancel={s.cancelJob} onOver={s.setOverInteractive} />}

@@ -33,9 +33,9 @@ export function uncleWidthFor(radius: number, max: number): number {
 
 /**
  * The drag overlay draws the character this much smaller than the Feed Window does (product: it read
- * too big on a real Mac). The ring radius is unchanged, so the bubbles get a little more room.
+ * too big on a real Mac, twice: 0.85, then 0.7). The ring radius is unchanged, so the bubbles get more room.
  */
-export const OVERLAY_CHARACTER_SCALE = 0.85
+export const OVERLAY_CHARACTER_SCALE = 0.7
 
 /** Character width in the drag overlay for a ring radius. */
 export function overlayCharacterWidth(radius: number): number {

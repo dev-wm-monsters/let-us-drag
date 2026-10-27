@@ -77,6 +77,8 @@ export interface UncleSession {
   feedFiles(files: File[]): void
   /** Cancel the running job ("Spit it out" button, Esc while busy, E2E cancelActive). */
   cancelJob(): void
+  /** Close him without converting: the × on the held-files chip, same as Esc. */
+  dismiss(): void
 }
 
 export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
@@ -512,6 +514,7 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
   const reveal = useCallback((path: string) => {
     void call('revealPath', undefined, path)
   }, [])
+  const dismiss = useCallback(() => dispatch({ type: 'ESC' }), [dispatch])
   return {
     model,
     dispatch,
@@ -524,6 +527,7 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
     reveal,
     setOverInteractive,
     feedFiles,
-    cancelJob
+    cancelJob,
+    dismiss
   }
 }
