@@ -19,7 +19,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # ubuntu-24.04 pinned: on Ubuntu 26.04 runners every conversion crashed the Electron engine
+        # (B-079, suspected GLib clash between Electron and sharp; tracked separately).
+        os: [ubuntu-24.04, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     env:

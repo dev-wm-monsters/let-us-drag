@@ -25,7 +25,7 @@ jobs:
           - { name: mac-arm64, os: macos-15, builder: --mac --arm64, plat: darwin, arch: arm64 }
           - { name: mac-x64, os: macos-15-intel, builder: --mac --x64, plat: darwin, arch: x64 }
           - { name: win-x64, os: windows-latest, builder: --win --x64, plat: win32, arch: x64 }
-          - { name: linux-x64, os: ubuntu-latest, builder: --linux --x64, plat: linux, arch: x64 }
+          - { name: linux-x64, os: ubuntu-24.04, builder: --linux --x64, plat: linux, arch: x64 }
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     env:
