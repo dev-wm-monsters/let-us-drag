@@ -84,6 +84,15 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: set -o pipefail && xvfb-run -a npm run test:e2e 2>&1 | tee ci-logs/e2e.log
+      - name: E2E crash digest (Linux)
+        if: always() && runner.os == 'Linux'
+        shell: bash
+        run: |
+          {
+            echo "== runner"; grep PRETTY_NAME /etc/os-release; uname -r; node -v
+            echo "== engine exits / crashes"
+            grep -iE "engine exited|signal|fatal|check failed|segmentation|trace/breakpoint|illegal instruction|GLIBC|cannot open shared|Error: Cannot find module|sharp" ci-logs/e2e.log | grep -v "dbus" | sort | uniq -c | sort -rn | head -40
+          } > ci-logs/e2e-crash.log 2>&1 || true
       - name: Report results as annotations
         if: always()
         shell: bash
