@@ -1,6 +1,7 @@
 // The Uncle's state machine: a pure, DOM-free reducer shared by the overlay and the Feed Window.
 // Side effects (IPC, timers, sounds) live in common/useUncleSession.ts and react to state changes.
 // States follow docs/PLAN.md §6; 'idle' is the Feed Window's resting state (the overlay rests in 'hidden').
+import { isUnlocked, type LicenceView } from '../../shared/licence'
 import type { ConversionOption, DragProbe, DroppedItem, JobError, JobEvent, OptionId, Settings } from '../../shared/types'
 import { DEFAULT_SETTINGS } from '../../shared/types'
 import { isHamster, isStruggle, itemsAreBlocked, optionsForItems, optionsForProbe, categoryForProbe } from '../common/drag'
@@ -20,6 +21,8 @@ export type UncleState =
   | 'leave'
   /** The user cancelled the meal (D3): he spits the file back ("Fine, keep it.") and leaves. */
   | 'cancel'
+  /** No active licence (D26): one big "Unlock for $9.50" bubble instead of the options; nothing is eaten. */
+  | 'locked'
 
 export type Host = 'overlay' | 'feed'
 
@@ -62,6 +65,10 @@ export interface Model {
   struggle: boolean
   /** Increments on every new engagement (handy as a React key / animation reset). */
   session: number
+  /** Licence state from main (D26); null until it arrived (then main's own check still applies). */
+  licence: LicenceView | null
+  /** locked: the gesture is over (mouse released or file dropped), so the unlock bubble may take clicks/focus. */
+  lockSettled: boolean
 }
 
 export type Action =
@@ -83,6 +90,10 @@ export type Action =
   | { type: 'DRAG_CANCEL' }
   | { type: 'LEAVE' }
   | { type: 'LEAVE_DONE' }
+  /** Licence state from main (getLicence / onLicenceChanged). */
+  | { type: 'LICENCE'; view: LicenceView }
+  /** Main refused to start this job: no active licence (StartJobResult LICENCE_REQUIRED). */
+  | { type: 'LOCKED'; jobId: string }
 
 export const TIMING = {
   /** File flies into the mouth + jaw snaps shut. */
@@ -103,7 +114,7 @@ export function restState(host: Host): UncleState {
   return host === 'overlay' ? 'hidden' : 'idle'
 }
 
-export function initialModel(host: Host, settings: Settings = DEFAULT_SETTINGS): Model {
+export function initialModel(host: Host, settings: Settings = DEFAULT_SETTINGS, licence: LicenceView | null = null): Model {
   return {
     host,
     state: restState(host),
@@ -124,13 +135,46 @@ export function initialModel(host: Host, settings: Settings = DEFAULT_SETTINGS):
     message: null,
     hamster: false,
     struggle: false,
-    session: 0
+    session: 0,
+    licence,
+    lockSettled: false
   }
 }
 
-/** Reset everything except host/settings/session. */
+/** Reset everything except host/settings/session/licence. */
 function rest(m: Model): Model {
-  return { ...initialModel(m.host, m.settings), session: m.session }
+  return { ...initialModel(m.host, m.settings, m.licence), session: m.session }
+}
+
+/**
+ * Conversions are locked (D26): main said the licence is not active. Unknown (not arrived yet)
+ * counts as unlocked here; main refuses the job anyway and the reply locks the Uncle then.
+ */
+export function isLocked(m: Pick<Model, 'licence'>): boolean {
+  return m.licence !== null && !isUnlocked(m.licence)
+}
+
+/** Show the "Unlock for $9.50" bubble: the locked state, or the Feed Window resting while locked. */
+export function showsUnlock(m: Pick<Model, 'state' | 'licence'>): boolean {
+  return m.state === 'locked' || (m.state === 'idle' && isLocked(m))
+}
+
+function lock(m: Model, settled: boolean): Model {
+  return {
+    ...m,
+    state: 'locked',
+    options: [],
+    hovered: null,
+    held: null,
+    dropping: false,
+    job: null,
+    progress: 0,
+    stage: null,
+    outcome: null,
+    outputPaths: [],
+    message: null,
+    lockSettled: settled
+  }
 }
 
 export function isResting(m: Model): boolean {
@@ -143,7 +187,7 @@ export function isBusy(m: Model): boolean {
 
 /** Engaged and waiting for a drop/click (no drop yet). */
 function isOffering(m: Model): boolean {
-  return m.state === 'appear' || m.state === 'hover' || m.state === 'feedMe'
+  return m.state === 'appear' || m.state === 'hover' || m.state === 'feedMe' || m.state === 'locked'
 }
 
 /** Options are visible (and, for feedMe, clickable). */
@@ -158,6 +202,8 @@ export function visibleOptions(m: Model): ConversionOption[] {
  * the cancel button work by click without focus (QA3-07), see wantsClickThrough.
  */
 export function wantsInteractive(m: Model): boolean {
+  // Unlock bubble (D26): only once the drag is over, so focus never interrupts the OS drag.
+  if (m.state === 'locked') return m.lockSettled
   return m.state === 'feedMe' && m.held !== null
 }
 
@@ -197,6 +243,7 @@ export function uncleMoodAttr(m: Pick<Model, 'hamster' | 'struggle'>): 'hamster'
 }
 
 export function speech(m: Model): string | null {
+  if (showsUnlock(m)) return null
   switch (m.state) {
     case 'feedMe':
       return m.held ? LINES.pickOne : LINES.feedMe
@@ -280,9 +327,17 @@ export function reducer(m: Model, a: Action): Model {
 
     case 'ENGAGE': {
       const canEngage =
-        isResting(m) || m.state === 'leave' || m.state === 'spit' || m.state === 'choke' || m.state === 'refuse' || m.state === 'cancel'
+        isResting(m) ||
+        m.state === 'leave' ||
+        m.state === 'spit' ||
+        m.state === 'choke' ||
+        m.state === 'refuse' ||
+        m.state === 'cancel' ||
+        m.state === 'locked'
       if (!canEngage) return m
       const base: Model = { ...rest(m), session: m.session + 1, dragCount: a.probe.count }
+      // D26: without a licence every path leads to the unlock bubble (blocked files included).
+      if (isLocked(base)) return lock(base, false)
       const cat = categoryForProbe(a.probe)
       if (cat === 'blocked') return refuse(base)
       const options = optionsForProbe(a.probe)
@@ -312,6 +367,7 @@ export function reducer(m: Model, a: Action): Model {
     case 'DROP_RESOLVED': {
       if (!(isOffering(m) || isResting(m))) return m
       const engaged = isResting(m) ? { ...m, session: m.session + 1 } : m
+      if (isLocked(engaged) || m.state === 'locked') return lock(engaged, true)
       if (a.items.length === 0) return choke(engaged, LINES.noPaths)
       if (itemsAreBlocked(a.items)) return refuse(engaged)
       const options = optionsForItems(a.items)
@@ -334,6 +390,7 @@ export function reducer(m: Model, a: Action): Model {
     case 'CHOOSE': {
       if (m.state !== 'feedMe' || !m.held) return m
       if (!m.options.some((o) => o.id === a.optionId)) return m
+      if (isLocked(m)) return lock(m, true)
       return startEat(m, m.held, a.optionId, a.jobId, a.optionId)
     }
 
@@ -367,6 +424,7 @@ export function reducer(m: Model, a: Action): Model {
 
     case 'ESC':
       if (isResting(m) || m.state === 'leave') return m
+      if (m.state === 'locked') return m.host === 'feed' ? rest(m) : leave(m)
       if (isBusy(m)) return cancel(m)
       return leave(m)
 
@@ -375,6 +433,11 @@ export function reducer(m: Model, a: Action): Model {
 
     case 'DISARM':
     case 'DRAG_CANCEL': {
+      // The unlock bubble stays after the mouse-up so it can be clicked (× / Esc close it).
+      if (m.state === 'locked') {
+        if (a.type === 'DRAG_CANCEL' && m.host === 'feed') return rest(m)
+        return m.lockSettled ? m : { ...m, lockSettled: true }
+      }
       if (m.dropping) return m
       if (m.state === 'appear' || m.state === 'hover' || m.state === 'refuse') return leave(m)
       if (m.state === 'feedMe' && !m.held) return leave(m)
@@ -382,12 +445,24 @@ export function reducer(m: Model, a: Action): Model {
     }
 
     case 'LEAVE':
-      if (m.state === 'spit' || m.state === 'choke' || m.state === 'refuse' || m.state === 'cancel') return leave(m)
+      if (m.state === 'spit' || m.state === 'choke' || m.state === 'refuse' || m.state === 'cancel' || m.state === 'locked') return leave(m)
       return m
 
     case 'LEAVE_DONE':
       if (m.state !== 'leave') return m
       return rest(m)
+
+    case 'LICENCE': {
+      const next = { ...m, licence: a.view }
+      // Unlocked while the unlock bubble is shown (activated in Settings): he goes away happy.
+      if (m.state === 'locked' && !isLocked(next)) return m.host === 'feed' ? rest(next) : leave(next)
+      return next
+    }
+
+    case 'LOCKED':
+      if (!m.job || m.job.id !== a.jobId || !isBusy(m)) return m
+      // The renderer asks main for the fresh licence state right after (useUncleSession).
+      return lock(m, true)
   }
   return m
 }

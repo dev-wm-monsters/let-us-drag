@@ -1,6 +1,7 @@
 // Side-effect layer around the pure reducer (overlay/state.ts): HTML5 drag & drop, IPC, timers,
 // sounds and look-target tracking. Shared by the overlay and the Feed Window.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
+import type { LicenceView } from '../../shared/licence'
 import type { OptionId, Settings } from '../../shared/types'
 import type { TestDropPayload } from '../../shared/test-hooks'
 import {
@@ -79,6 +80,10 @@ export interface UncleSession {
   cancelJob(): void
   /** Close him without converting: the × on the held-files chip, same as Esc. */
   dismiss(): void
+  /** Unlock bubble (D26): open the checkout in the default browser, then close the overlay Uncle. */
+  buy(): void
+  /** Unlock bubble (D26): "I have a key" → Settings → Activate, then close the overlay Uncle. */
+  haveKey(): void
 }
 
 export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
@@ -328,7 +333,11 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
     void call('getSettings', null as unknown as Settings).then((s) => {
       if (alive && s) dispatch({ type: 'SETTINGS', settings: s })
     })
+    void call('getLicence', null as unknown as LicenceView).then((v) => {
+      if (alive && v) dispatch({ type: 'LICENCE', view: v })
+    })
     const offs = [
+      subscribe('onLicenceChanged', (v) => dispatch({ type: 'LICENCE', view: v })),
       subscribe('onSettingsChanged', (s) => dispatch({ type: 'SETTINGS', settings: s })),
       subscribe('onJobEvent', (ev) => dispatch({ type: 'JOB_EVENT', event: ev })),
       subscribe('onOverlayArm', (info) => {
@@ -403,7 +412,7 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
     const m = modelRef.current
     const timers: ReturnType<typeof setTimeout>[] = []
     const later = (ms: number, fn: () => void) => timers.push(setTimeout(fn, ms))
-    if (session !== poppedSession.current && (state === 'appear' || state === 'feedMe' || state === 'refuse')) {
+    if (session !== poppedSession.current && (state === 'appear' || state === 'feedMe' || state === 'refuse' || state === 'locked')) {
       poppedSession.current = session
       sounds.play('popIn')
     }
@@ -418,11 +427,21 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
           const started = callStrict('startJob', { id: job.id, optionId: job.optionId, inputPaths: job.inputPaths })
           jobStarts.current.clear()
           jobStarts.current.set(job.id, started)
-          started.catch(() =>
-            dispatch({
-              type: 'JOB_EVENT',
-              event: { type: 'error', jobId: job.id, error: { code: 'INTERNAL', message: '' } }
-            })
+          started.then(
+            (r) => {
+              // D26: main refused (no active licence). Show the unlock bubble and fetch the fresh state.
+              if (r && typeof r === 'object' && r.started === false) {
+                dispatch({ type: 'LOCKED', jobId: job.id })
+                void call('getLicence', null as unknown as LicenceView).then((v) => {
+                  if (v) dispatch({ type: 'LICENCE', view: v })
+                })
+              }
+            },
+            () =>
+              dispatch({
+                type: 'JOB_EVENT',
+                event: { type: 'error', jobId: job.id, error: { code: 'INTERNAL', message: '' } }
+              })
           )
         }
         later(m.settings.hungryMode ? TIMING.eatHungryMs : TIMING.eatMs, () => dispatch({ type: 'EAT_DONE' }))
@@ -515,6 +534,14 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
     void call('revealPath', undefined, path)
   }, [])
   const dismiss = useCallback(() => dispatch({ type: 'ESC' }), [dispatch])
+  const buy = useCallback(() => {
+    void call('openLicenceLink', undefined, 'checkout')
+    if (host === 'overlay') dispatch({ type: 'ESC' })
+  }, [dispatch, host])
+  const haveKey = useCallback(() => {
+    void call('openActivation', undefined)
+    if (host === 'overlay') dispatch({ type: 'ESC' })
+  }, [dispatch, host])
   return {
     model,
     dispatch,
@@ -528,6 +555,8 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
     setOverInteractive,
     feedFiles,
     cancelJob,
-    dismiss
+    dismiss,
+    buy,
+    haveKey
   }
 }

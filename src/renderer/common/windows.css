@@ -360,3 +360,236 @@ kbd {
     transition: none;
   }
 }
+
+/* ——— Settings → Licence (D26) ——— */
+.set-licence.is-unlicensed,
+.set-licence.is-reactivate {
+  background: #fff1d8;
+}
+.set-licence.is-disabled {
+  background: #ffeae3;
+}
+.set-licence-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.set-licence-head h2 {
+  margin: 0;
+  flex: 1;
+}
+.set-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 11px 3px 9px;
+  border: 2.5px solid var(--ink);
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 900;
+  box-shadow: 2px 2px 0 var(--ink);
+  white-space: nowrap;
+}
+.set-pill::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 2px solid var(--ink);
+  background: currentColor;
+}
+.set-pill.is-ok {
+  background: #e3f5da;
+  color: #2c7a3d;
+}
+.set-pill.is-warn {
+  background: #ffe2b8;
+  color: var(--orange-deep);
+}
+.set-pill.is-bad {
+  background: #ffd9cf;
+  color: var(--red);
+}
+.set-tag {
+  padding: 1px 8px;
+  border-radius: 8px;
+  border: 2px dashed rgba(43, 26, 20, 0.45);
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.set-licence-key {
+  margin: 0 0 2px;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+.set-licence-key code {
+  margin-left: 4px;
+  padding: 1px 8px;
+  border-radius: 8px;
+  background: #fff;
+  border: 2px solid rgba(43, 26, 20, 0.2);
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+}
+.set-licence-summary {
+  margin: 2px 0 6px;
+}
+.set-licence-why {
+  margin: 4px 0 8px;
+  padding: 8px 11px;
+  border-radius: 12px;
+  background: #fff;
+  border: 2px solid rgba(43, 26, 20, 0.15);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.set-licence-why.is-bad {
+  border-color: rgba(217, 68, 58, 0.45);
+}
+.set-licence-form {
+  margin: 8px 0 4px;
+}
+.set-licence-label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 14px;
+  font-weight: 800;
+}
+.set-licence-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.set-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+  padding: 8px 12px;
+  border: 3px solid var(--ink);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: inset 2px 2px 0 rgba(43, 26, 20, 0.08);
+  user-select: text;
+}
+.set-input::placeholder {
+  font-family: var(--font);
+  color: #a8968a;
+}
+.set-input:focus,
+.set-input:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--orange) 70%, transparent);
+  outline-offset: 2px;
+}
+.set-input:disabled {
+  opacity: 0.6;
+}
+.set-licence-note {
+  margin: 8px 0 4px;
+  padding: 8px 11px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.set-licence-note.is-ok {
+  background: #e3f5da;
+}
+.set-licence-note.is-bad {
+  background: #ffe4dc;
+}
+.set-licence-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 10px 0 6px;
+}
+.lud-btn-quiet {
+  box-shadow: 2px 3px 0 var(--ink);
+  font-size: 13px;
+  padding: 6px 13px;
+}
+.lud-btn-danger {
+  background: var(--red);
+}
+.set-licence-links {
+  margin: 4px 0 0;
+}
+.set-link {
+  appearance: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.set-link:hover,
+.set-link:focus-visible {
+  color: var(--ink);
+}
+.set-privacy p {
+  margin: 0 0 6px;
+  line-height: 1.45;
+}
+.set-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(43, 26, 20, 0.32);
+  z-index: 20;
+  animation: lud-fade 160ms ease-out both;
+}
+.set-dialog {
+  max-width: 380px;
+  padding: 16px 18px 14px;
+  background: var(--cream);
+  border: 3px solid var(--ink);
+  border-radius: 20px;
+  box-shadow: 5px 6px 0 var(--ink);
+  animation: lud-speech-in-dialog 260ms cubic-bezier(0.2, 1.6, 0.4, 1) both;
+}
+.set-dialog h3 {
+  margin: 0 0 6px;
+  font-size: 17px;
+  font-weight: 900;
+}
+.set-dialog p {
+  margin: 0 0 12px;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.set-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+@keyframes lud-speech-in-dialog {
+  from {
+    transform: scale(0.85);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .set-dialog,
+  .set-dialog-backdrop {
+    animation: none;
+  }
+}

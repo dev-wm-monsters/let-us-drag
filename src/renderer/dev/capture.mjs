@@ -429,6 +429,93 @@ const scenarios = {
       await ctx.close()
     }
   },
+  // ——— licensing (D26): the unlock bubble and Settings → Licence in each state ———
+  async 'licence-overlay'() {
+    for (const [name, licence, files, settle] of [
+      ['licence-overlay-01-unlicensed', 'unlicensed', [PNG], false],
+      ['licence-overlay-02-unlicensed-dropped', 'unlicensed', [PNG], true],
+      ['licence-overlay-03-disabled', 'disabled', [MP4], true],
+      ['licence-overlay-04-reactivate', 'reactivate', [WAV], true]
+    ]) {
+      const { page, ctx, errors } = await open({ view: 'overlay', licence })
+      const c = await center(page)
+      await enterAt(page, c.x, c.y + 40, files)
+      if (settle) await dropAt(page, c.x, c.y + 40, files)
+      await sleep(800)
+      await expectState(page, 'locked')
+      if (settle) {
+        // Hover the Buy bubble so its hover state is visible too.
+        const b = await page.getByTestId('unlock-buy').boundingBox()
+        if (b && licence === 'unlicensed') await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2)
+        await sleep(350)
+      }
+      await shot(page, name)
+      if (errors.some((e) => !e.includes('favicon'))) throw new Error(errors.join('; '))
+      await ctx.close()
+    }
+    const { page, ctx } = await open({ view: 'overlay', licence: 'unlicensed', plain: '1' })
+    const c = await center(page)
+    await enterAt(page, c.x, c.y, [PNG])
+    await sleep(700)
+    await shot(page, 'licence-overlay-05-plain')
+    await ctx.close()
+  },
+  async 'licence-feed'() {
+    for (const [name, licence] of [
+      ['licence-feed-01-unlicensed', 'unlicensed'],
+      ['licence-feed-02-disabled', 'disabled']
+    ]) {
+      const { page, ctx, errors } = await open({ view: 'feed', licence }, { width: 440, height: 600 })
+      await sleep(700)
+      await shot(page, name)
+      if (errors.some((e) => !e.includes('favicon'))) throw new Error(errors.join('; '))
+      await ctx.close()
+    }
+    // A small Feed Window (the drawing scales down).
+    const { page, ctx } = await open({ view: 'feed', licence: 'unlicensed' }, { width: 340, height: 420 })
+    await sleep(700)
+    await shot(page, 'licence-feed-03-small')
+    await ctx.close()
+  },
+  async 'licence-settings'() {
+    const full = async (page, name) => {
+      await sleep(450)
+      await save(await page.screenshot({ fullPage: true }), name)
+    }
+    for (const [name, licence] of [
+      ['licence-settings-01-unlicensed', 'unlicensed'],
+      ['licence-settings-02-active', 'active'],
+      ['licence-settings-03-disabled', 'disabled'],
+      ['licence-settings-04-reactivate', 'reactivate']
+    ]) {
+      const { page, ctx, errors } = await open({ view: 'settings', platform: 'darwin', licence }, { width: 560, height: 900 })
+      await page.waitForSelector('[data-testid="settings-root"][data-loaded="true"]')
+      await full(page, name)
+      if (errors.some((e) => !e.includes('favicon'))) throw new Error(errors.join('; '))
+      await ctx.close()
+    }
+    // Error message (422), then success, then the deactivate confirm dialog.
+    const { page, ctx } = await open({ view: 'settings', platform: 'win32', licence: 'unlicensed' }, { width: 560, height: 900 })
+    await page.waitForSelector('[data-testid="settings-root"][data-loaded="true"]')
+    await page.getByTestId('licence-key').fill('LD7Q-422X-PM3A-1A2B')
+    await page.getByTestId('licence-activate').click()
+    await page.getByTestId('licence-message').waitFor()
+    await full(page, 'licence-settings-05-error-limit')
+    await page.getByTestId('licence-key').fill('LD7Q-NET0-PM3A-1A2B')
+    await page.getByTestId('licence-activate').click()
+    await sleep(100)
+    await full(page, 'licence-settings-06-activating')
+    await sleep(500)
+    await page.getByTestId('licence-key').fill('LD7Q-29XK-PM3A-1A2B')
+    await page.getByTestId('licence-activate').click()
+    await page.getByTestId('licence-status').filter({ hasText: 'Active' }).waitFor()
+    await full(page, 'licence-settings-07-activated')
+    await page.getByTestId('licence-deactivate').click()
+    await page.getByTestId('deactivate-dialog').waitFor()
+    await sleep(350)
+    await shot(page, 'licence-settings-08-deactivate-confirm')
+    await ctx.close()
+  },
   async 'hero'() {
     // README hero: drag → appear → head follows the file → eat → chew → spit (~5–6 s, flat bg, ≤ 480 px).
     const ffmpeg = process.env.LUD_FFMPEG_PATH ?? 'ffmpeg'

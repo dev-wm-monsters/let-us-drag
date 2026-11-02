@@ -1,6 +1,7 @@
 // Settings + onboarding window.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CHARACTERS, type CharacterId, isCharacterId } from '../../shared/characters'
+import type { LicenceView } from '../../shared/licence'
 import type { PlatformStatus, Settings, TriggerKey } from '../../shared/types'
 import { DEFAULT_SETTINGS } from '../../shared/types'
 import type { Point } from '../common/geometry'
@@ -10,6 +11,7 @@ import { characterThumb } from '../characters'
 import { Character } from '../common/character/Character'
 import { usePrefersReducedMotion } from '../common/useUncleSession'
 import { gestureMessage, type Platform, triggerKeyLabels } from './labels'
+import { LicenceCard } from './LicenceCard'
 
 interface ToggleProps {
   k: 'sounds' | 'hungryMode' | 'plainMode' | 'launchAtLogin'
@@ -74,6 +76,7 @@ export function SettingsApp() {
   const [status, setStatus] = useState<PlatformStatus | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [asking, setAsking] = useState(false)
+  const [licence, setLicence] = useState<LicenceView | null>(null)
   const reduced = usePrefersReducedMotion()
   const lookRef = useRef<Point | null>(null)
   const sounds = useMemo(() => createSoundPlayer({ enabled: true }), [])
@@ -91,6 +94,10 @@ export function SettingsApp() {
       setLoaded(true)
     })
     void refreshStatus()
+    void call('getLicence', null as unknown as LicenceView).then((v) => {
+      if (alive && v) setLicence(v)
+    })
+    const offLicence = subscribe('onLicenceChanged', (v) => setLicence(v))
     const off = subscribe('onSettingsChanged', (s) => setSettings(s))
     const onFocus = () => void refreshStatus()
     window.addEventListener('focus', onFocus)
@@ -101,6 +108,7 @@ export function SettingsApp() {
     return () => {
       alive = false
       off()
+      offLicence()
       window.removeEventListener('focus', onFocus)
       window.removeEventListener('mousemove', onMove)
     }
@@ -141,6 +149,8 @@ export function SettingsApp() {
         </div>
       </header>
 
+      <LicenceCard view={licence} onView={setLicence} />
+
       {loaded && !settings.firstRunDone && (
         <section className="set-card set-welcome" data-testid="onboarding">
           <h2>Welcome! Here's the trick:</h2>
@@ -149,7 +159,7 @@ export function SettingsApp() {
               Start dragging any file (from your desktop or a folder).
             </li>
             <li>
-              While dragging, hold <kbd>{labels[settings.triggerKey]}</kbd> — the Uncle pops up, mouth open.
+              While dragging, hold <kbd>{labels[settings.triggerKey]}</kbd>. The Uncle pops up, mouth open.
             </li>
             <li>Drop the file on what you want: PNG, MP3, PDF… He chews and spits the result next to the original.</li>
           </ol>
@@ -245,7 +255,7 @@ export function SettingsApp() {
         <Toggle
           k="hungryMode"
           label="Hungry Mode"
-          desc="Instant gulp — no minimum chewing time."
+          desc="Instant gulp, no minimum chewing time."
           value={settings.hungryMode}
           onChange={onToggle}
         />
@@ -264,7 +274,17 @@ export function SettingsApp() {
           onChange={onToggle}
         />
       </section>
-      <footer className="set-foot">Free &amp; open source · Local only · v0.1</footer>
+      <section className="set-card set-privacy" data-testid="privacy">
+        <h2>Privacy</h2>
+        <p className="set-small">
+          Your files never leave your computer: every conversion runs locally. No analytics, no telemetry.
+        </p>
+        <p className="set-small" data-testid="privacy-licence">
+          Activating needs the internet once. Only the licence key, an anonymous device ID and a device label are sent. After that the
+          app re-checks the licence now and then in the background, and it never locks just because you're offline.
+        </p>
+      </section>
+      <footer className="set-foot">Local only · v0.1 · © Wakeup Monster LLP</footer>
     </div>
   )
 }

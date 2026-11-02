@@ -2,8 +2,9 @@
 // Shared by the overlay window and the Feed Window. Pure presentation driven by the session model.
 import { type CSSProperties, memo, type ReactNode, type RefObject, useCallback, useLayoutEffect, useMemo, useRef } from 'react'
 import { DEFAULT_CHARACTER, isCharacterId } from '../../shared/characters'
+import { LICENCE_PRICE, lockedExplanation, type LicenceStatus, unlockTitle } from '../../shared/licence'
 import type { ConversionOption, DroppedItem, OptionId } from '../../shared/types'
-import { chewCaption, type Model, speech, uncleMoodAttr, visibleOptions } from '../overlay/state'
+import { chewCaption, isLocked, type Model, showsUnlock, speech, uncleMoodAttr, visibleOptions } from '../overlay/state'
 import { heldChipTop, placeHint, ringLayout } from './geometry'
 import { baseName, LINES, shortName } from './text'
 import { Character } from './character/Character'
@@ -75,7 +76,113 @@ export function uncleOffset(width: number, vx: number, vy: number): { x: number;
 }
 
 function moodFor(m: Model): Mood {
+  // Locked (D26): he pops in with his arms up, like 'appear', but nothing is offered.
+  if (m.state === 'locked') return 'appear'
   return m.state
+}
+
+/** Unlock bubbles (D26): where the two round buttons sit on the ring (degrees, 0 = right, 90 = down). */
+export const UNLOCK_BUY_ANGLE = 122
+export const UNLOCK_KEY_ANGLE = 58
+
+/** Distance of the unlock bubbles from the centre: on the ring, or below a big (Feed Window) Uncle. */
+export function unlockDistance(radius: number, uncleWidth: number): number {
+  return Math.round(Math.max(radius, uncleWidth * 0.95))
+}
+
+/**
+ * "Unlock for $9.50" (D26): a big speech bubble above the Uncle with what it costs (or why the
+ * licence is locked), and two round bubbles on the ring, "Buy $9.50" and "I have a key", in the
+ * style of the option bubbles. × / Esc close it (the overlay; the Feed Window rests on it).
+ */
+function UnlockPanel({
+  status,
+  radius,
+  headTopY,
+  closable,
+  onBuy,
+  onKey,
+  onClose,
+  onOver
+}: {
+  status: LicenceStatus
+  radius: number
+  headTopY: number
+  closable: boolean
+  onBuy(): void
+  onKey(): void
+  onClose(): void
+  onOver(on: boolean): void
+}) {
+  const at = (deg: number) => {
+    const a = (deg * Math.PI) / 180
+    return { '--x': `${Math.round(Math.cos(a) * radius)}px`, '--y': `${Math.round(Math.sin(a) * radius)}px` }
+  }
+  const hover = { onPointerEnter: () => onOver(true), onPointerLeave: () => onOver(false), [INTERACTIVE_ATTR]: '' }
+  const explanation = lockedExplanation(status)
+  // The key is still valid when only this computer's activation is gone: activating again is the main action.
+  const keyFirst = status === 'reactivate'
+  return (
+    <div className="lud-unlock" data-testid="unlock" data-licence-status={status}>
+      <div
+        className={`lud-unlock-say${status === 'disabled' ? ' is-disabled' : ''}`}
+        style={{ top: headTopY - 6 }}
+        data-testid="unlock-bubble"
+        role="status"
+        {...hover}
+      >
+        <strong>{unlockTitle(status)}</strong>
+        <span data-testid="unlock-explanation">{explanation}</span>
+        {closable && (
+          <button type="button" className="lud-unlock-close" data-testid="unlock-close" title="Close (Esc)" aria-label="Close" onClick={onClose}>
+            <span aria-hidden>✕</span>
+          </button>
+        )}
+      </div>
+      <button
+        type="button"
+        className={`lud-unlock-btn is-buy${keyFirst ? '' : ' is-primary'}`}
+        style={at(UNLOCK_BUY_ANGLE) as CSSProperties}
+        data-testid="unlock-buy"
+        aria-label={`Buy a licence (${LICENCE_PRICE})`}
+        onClick={onBuy}
+        {...hover}
+      >
+        <span className="lud-unlock-btn-bubble">
+          <span className="lud-unlock-btn-label">
+            Buy
+            <b>{LICENCE_PRICE}</b>
+          </span>
+        </span>
+      </button>
+      <button
+        type="button"
+        className={`lud-unlock-btn is-key${keyFirst ? ' is-primary' : ''}`}
+        style={{ ...at(UNLOCK_KEY_ANGLE), animationDelay: '40ms' } as CSSProperties}
+        data-testid="unlock-key"
+        aria-label={keyFirst ? 'Activate again' : 'I have a key'}
+        onClick={onKey}
+        {...hover}
+      >
+        <span className="lud-unlock-btn-bubble">
+          <span className="lud-unlock-btn-label">
+            {keyFirst ? (
+              <>
+                Activate
+                <br />
+                again
+              </>
+            ) : (
+              <>
+                I have
+                <br />a key
+              </>
+            )}
+          </span>
+        </span>
+      </button>
+    </div>
+  )
 }
 
 /** "Spit it out" button on the progress ring (TPM D3). Angle in degrees (0 = right, -90 = up). */
@@ -330,6 +437,7 @@ export function Stage({ s, testId, uncleWidth, ring, reducedMotion, idleExtra, s
   const out = model.outputPaths[0] ?? ''
   const firstItem = model.items[0]
   const hidden = model.state === 'hidden'
+  const unlock = showsUnlock(model)
   const caption = chewCaption(model)
   const cardRef = useRef<HTMLElement | null>(null)
   const captionRef = useRef<HTMLDivElement | null>(null)
@@ -347,6 +455,7 @@ export function Stage({ s, testId, uncleWidth, ring, reducedMotion, idleExtra, s
       data-plain={plain ? 'true' : 'false'}
       data-character={character}
       data-uncle-mood={uncleMoodAttr(model)}
+      data-licensed={isLocked(model) ? 'false' : 'true'}
       data-stage-scale={ring.scale}
       style={{ '--uncle-scale': scale } as CSSProperties}
     >
@@ -489,7 +598,21 @@ export function Stage({ s, testId, uncleWidth, ring, reducedMotion, idleExtra, s
           </div>
         )}
 
-        {model.state === 'idle' && idleExtra}
+        {unlock && (
+          <UnlockPanel
+            key={`unlock-${model.session}`}
+            status={model.licence?.status ?? 'unlicensed'}
+            radius={unlockDistance(ring.radius, plain ? 0 : uncleWidth)}
+            headTopY={headTop.y}
+            closable={model.state === 'locked'}
+            onBuy={s.buy}
+            onKey={s.haveKey}
+            onClose={s.dismiss}
+            onOver={s.setOverInteractive}
+          />
+        )}
+
+        {model.state === 'idle' && !unlock && idleExtra}
       </div>
     </div>
   )

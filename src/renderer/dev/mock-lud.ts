@@ -5,6 +5,7 @@ import type { TestDropPayload } from '../../shared/test-hooks'
 import type { DroppedItem, JobEvent, JobRequest, OptionId, PlatformStatus, Settings } from '../../shared/types'
 import { DEFAULT_SETTINGS } from '../../shared/types'
 import { isCharacterId } from '../../shared/characters'
+import { LICENCE_MESSAGES, maskLicenceKey, type LicenceActionResult, type LicenceErrorCode, type LicenceStatus, type LicenceView } from '../../shared/licence'
 
 /** Like main's settings store: an unknown character id is ignored (keeps the current one). */
 function applyPatch(settings: Settings, patch: Partial<Settings>): void {
@@ -65,6 +66,37 @@ export interface MockOptions {
   jobs?: 'auto' | 'manual'
   jobMs?: number
   baseDir?: string
+  /** Licence status (D26); default 'active'. */
+  licence?: LicenceStatus
+}
+
+const MOCK_KEY = 'LD7Q-29XK-PM3A-1A2B'
+
+/**
+ * Mock activation (D26), chosen by the pasted key: contains "404" → not found, "403" → not active,
+ * "422" → limit, "NET" → offline, "500" → generic; anything else activates.
+ */
+function mockActivateCode(key: string): LicenceErrorCode | null {
+  if (!key.trim()) return 'EMPTY_KEY'
+  if (/404/.test(key)) return 'NOT_FOUND'
+  if (/403/.test(key)) return 'NOT_ACTIVE'
+  if (/422/.test(key)) return 'LIMIT_REACHED'
+  if (/NET/i.test(key)) return 'NETWORK'
+  if (/500/.test(key)) return 'UNKNOWN'
+  return null
+}
+
+const MOCK_ERROR_TEXT: Record<LicenceErrorCode, string> = {
+  NETWORK: LICENCE_MESSAGES.network,
+  NOT_FOUND: LICENCE_MESSAGES.notFound,
+  NOT_ACTIVE: LICENCE_MESSAGES.notActive,
+  LIMIT_REACHED: LICENCE_MESSAGES.limit,
+  WRONG_PRODUCT: LICENCE_MESSAGES.wrongProduct,
+  EMPTY_KEY: LICENCE_MESSAGES.emptyKey,
+  NO_LICENCE: LICENCE_MESSAGES.noLicence,
+  ALREADY_ACTIVE: LICENCE_MESSAGES.alreadyActive,
+  BUSY: LICENCE_MESSAGES.busy,
+  UNKNOWN: LICENCE_MESSAGES.generic
 }
 
 export interface MockControl {
@@ -84,6 +116,9 @@ export interface MockControl {
   /** E2E-style cancel of the running job (LudTestHooks.cancelActive). */
   testCancel(): void
   changeSettings(patch: Partial<Settings>): void
+  /** D26: switch the mock licence (broadcasts onLicenceChanged like main). */
+  setLicence(status: LicenceStatus): void
+  licence(): LicenceView
   /** Last value set through setOverlayClickThrough (D20); reset to false by arm(), like main does. */
   clickThrough(): boolean
 }
@@ -128,6 +163,20 @@ export function createMockLud(opts: MockOptions = {}): MockControl {
   const testDropCh = new Channel<TestDropPayload>()
   const testFeedDropCh = new Channel<TestDropPayload>()
   const testCancelCh = new Channel<void>()
+  const licenceCh = new Channel<LicenceView>()
+  const makeView = (status: LicenceStatus): LicenceView => ({
+    status,
+    maskedKey: status === 'unlicensed' ? null : maskLicenceKey(MOCK_KEY),
+    activatedAt: status === 'unlicensed' ? null : '2026-10-30T09:12:00.000Z',
+    lastCheckedAt: status === 'unlicensed' ? null : '2026-11-01T18:40:00.000Z',
+    environment: 'test',
+    testMode: true
+  })
+  let licence = makeView(opts.licence ?? 'active')
+  const setLicence = (status: LicenceStatus) => {
+    licence = makeView(status)
+    licenceCh.emit({ ...licence })
+  }
   const calls: MockControl['calls'] = []
   const jobs: JobRequest[] = []
   let mode = opts.jobs ?? 'manual'
@@ -169,8 +218,10 @@ export function createMockLud(opts: MockOptions = {}): MockControl {
     },
     startJob: async (req) => {
       log('startJob', req)
+      if (licence.status !== 'active') return { started: false, reason: 'LICENCE_REQUIRED' }
       jobs.push(req)
       if (mode === 'auto') runAuto(req)
+      return { started: true }
     },
     cancelJob: async (id) => {
       log('cancelJob', id)
@@ -202,6 +253,24 @@ export function createMockLud(opts: MockOptions = {}): MockControl {
       clickThrough = v
     },
     onPlatformStatusChanged: () => () => {},
+    getLicence: async () => ({ ...licence }),
+    activateLicence: async (key): Promise<LicenceActionResult> => {
+      log('activateLicence', key)
+      await new Promise((r) => setTimeout(r, 350))
+      const code = mockActivateCode(key)
+      if (code) return { ok: false, code, message: MOCK_ERROR_TEXT[code], view: { ...licence } }
+      setLicence('active')
+      return { ok: true, message: LICENCE_MESSAGES.activated, view: { ...licence } }
+    },
+    deactivateLicence: async (): Promise<LicenceActionResult> => {
+      log('deactivateLicence')
+      await new Promise((r) => setTimeout(r, 350))
+      setLicence('unlicensed')
+      return { ok: true, message: LICENCE_MESSAGES.deactivated, view: { ...licence } }
+    },
+    openLicenceLink: async (link) => void log('openLicenceLink', link),
+    openActivation: async () => void log('openActivation'),
+    onLicenceChanged: (cb) => licenceCh.on(cb),
     onJobEvent: (cb) => job.on(cb),
     onOverlayArm: (cb) => armCh.on(cb),
     onOverlayDisarm: (cb) => disarmCh.on(() => cb()),
@@ -236,6 +305,8 @@ export function createMockLud(opts: MockOptions = {}): MockControl {
       applyPatch(settings, patch)
       settingsCh.emit({ ...settings })
     },
-    clickThrough: () => clickThrough
+    clickThrough: () => clickThrough,
+    setLicence,
+    licence: () => ({ ...licence })
   }
 }

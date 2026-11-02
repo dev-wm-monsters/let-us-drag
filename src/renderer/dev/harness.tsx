@@ -1,6 +1,6 @@
 // Visual QA harness entry: renders the real overlay / feed / settings UI in plain Chromium with a
 // mocked window.lud. Open via `node src/renderer/dev/serve.mjs` →
-//   http://127.0.0.1:5199/dev/harness.html?view=overlay|feed|settings[&character=sumo-san&plain=1&hungry=1&platform=darwin&reason=mac-permission&firstRun=1&jobs=auto&bg=flat]
+//   http://127.0.0.1:5199/dev/harness.html?view=overlay|feed|settings[&character=sumo-san&plain=1&hungry=1&platform=darwin&reason=mac-permission&firstRun=1&jobs=auto&bg=flat&licence=unlicensed|disabled|reactivate|active]
 // Drive it from Playwright through window.__harness (see src/renderer/dev/capture.mjs).
 import { type CharacterId, isCharacterId } from '../../shared/characters'
 import type { PlatformStatus, Settings } from '../../shared/types'
@@ -45,7 +45,15 @@ const platform: PlatformStatus = {
   ...(q.get('reason') ? { gestureUnavailableReason: q.get('reason') as PlatformStatus['gestureUnavailableReason'] } : {}),
   ...(q.get('platform') === 'darwin' ? { accessibilityTrusted: !q.get('reason') } : {})
 }
-const mock = createMockLud({ settings, platform, jobs: (q.get('jobs') as 'auto' | 'manual') ?? 'manual' })
+const licenceParam = q.get('licence')
+const mock = createMockLud({
+  settings,
+  platform,
+  jobs: (q.get('jobs') as 'auto' | 'manual') ?? 'manual',
+  ...(licenceParam === 'unlicensed' || licenceParam === 'disabled' || licenceParam === 'reactivate' || licenceParam === 'active'
+    ? { licence: licenceParam }
+    : {})
+})
 ;(window as unknown as { lud: unknown }).lud = mock.api
 
 function makeDataTransfer(files: FileSpec[]): DataTransfer {
