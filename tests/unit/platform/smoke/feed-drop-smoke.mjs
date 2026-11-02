@@ -18,7 +18,7 @@ await writeFile(png, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAA
 const app = await electron.launch({
   args: [repo, '--no-sandbox', '--disable-gpu', `--user-data-dir=${join(work, 'userData')}`],
   cwd: repo,
-  env: { ...process.env, LUD_E2E: '1' }
+  env: { ...process.env, LUD_E2E: '1', LUD_E2E_LICENSE: 'active' }
 })
 const stderr = []
 app.process().stderr?.on('data', (d) => stderr.push(String(d)))

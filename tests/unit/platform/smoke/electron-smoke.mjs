@@ -28,6 +28,7 @@ const app = await electron.launch({
   env: {
     ...process.env,
     LUD_E2E: '1',
+    LUD_E2E_LICENSE: 'active', // D26: start licensed (no network)
     LUD_E2E_ENGINE_WORKER: join(here, 'fake-engine-worker.cjs')
   }
 })

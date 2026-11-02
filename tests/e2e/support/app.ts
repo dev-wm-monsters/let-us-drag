@@ -12,7 +12,7 @@ import { safeFileStem } from './naming'
 import { BUILT_MAIN, REPO_ROOT, SCREENS_DIR } from './paths'
 
 /** Uncle states from the DOM contract (src/shared/test-hooks.ts). */
-export type UncleState = 'hidden' | 'appear' | 'hover' | 'feedMe' | 'eat' | 'chew' | 'spit' | 'choke' | 'refuse' | 'leave'
+export type UncleState = 'hidden' | 'appear' | 'hover' | 'feedMe' | 'eat' | 'chew' | 'spit' | 'choke' | 'refuse' | 'leave' | 'cancel' | 'locked'
 
 export type WindowKind = 'overlay' | 'feed' | 'settings'
 
@@ -42,7 +42,13 @@ function appEnv(e2e: boolean, extra: Record<string, string>): Record<string, str
   delete env['ELECTRON_RENDERER_URL']
   delete env['ELECTRON_RUN_AS_NODE']
   delete env['LUD_E2E']
+  delete env['LUD_E2E_LICENSE']
+  delete env['LUD_E2E_DODO_URL']
   if (e2e) env['LUD_E2E'] = '1'
+  // D26: E2E runs start licensed by default (no network), so the conversion specs keep converting.
+  // Licensing specs pass { LUD_E2E_LICENSE: 'none' } (and LUD_E2E_DODO_URL for the mock Dodo server).
+  // Honoured only with LUD_E2E=1 in an unpackaged build.
+  env['LUD_E2E_LICENSE'] = 'active'
   return { ...env, ...extra }
 }
 

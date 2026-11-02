@@ -87,7 +87,7 @@ const stderr = []
 const app = await electron.launch({
   args: [repo, '--no-sandbox', '--disable-gpu', `--user-data-dir=${join(work, 'userData')}`],
   cwd: repo,
-  env: { ...process.env, LUD_E2E: '1', LUD_DEBUG: '1' }
+  env: { ...process.env, LUD_E2E: '1', LUD_E2E_LICENSE: 'active', LUD_DEBUG: '1' }
 })
 app.process().stderr?.on('data', (d) => stderr.push(String(d)))
 const step = (name) => process.stdout.write(`- ${name}\n`)
