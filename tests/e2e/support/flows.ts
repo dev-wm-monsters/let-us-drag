@@ -47,12 +47,13 @@ export async function convertViaDrop(
   testInfo: TestInfo,
   label: string,
   paths: string[],
-  optionId: OptionId
+  optionId: OptionId,
+  jobTimeoutMs?: number
 ): Promise<ConversionResult> {
   const armed = await armOverlay(app, testInfo, label)
   try {
     await hook(app, 'dropFiles', paths, optionId)
-    const event = await waitForTerminalEvent(app, armed.eventsBefore)
+    const event = await waitForTerminalEvent(app, armed.eventsBefore, jobTimeoutMs)
     // Let the renderer reach its reaction state so the watcher screenshots it; the caller asserts it.
     await expectUncleState(armed.overlay, event.type === 'done' ? 'spit' : 'choke').catch(() => undefined)
     return { event, timeline: await recordedTimeline(armed.overlay), overlay: armed.overlay }

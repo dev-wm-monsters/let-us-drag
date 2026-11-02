@@ -448,14 +448,14 @@ describe('chew caption (D15, QA3-02)', () => {
     )
 
   it('shows the model download stage with the download percentage', () => {
-    const m = reducer(chewing(), ev({ type: 'progress', jobId: 'j', progress: 0.2, stage: 'One-time download of my scissors (179 MB AI model)' }))
+    const m = reducer(chewing(), ev({ type: 'progress', jobId: 'j', progress: 0.2, stage: 'One-time download of my scissors (224 MB AI model)' }))
     expect(m.state).toBe('chew')
-    expect(chewCaption(m)).toBe('One-time download of my scissors (179 MB AI model) · 50%')
+    expect(chewCaption(m)).toBe('One-time download of my scissors (224 MB AI model) · 50%')
   })
 
   it('scales the percentage by the number of files (the download runs with the first one)', () => {
-    const m = reducer(chewing(2), ev({ type: 'progress', jobId: 'j', progress: 0.1, stage: 'One-time download of my scissors (179 MB AI model)' }))
-    expect(chewCaption(m)).toBe('One-time download of my scissors (179 MB AI model) · 50%')
+    const m = reducer(chewing(2), ev({ type: 'progress', jobId: 'j', progress: 0.1, stage: 'One-time download of my scissors (224 MB AI model)' }))
+    expect(chewCaption(m)).toBe('One-time download of my scissors (224 MB AI model) · 50%')
   })
 
   it('keeps the last stage text and shows other stages as they come', () => {

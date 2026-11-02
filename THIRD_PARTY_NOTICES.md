@@ -31,7 +31,7 @@ Status as of `develop@c2c4bfa` (2026-10-21, final security review, `docs/securit
 | R-3 | macOS: ship Electron's `LICENSE` and `LICENSES.chromium.html` (electron-builder deletes them from macOS builds). | MIT + Chromium third-party licenses (BSD and others) require the notices in binary distributions. | TPM (`electron-builder.yml`) | **done in config** (`electron-builder.yml` `mac.extraResources` → `Contents/Resources/LICENSE.electron.txt`, `LICENSES.chromium.html`); the macOS output itself was not inspected by Security (CI log only). |
 | R-4 | Ship `docs/security/licenses/onnxruntime-1.30.0-ThirdPartyNotices.txt` and `onnxruntime-1.30.0-LICENSE.txt` in the app. | ONNX Runtime (in `onnxruntime-node` and `onnxruntime-web`) statically includes protobuf, abseil, Eigen and others whose licenses require the notices. | TPM (`electron-builder.yml`) | **done** (`extraResources` → `<resources>/licenses/`; verified in a packaged Linux build). |
 | R-5 | Decide about `buffers@0.1.1` (no license declared anywhere we could reach). | Without a license grant the default is "all rights reserved". | Product owner | open |
-| R-6 | Decide about mirroring the Remove-BG model (section 9). Today it is downloaded from upstream and **not** redistributed. | The license of the pretrained weights is not stated upstream. | Product owner (TPM decision D10) | open (the code still lists our own `models-v1` release URL as a second source; it must stay unpublished until this is decided) |
+| R-6 | Decide about mirroring the ISNet Remove-BG model (section 9; since D25 only the wasm/low-memory fallback). Today it is downloaded from upstream and **not** redistributed. BiRefNet_lite (the default since D25) is MIT and may be mirrored with its notice; not done today. | The license of the pretrained ISNet weights is not stated upstream. | Product owner (TPM decision D10) | open (the code still lists our own `models-v1` release URL as a second source; it must stay unpublished until this is decided) |
 | R-7 | Windows: exclude `DirectML.dll`, `dxcompiler.dll`, `dxil.dll`, or include Microsoft's redistribution terms. | Their terms are not in this file **[unverified]**; the app uses only the CPU execution provider. | TPM + Engine | open |
 | R-8 | FFmpeg patent notice: the shipped FFmpeg builds contain H.264/H.265 (x264, x265, OpenH264) and other patent-encumbered codecs. Copyright licences (GPL, BSD) do not grant patent rights; Cisco's OpenH264 patent coverage applies only to the binaries Cisco itself distributes, not to OpenH264 compiled into another program. | Legal risk assessment for a public, possibly commercial distribution (not a copyright-licence violation). | Product owner | open (decision) |
 
@@ -50,7 +50,8 @@ The recommended `electron-builder.yml` snippet for R-7 is in `docs/security/REVI
 | libuiohook (inside `uiohook-napi`) | uiohook-napi 1.5.5 | **LGPL-3.0-or-later** (libuiohook); MIT (uiohook-napi glue) | native module, outside the asar | 6 |
 | ONNX Runtime (`onnxruntime-node`, `onnxruntime-web`) | 1.30.0 | MIT + third-party notices | native module / WebAssembly, outside the asar | 7 |
 | Skia / `@napi-rs/canvas` | 1.0.13 | MIT + others | **not shipped** (excluded from the package) | 8 |
-| Remove-BG model `isnet-general-use.onnx` | rembg release asset | weights: **not stated upstream** | **not shipped**; downloaded on first use from upstream | 9 |
+| Remove-BG model BiRefNet_lite (`BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx`, default) | author release v1 (epoch 232) | MIT | **not shipped**; downloaded on first use from upstream | 9 |
+| Remove-BG model `isnet-general-use.onnx` (wasm / low-memory fallback) | rembg release asset | weights: **not stated upstream** | **not shipped**; downloaded on first use from upstream | 9 |
 | React, ReactDOM, scheduler, Vite preload helper | 19.3.1 / 19.3.1 / 0.28.0 / Vite 8.3.5 | MIT | compiled into the app's own JavaScript | 10 |
 | Other npm packages (about 250) | see table | MIT, ISC, BSD, Apache-2.0, … | JavaScript inside `app.asar` | 11 |
 
@@ -378,15 +379,58 @@ location, ICU, FreeType, libpng, IJG and others, listed in the package's `sbom.c
 
 ---
 
-## 9. Remove-BG model (not redistributed)
+## 9. Remove-BG models (not redistributed)
 
-The "Remove BG" option uses the ISNet model `isnet-general-use.onnx` (IS-Net, Qin et al., "Highly Accurate
-Dichotomous Image Segmentation", ECCV 2022) as exported to ONNX by the rembg project. **The model is not part of
-the app or of our releases.** On first use (the Remove BG option says beforehand that its first use downloads a
-179 MB AI model, TPM decision D15), the app downloads it from the rembg
-release (`https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-general-use.onnx`, 178 648 008
-bytes) and checks its SHA-256 (`60920e99c45464f2ba57bee2ad08c919a52bbf852739e96947fbb4358c0d964a`) before use
-(TPM decision D10).
+The "Remove BG" option uses one of two models (TPM decision D25). **Neither model is part of the app or of our
+releases.** On first use (the Remove BG option says beforehand that its first use downloads a 224 MB AI model,
+TPM decision D15), the app downloads the model it needs and checks its SHA-256 before use (TPM decision D10).
+
+### 9.1 BiRefNet_lite (default)
+
+Used where ONNX Runtime runs natively and the computer has about 16 GB of memory or more.
+BiRefNet (Peng Zheng, Dehong Gao, Deng-Ping Fan, Li Liu, Jorma Laaksonen, Wanli Ouyang, Nicu Sebe, "Bilateral
+Reference for High-Resolution Dichotomous Image Segmentation", CAAI Artificial Intelligence Research, 2024),
+general-purpose "lite" weights with the Swin-T backbone (epoch 232), in the ONNX export published by the author:
+`https://github.com/ZhengPeng7/BiRefNet/releases/download/v1/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx`
+(224 005 088 bytes, SHA-256 `5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333`). The same bytes
+are also a release asset of the rembg project, which the app tries second.
+
+License: MIT. The repository `https://github.com/ZhengPeng7/BiRefNet` (which publishes these weights as a release
+asset) carries the following license (`LICENSE`, fetched by the Engine developer on 2026-11-02; the README shows
+the same MIT badge and states no separate license for the weights):
+
+```
+MIT License
+
+Copyright (c) 2024 ZhengPeng
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### 9.2 ISNet (fallback)
+
+Used on macOS Intel (WebAssembly runtime, where BiRefNet does not fit into memory) and on computers with less
+memory; the download is then 179 MB.
+The ISNet model `isnet-general-use.onnx` (IS-Net, Qin et al., "Highly Accurate Dichotomous Image Segmentation",
+ECCV 2022) as exported to ONNX by the rembg project, downloaded from the rembg release
+(`https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-general-use.onnx`, 178 648 008
+bytes, SHA-256 `60920e99c45464f2ba57bee2ad08c919a52bbf852739e96947fbb4358c0d964a`).
 
 License status as found by the Engine developer on 2026-10-21 (recorded in `src/engine/tools/model.ts`):
 the DIS code repository (`https://github.com/xuebinqin/DIS`) is Apache-2.0 for "code and evaluation metric";

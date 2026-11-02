@@ -69,14 +69,14 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: node_modules/.cache/lud-models
-          key: isnet-general-use-60920e99
+          key: birefnet-lite-56000243
       - name: Fetch Remove-BG model (Linux only; SHA-256 verified)
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          m=node_modules/.cache/lud-models/isnet-general-use.onnx
+          m=node_modules/.cache/lud-models/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx
           if [ -f "$m" ]; then echo "model restored from cache: $(sha256sum "$m")" | tee ci-logs/model.log; else node scripts/fetch-model.mjs 2>&1 | tee ci-logs/model.log; fi
-          echo "LUD_MODEL_PATH=$GITHUB_WORKSPACE/node_modules/.cache/lud-models/isnet-general-use.onnx" >> "$GITHUB_ENV"
+          echo "LUD_MODEL_PATH=$GITHUB_WORKSPACE/$m" >> "$GITHUB_ENV"
       - name: Unit + engine tests
         shell: bash
         run: set -o pipefail && npm test 2>&1 | tee ci-logs/test.log

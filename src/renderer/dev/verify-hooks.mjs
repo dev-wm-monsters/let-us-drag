@@ -154,10 +154,10 @@ async function phase4Checks() {
     await waitState(page, 'chew')
     check('D20 still click-through while chewing', (await clickThrough(page)) === true)
     // Download stage caption (QA3-02).
-    await emit(page, { type: 'progress', progress: 0.1, stage: 'One-time download of my scissors (179 MB AI model)' })
+    await emit(page, { type: 'progress', progress: 0.1, stage: 'One-time download of my scissors (224 MB AI model)' })
     await page.waitForTimeout(80)
     const cap = await page.locator('[data-testid="stage-text"]').textContent().catch(() => null)
-    check('QA3-02 download stage shown with percentage', cap === 'One-time download of my scissors (179 MB AI model) · 25%', String(cap))
+    check('QA3-02 download stage shown with percentage', cap === 'One-time download of my scissors (224 MB AI model) · 25%', String(cap))
     check('QA3-02 caption inside the window', inside(await rectOf(page, '[data-testid="stage-text"]'), 4))
     // Pointer over the cancel button (forwarded mouse moves on macOS/Windows) → clickable.
     await page.locator('[data-testid="cancel-job"]').hover()

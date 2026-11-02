@@ -41,7 +41,7 @@ Prefer clicking? Open the **Feed Window** from the tray/menu-bar icon and drop f
 Drop several files at once and he stuffs his cheeks like a hamster. Feed him something huge and he'll sweat a bit.
 Feed him an `.exe` and he'll cross his arms. Some things an uncle just won't eat.
 
-*Remove background* uses an AI model that runs on your computer; the first use downloads it once (179 MB).
+*Remove background* uses an AI model that runs on your computer; the first use downloads it once (224 MB; on Intel Macs and computers with less than 16 GB of memory a lighter 179 MB model is used instead).
 
 ## Install (beta)
 

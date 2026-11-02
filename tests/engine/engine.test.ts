@@ -9,7 +9,7 @@ import type { Engine, HostToWorker, WorkerToHost } from '../../src/engine/api'
 import { Limiter, createEngine, describePaths } from '../../src/engine/index'
 import { validateRequest } from '../../src/engine/registry'
 import { createWorkerHandler } from '../../src/engine/worker-protocol'
-import { ensureModel, resetModelCacheState } from '../../src/engine/tools/model'
+import { BIREFNET_LITE, ISNET, MODEL_FILE, ensureModel, resetModelCacheState } from '../../src/engine/tools/model'
 import type { JobEvent, OptionId } from '../../src/shared/types'
 import { audioFile, makeTempDir, sharpImage, textFile } from '../helpers/fixtures'
 import { fakeHtmlToPdf, runOption } from '../helpers/engine'
@@ -262,9 +262,41 @@ describe('model manager', () => {
     resetModelCacheState()
     const cacheDir = join(dir, 'models4')
     await mkdir(cacheDir, { recursive: true })
-    await writeFile(join(cacheDir, 'isnet-general-use.onnx'), 'corrupt')
+    await writeFile(join(cacheDir, MODEL_FILE), 'corrupt')
     const p = await ensureModel({ cacheDir, signal: new AbortController().signal, env: {}, fetchImpl: okFetch, urls: ['https://x'], allowedHosts: ['x'], sha256: sha })
     expect(await readFile(p)).toEqual(body)
+  })
+
+  it('each model downloads to its own file and is checked against its own pin (D25)', async () => {
+    resetModelCacheState()
+    const cacheDir = join(dir, 'models-per-model')
+    const isnet = { ...ISNET, sha256: sha, sizeBytes: body.length, urls: ['https://x/isnet'] }
+    const p = await ensureModel({ cacheDir, model: isnet, signal: new AbortController().signal, env: {}, fetchImpl: okFetch, allowedHosts: ['x'] })
+    expect(p).toBe(join(cacheDir, ISNET.file))
+    expect(ISNET.file).not.toBe(BIREFNET_LITE.file)
+  })
+
+  it('a verified BiRefNet removes an old ISNet download (and its leftovers); ISNet never removes BiRefNet', async () => {
+    resetModelCacheState()
+    const cacheDir = join(dir, 'models-supersede')
+    await mkdir(cacheDir, { recursive: true })
+    await writeFile(join(cacheDir, ISNET.file), 'old isnet')
+    await writeFile(join(cacheDir, `${ISNET.file}.ab12.part`), 'half')
+    await writeFile(join(cacheDir, 'unrelated.txt'), 'keep')
+    const biref = { ...BIREFNET_LITE, sha256: sha, sizeBytes: body.length, urls: ['https://x/biref'] }
+    await ensureModel({ cacheDir, model: biref, signal: new AbortController().signal, env: {}, fetchImpl: okFetch, allowedHosts: ['x'] })
+    expect((await readdir(cacheDir)).sort()).toEqual([BIREFNET_LITE.file, 'unrelated.txt'].sort())
+
+    // The ISNet fallback (wasm / less memory) leaves a BiRefNet file alone.
+    resetModelCacheState()
+    const isnet = { ...ISNET, sha256: sha, sizeBytes: body.length, urls: ['https://x/isnet'] }
+    await ensureModel({ cacheDir, model: isnet, signal: new AbortController().signal, env: {}, fetchImpl: okFetch, allowedHosts: ['x'] })
+    expect((await readdir(cacheDir)).sort()).toEqual([BIREFNET_LITE.file, ISNET.file, 'unrelated.txt'].sort())
+
+    // An already cached BiRefNet, first used in a new process, cleans up too.
+    resetModelCacheState()
+    await ensureModel({ cacheDir, model: biref, signal: new AbortController().signal, env: {}, fetchImpl: () => Promise.reject(new Error('no network')) })
+    expect((await readdir(cacheDir)).sort()).toEqual([BIREFNET_LITE.file, 'unrelated.txt'].sort())
   })
 
   it('LUD_MODEL_PATH overrides the cache (no download)', async () => {

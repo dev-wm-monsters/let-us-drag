@@ -31,6 +31,12 @@ describe('stageCaption (D15, QA3-02)', () => {
     expect(stageCaption(MODEL_DOWNLOAD_STAGE, -1, 1)).toBe(MODEL_DOWNLOAD_STAGE)
   })
 
+  it('download stage of the ISNet fallback model (D25) gets the percentage too', () => {
+    const isnet = 'One-time download of my scissors (179 MB AI model)'
+    expect(stageCaption(isnet, MODEL_DOWNLOAD_SHARE * 0.5, 1)).toBe(`${isnet} · 50%`)
+    expect(stageCaption('One-time download of my scissors (big AI model)', 0.2, 1)).toBe('One-time download of my scissors (big AI model)')
+  })
+
   it('other stages: short text with an ellipsis; nothing without a stage', () => {
     expect(stageCaption('Chewing', 0.5, 1)).toBe('Chewing…')
     expect(stageCaption('Checking the download', 0.4, 1)).toBe('Checking the download…')
@@ -49,7 +55,11 @@ describe('stageCaption (D15, QA3-02)', () => {
   it('matches the engine: same stage text, download = first 40 % of the first file', async () => {
     const jobs = await engine('jobs.ts')
     expect(jobs.MODEL_DOWNLOAD_STAGE).toBe(MODEL_DOWNLOAD_STAGE)
+    const stageFor = jobs.modelDownloadStage as (mb: number) => string
+    expect(stageFor(179)).toBe('One-time download of my scissors (179 MB AI model)')
+    const model = await engine('tools/model.ts')
+    expect(stageFor((model.DEFAULT_MODEL as { sizeMB: number }).sizeMB)).toBe(MODEL_DOWNLOAD_STAGE)
     const src = (await import(/* @vite-ignore */ `../../engine/${'jobs.ts'}?raw`)) as { default: string }
-    expect(src.default).toContain(`progress(p * ${MODEL_DOWNLOAD_SHARE}, MODEL_DOWNLOAD_STAGE)`)
+    expect(src.default).toContain(`progress(p * ${MODEL_DOWNLOAD_SHARE}, downloadStage)`)
   })
 })

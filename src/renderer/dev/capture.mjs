@@ -270,7 +270,7 @@ const scenarios = {
     const p = await optionPoint(page, 'remove-bg')
     await dropAt(page, p.x, p.y, [PNG])
     await sleep(1200)
-    await emit(page, { type: 'progress', progress: 0.4 * 0.42, stage: 'One-time download of my scissors (179 MB AI model)' })
+    await emit(page, { type: 'progress', progress: 0.4 * 0.42, stage: 'One-time download of my scissors (224 MB AI model)' })
     await sleep(400)
     await expectState(page, 'chew')
     await shot(page, 'overlay-21-download')

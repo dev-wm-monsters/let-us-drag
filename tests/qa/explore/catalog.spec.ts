@@ -465,10 +465,10 @@ test('QA-CAT data/archive/any: every option', async ({ lud }, testInfo) => {
   expect(failures, failures.join('\n')).toEqual([])
 })
 
-test('QA-CAT remove-bg with the real ISNet model (LUD_MODEL_PATH)', async ({ lud }, testInfo) => {
+test('QA-CAT remove-bg with the real model (LUD_MODEL_PATH)', async ({ lud }, testInfo) => {
   test.setTimeout(10 * 60_000)
   const model = process.env['QA_MODEL_PATH']
-  test.skip(!model, 'set QA_MODEL_PATH to the verified isnet-general-use.onnx')
+  test.skip(!model, 'set QA_MODEL_PATH to a verified Remove-BG model (scripts/fetch-model.mjs)')
   const app = await lud.launchReady({ env: { LUD_MODEL_PATH: model! } })
   const d = (n: string): string => join(lud.workDir, n)
   const photos = (process.env['QA_PHOTOS'] ?? '').split(',').filter(Boolean)

@@ -13,7 +13,7 @@ import type { AddressInfo } from 'node:net'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { EngineError } from '../../src/engine/errors'
-import { MODEL_FAILURE_MESSAGES, ensureModel, resetModelCacheState } from '../../src/engine/tools/model'
+import { MODEL_FAILURE_MESSAGES, MODEL_FILE, ensureModel, resetModelCacheState } from '../../src/engine/tools/model'
 import { makeTempDir } from '../helpers/fixtures'
 
 const body = Buffer.alloc(64 * 1024)
@@ -104,7 +104,7 @@ describe('model download timeouts (local HTTP server)', () => {
     expect(await readFile(p)).toEqual(body)
     expect(progress.length).toBeGreaterThan(CHUNKS / 2)
     expect(progress.at(-1)).toBe(1)
-    expect(await readdir(cacheDir)).toEqual(['isnet-general-use.onnx'])
+    expect(await readdir(cacheDir)).toEqual([MODEL_FILE])
   })
 
   it('the connect timeout applies per redirect hop, not to the body after it', async () => {
@@ -192,7 +192,7 @@ describe('model download timeouts (local HTTP server)', () => {
     const path = await second!
     expect(await readFile(path)).toEqual(body)
     await sleep(50)
-    expect(await readdir(cacheDir)).toEqual(['isnet-general-use.onnx'])
+    expect(await readdir(cacheDir)).toEqual([MODEL_FILE])
   })
 
   it('an HTTP error says the server is unavailable; a timeout wins over a later source answering 404', async () => {

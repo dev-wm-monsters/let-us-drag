@@ -115,7 +115,7 @@ test('QA-FLOW cancel at eat / early chew / late chew; Esc reachability', async (
 test('QA-FLOW Remove BG first use: real download from upstream, cancel during download, cache reuse', async ({ lud }, testInfo) => {
   test.setTimeout(30 * 60_000)
   const photos = (process.env['QA_PHOTOS'] ?? '').split(',').filter(Boolean)
-  test.skip(photos.length === 0 || process.env['QA_DOWNLOAD'] !== '1', 'set QA_PHOTOS and QA_DOWNLOAD=1 (downloads 179 MB)')
+  test.skip(photos.length === 0 || process.env['QA_DOWNLOAD'] !== '1', 'set QA_PHOTOS and QA_DOWNLOAD=1 (downloads 224 MB)')
   const app = await lud.launchReady({ env: { LUD_MODEL_PATH: '' } })
   const d = (n: string): string => join(lud.workDir, n)
   const photo = d(basename(photos[0]!))
@@ -127,7 +127,7 @@ test('QA-FLOW Remove BG first use: real download from upstream, cancel during do
     const armed = await armOverlay(app, testInfo, 'rmbg-dl-cancel')
     await hook(app, 'dropFiles', [photo], 'remove-bg')
     await expect
-      // Cancel at the FIRST download progress event: on a fast line the whole 179 MB take ~5 s.
+      // Cancel at the FIRST download progress event: on a fast line the whole 224 MB take ~5 s.
       .poll(async () => (await newJobEvents(app, armed.eventsBefore)).some((e) => e.type === 'progress' && /One-time download/.test(e.stage ?? '')), { timeout: 120_000, intervals: [50] })
       .toBe(true)
     const stages = [...new Set((await newJobEvents(app, armed.eventsBefore)).flatMap((e) => (e.type === 'progress' && e.stage ? [e.stage] : [])))]
@@ -143,7 +143,7 @@ test('QA-FLOW Remove BG first use: real download from upstream, cancel during do
     const outs = readdirSync(lud.workDir).filter((n) => n.includes('-nobg'))
     record({
       id: 'FLOW-RMBG-DL-CANCEL',
-      what: 'Remove BG first use: cancel during the 179 MB download',
+      what: 'Remove BG first use: cancel during the 224 MB download',
       result: ev.type === 'error' && ev.error.code === 'CANCELLED' && outs.length === 0 ? 'PASS' : 'FAIL',
       evidence: `stages ${JSON.stringify(stages)}; bubble "${bubble}"; ring "${ringText}"; ${describe(ev)}; models dir after: [${left.join(', ')}]`
     })

@@ -15,7 +15,7 @@ import { sniffImage } from '../../src/engine/sniff'
 import { dedupeTarget, isBombEntry, portableComponent, safeEntryPath } from '../../src/engine/tools/archive'
 import { FORMAT_WHITELIST, classifyFfmpegFailure, ffmpegInput, fileUrl } from '../../src/engine/tools/ffmpeg'
 import { openImage } from '../../src/engine/tools/image'
-import { MODEL_MIRROR_URL, MODEL_UPSTREAM_URL, MODEL_URLS, ensureModel, isAllowedModelUrl, resetModelCacheState } from '../../src/engine/tools/model'
+import { BIREFNET_LITE, ISNET, MODEL_FILE, MODEL_MIRROR_URL, MODEL_UPSTREAM_URL, MODEL_URLS, ensureModel, isAllowedModelUrl, resetModelCacheState } from '../../src/engine/tools/model'
 import { ALLOWED_LOADERS, safeSharp, sharpError } from '../../src/engine/tools/sharp-safe'
 import { scanZipContainer } from '../../src/engine/tools/zipscan'
 import type { DroppedItem } from '../../src/shared/types'
@@ -591,8 +591,12 @@ describe('model download', () => {
   const sha = createHash('sha256').update(body).digest('hex')
   const base = { env: {}, sha256: sha, sizeBytes: body.length }
 
-  it('upstream rembg release first, our (unpublished) mirror only second; https + GitHub hosts only', () => {
-    expect(MODEL_URLS).toEqual([MODEL_UPSTREAM_URL, MODEL_MIRROR_URL])
+  it('ISNet: upstream rembg release first, our (unpublished) mirror only second; BiRefNet: author release, then rembg; https + GitHub hosts only', () => {
+    expect(ISNET.urls).toEqual([MODEL_UPSTREAM_URL, MODEL_MIRROR_URL])
+    expect(MODEL_URLS).toEqual(BIREFNET_LITE.urls)
+    expect(BIREFNET_LITE.urls[0]).toMatch(/^https:\/\/github\.com\/ZhengPeng7\/BiRefNet\/releases\//)
+    expect(BIREFNET_LITE.urls[1]).toMatch(/^https:\/\/github\.com\/danielgatis\/rembg\/releases\//)
+    for (const u of BIREFNET_LITE.urls) expect(isAllowedModelUrl(u)).toBe(true)
     expect(MODEL_UPSTREAM_URL).toMatch(/^https:\/\/github\.com\/danielgatis\/rembg\/releases\//)
     expect(isAllowedModelUrl(MODEL_UPSTREAM_URL)).toBe(true)
     expect(isAllowedModelUrl('https://release-assets.githubusercontent.com/x')).toBe(true)
@@ -676,7 +680,7 @@ describe('model download', () => {
     resetModelCacheState()
     const cacheDir = join(dir, 'm-stall')
     await mkdir(cacheDir, { recursive: true })
-    await writeFile(join(cacheDir, 'isnet-general-use.onnx.dead.part'), 'old')
+    await writeFile(join(cacheDir, `${MODEL_FILE}.dead.part`), 'old')
     const fetchImpl = (async () => new Response(new ReadableStream({ start() {} }), { status: 200 })) as typeof fetch
     await expect(
       ensureModel({ ...base, cacheDir, signal: new AbortController().signal, fetchImpl, urls: ['https://github.com/slow'], stallTimeoutMs: 150 })

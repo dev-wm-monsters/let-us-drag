@@ -372,9 +372,9 @@ function valueInfo(name: string, dims: number[]): Buffer {
 }
 
 /**
- * A tiny ONNX model with the same I/O contract as isnet-general-use:
+ * A tiny ONNX model with the same I/O contract as both Remove-BG models (ISNet, BiRefNet_lite):
  * input "input_image" [1,3,S,S] → output "output_image" [1,1,S,S] = Sigmoid(ReduceMean(x, axis=1)).
- * Hand-encoded protobuf (opset 13), used to exercise the remove-bg pipeline without the 170 MB model.
+ * Hand-encoded protobuf (opset 13), used to exercise the remove-bg pipeline without the 179/224 MB models.
  */
 export function tinyOnnxModel(size = 1024): Buffer {
   const attrAxes = Buffer.concat([fieldBytes(1, 'axes'), fieldVarint(8, 1), fieldVarint(20, 7 /* INTS */)])

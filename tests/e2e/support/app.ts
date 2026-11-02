@@ -106,7 +106,8 @@ export async function newJobEvents(app: ElectronApplication, before: number): Pr
   return (await jobEvents(app)).slice(before)
 }
 
-export async function waitForTerminalEvent(app: ElectronApplication, before: number): Promise<JobEvent> {
+/** `timeoutMs`: longer for slow jobs (Remove BG with BiRefNet took 25-35 s per picture on a 4-core test machine, D25). */
+export async function waitForTerminalEvent(app: ElectronApplication, before: number, timeoutMs: number = T.job): Promise<JobEvent> {
   let terminal: JobEvent | undefined
   await expect
     .poll(
@@ -114,7 +115,7 @@ export async function waitForTerminalEvent(app: ElectronApplication, before: num
         terminal = (await newJobEvents(app, before)).find((e) => e.type === 'done' || e.type === 'error')
         return terminal?.type ?? 'pending'
       },
-      { timeout: T.job, message: 'no done/error JobEvent arrived' }
+      { timeout: timeoutMs, message: 'no done/error JobEvent arrived' }
     )
     .not.toBe('pending')
   return terminal!

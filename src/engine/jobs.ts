@@ -69,8 +69,12 @@ export function assertInputSizes(category: Category, items: readonly DroppedItem
   }
 }
 
-/** Stage text while the Remove-BG model is downloaded once (TPM decision D10). */
-export const MODEL_DOWNLOAD_STAGE = 'One-time download of my scissors (179 MB AI model)'
+/** Stage text while a Remove-BG model of `sizeMB` is downloaded once (TPM decisions D10, D15). */
+export function modelDownloadStage(sizeMB: number): string {
+  return `One-time download of my scissors (${sizeMB} MB AI model)`
+}
+/** The stage text for the default model (BiRefNet_lite, 224 MB, D25). */
+export const MODEL_DOWNLOAD_STAGE = modelDownloadStage(224)
 export const MODEL_VERIFY_STAGE = 'Checking the download'
 
 // --- image ------------------------------------------------------------------------------------
@@ -79,18 +83,23 @@ const imageEach: EachHandler = async (ctx, item, progress) => {
   const dir = dirname(item.path)
   const deps = { signal: ctx.signal, ffmpeg: ctx.ffmpeg }
   if (ctx.req.optionId === 'remove-bg') {
-    const { ensureModel } = await import('./tools/model')
-    const { removeBackground } = await import('./tools/removebg')
+    const { REMOVE_BG_MODELS, ensureModel } = await import('./tools/model')
+    const { removeBackground, removeBgBackend, removeBgModelFor } = await import('./tools/removebg')
     const { openImage } = await import('./tools/image')
+    // The runtime decides the model (D25): BiRefNet needs onnxruntime-node and enough memory.
+    const backend = await removeBgBackend()
+    const model = REMOVE_BG_MODELS[removeBgModelFor(backend, ctx.options.env ?? process.env)]
+    const downloadStage = modelDownloadStage(model.sizeMB)
     const modelPath = await ensureModel({
       cacheDir: ctx.options.cacheDir,
+      model,
       signal: ctx.signal,
       env: ctx.options.env,
-      onProgress: (p) => progress(p * 0.4, MODEL_DOWNLOAD_STAGE),
+      onProgress: (p) => progress(p * 0.4, downloadStage),
       onVerify: () => progress(0.4, MODEL_VERIFY_STAGE)
     })
     const img = await openImage(item.path, item.ext, deps)
-    const png = await removeBackground(img, modelPath, ctx.signal, (p, stage) => progress(p < 0 ? -1 : 0.4 + p * 0.6, stage))
+    const png = await removeBackground(img, modelPath, ctx.signal, (p, stage) => progress(p < 0 ? -1 : 0.4 + p * 0.6, stage), { model: model.id, backend })
     await stageData(ctx, dir, suffixedName(item.name, '-nobg', 'png', { dir }), png)
     return
   }

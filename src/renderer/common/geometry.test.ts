@@ -95,7 +95,7 @@ describe('placeHint (QA3-03: hints inside the window, never over another bubble)
   const bounds = { x: -W / 2 + 8, y: -W / 2 + 8, w: W - 16, h: W - 16 }
   const SIZES = {
     short: { w: 116, h: 26 }, // "Convert to PNG"
-    long: { w: 230, h: 44 } // Remove BG: "Remove the background (first use downloads a 179 MB AI model, once)" wraps to 2 lines
+    long: { w: 230, h: 44 } // Remove BG: "Remove the background (first use downloads a 224 MB AI model, once)" wraps to 2 lines
   }
   const place = (slots: RingSlot[], index: number, size: { w: number; h: number }) =>
     placeHint({

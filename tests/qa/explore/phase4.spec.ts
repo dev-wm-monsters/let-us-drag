@@ -3,10 +3,10 @@
 // Results go to test-results/qa-explore/results.jsonl like the rest of the exploratory suite.
 //
 //   npm run build
-//   LUD_FFMPEG_PATH=/usr/bin/ffmpeg QA_MODEL_PATH=<isnet-general-use.onnx> QA_PHOTOS=<a.jpg,b.jpg> \
+//   LUD_FFMPEG_PATH=/usr/bin/ffmpeg QA_MODEL_PATH=<BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx> QA_PHOTOS=<a.jpg,b.jpg> \
 //   [QA_DOWNLOAD=1] xvfb-run -a -s "-screen 0 1920x1080x24" npx playwright test -c tests/qa/playwright.qa.config.ts phase4
 //
-// QA_DOWNLOAD=1 runs the real first-use model download (179 MB from upstream) with a fresh userData.
+// QA_DOWNLOAD=1 runs the real first-use model download (224 MB BiRefNet from upstream, D25) with a fresh userData.
 import type { ElectronApplication, Page } from '@playwright/test'
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -126,7 +126,7 @@ test('P4 B-046 Remove BG 5x in one session + a batch of 3 photos', async ({ lud 
 // ---------------------------------------------------------------------------------------------
 test('P4 B-047 model download stage text visible during the real first-use download', async ({ lud }, testInfo) => {
   test.setTimeout(30 * 60_000)
-  test.skip(process.env['QA_DOWNLOAD'] !== '1' || (process.env['QA_PHOTOS'] ?? '') === '', 'set QA_DOWNLOAD=1 and QA_PHOTOS (downloads 179 MB)')
+  test.skip(process.env['QA_DOWNLOAD'] !== '1' || (process.env['QA_PHOTOS'] ?? '') === '', 'set QA_DOWNLOAD=1 and QA_PHOTOS (downloads 224 MB)')
   const app = await lud.launchReady({ env: { LUD_MODEL_PATH: '' } })
   const [photo] = await photosIn(lud.workDir)
   const armed = await armOverlay(app, testInfo, 'p4-dl')
@@ -150,7 +150,7 @@ test('P4 B-047 model download stage text visible during the real first-use downl
   }
   await armed.stopScreens()
   await expectOverlayHidesItself(app).catch(() => undefined)
-  const dl = samples.filter((s) => /One-time download of my scissors \(179 MB AI model\)/.test(s.text))
+  const dl = samples.filter((s) => /One-time download of my scissors \(\d+ MB AI model\)/.test(s.text))
   const pcts = dl.map((s) => Number(/(\d+)%/.exec(s.text)?.[1] ?? -1)).filter((n) => n >= 0)
   const allInside = samples.every((s) => s.box !== null && inside(s.box, size.w, size.h))
   const stages = [...new Set(samples.map((s) => s.text.replace(/\d+%/, 'N%')))]

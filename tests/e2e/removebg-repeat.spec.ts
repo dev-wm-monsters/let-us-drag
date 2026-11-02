@@ -2,7 +2,8 @@
 // Before the fix the engine reused one onnxruntime-node InferenceSession and the second run killed
 // the engine process (exit code 5, "The converter stopped unexpectedly"). Plain-Node engine tests
 // cannot see this, so it is checked in the real app: three Remove-BG jobs in one app session.
-// Needs the real model: LUD_MODEL_PATH=<isnet-general-use.onnx> (scripts/fetch-model.mjs; CI sets it on Linux).
+// Needs a real model: LUD_MODEL_PATH=<model.onnx> (scripts/fetch-model.mjs, BiRefNet_lite by default; CI sets
+// it on Linux). BiRefNet took 25-35 s per picture on a 4-core machine (D25): generous per-job timeout.
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import sharp from 'sharp'
@@ -26,10 +27,10 @@ async function subject(path: string, w: number, h: number): Promise<string> {
 }
 
 test.describe('Remove BG repeated in one app session (B-046)', () => {
-  test.skip(!hasModel, 'set LUD_MODEL_PATH to the real isnet-general-use.onnx')
+  test.skip(!hasModel, 'set LUD_MODEL_PATH to a real Remove-BG model (scripts/fetch-model.mjs)')
 
   test('E2E-RMBG-REPEAT three Remove-BG jobs in a row all finish, engine never restarts', { tag: NEEDS_INTEGRATION }, async ({ lud }, testInfo) => {
-    test.setTimeout(360_000)
+    test.setTimeout(720_000)
     const app = await lud.launchReady({ env: { LUD_MODEL_PATH: modelPath! } })
     const log: string[] = []
     app.process().stdout?.on('data', (d: Buffer) => log.push(d.toString()))
@@ -41,7 +42,7 @@ test.describe('Remove BG repeated in one app session (B-046)', () => {
       await subject(join(lud.workDir, 'third.jpg'), 512, 512)
     ]
     for (const [i, input] of inputs.entries()) {
-      const { event } = await convertViaDrop(app, testInfo, `removebg-${i + 1}`, [input], 'remove-bg')
+      const { event } = await convertViaDrop(app, testInfo, `removebg-${i + 1}`, [input], 'remove-bg', 180_000)
       expect(event.type, `job ${i + 1}: ${JSON.stringify(event)}`).toBe('done')
       const [out] = outputsOf(event)
       expect(out).toBe(input.replace(/\.jpg$/, '-nobg.png'))

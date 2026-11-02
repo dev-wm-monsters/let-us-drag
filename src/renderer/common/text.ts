@@ -24,8 +24,10 @@ export function friendlyError(error: Pick<JobError, 'code' | 'message'> | null |
   return FRIENDLY[error.code] ?? FRIENDLY.INTERNAL
 }
 
-/** Engine stage text while the Remove BG model is downloaded once (src/engine/jobs.ts MODEL_DOWNLOAD_STAGE, D10/D15). */
-export const MODEL_DOWNLOAD_STAGE = 'One-time download of my scissors (179 MB AI model)'
+/** Engine stage text while the Remove BG model is downloaded once (src/engine/jobs.ts MODEL_DOWNLOAD_STAGE, D10/D15/D25). */
+export const MODEL_DOWNLOAD_STAGE = 'One-time download of my scissors (224 MB AI model)'
+/** Any model's download stage (src/engine/jobs.ts modelDownloadStage: 224 MB BiRefNet or 179 MB ISNet fallback). */
+const MODEL_DOWNLOAD_STAGE_RE = /^One-time download of my scissors \(\d+ MB AI model\)$/
 /** Share of the first file's progress the engine gives to that download (src/engine/jobs.ts: `p * 0.4`). */
 export const MODEL_DOWNLOAD_SHARE = 0.4
 const MAX_STAGE_CHARS = 80
@@ -39,7 +41,7 @@ export function stageCaption(stage: string | null | undefined, progress: number,
   let text = typeof stage === 'string' ? stage.replace(/\s+/g, ' ').trim() : ''
   if (!text) return null
   if (text.length > MAX_STAGE_CHARS) text = text.slice(0, MAX_STAGE_CHARS - 1).trimEnd() + '…'
-  if (text === MODEL_DOWNLOAD_STAGE) {
+  if (MODEL_DOWNLOAD_STAGE_RE.test(text)) {
     if (!Number.isFinite(progress) || progress < 0) return text
     const pct = Math.floor((progress * Math.max(1, itemCount) * 100) / MODEL_DOWNLOAD_SHARE + 1e-6)
     return `${text} · ${Math.max(0, Math.min(100, pct))}%`

@@ -1,12 +1,24 @@
-// Remove-BG: pre/post-processing math (unit), the full pipeline with a tiny stand-in ONNX model
-// on both runtimes, and — only when env LUD_MODEL_PATH points at the real isnet-general-use.onnx —
-// an integration test with the real model.
-import { existsSync } from 'node:fs'
+// Remove-BG: pre/post-processing math (unit), model choice (D25) and the full pipeline with a tiny
+// stand-in ONNX model on both runtimes. The real-model tests live in ONE file,
+// tests/engine/qa-removebg-repeat.test.ts: a BiRefNet run peaks at ~6.6-7.5 GB, and two test files
+// running it in parallel forks got the second one OOM-killed on a 16 GB machine.
 import { readFile, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import sharp from 'sharp'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { MODEL_INPUT_SIZE, chooseOrtBackend, openModelSessions, postprocess, predictMask, preprocess } from '../../src/engine/tools/removebg'
+import { BIREFNET_LITE, ISNET } from '../../src/engine/tools/model'
+import {
+  BIREFNET_MIN_TOTAL_MEM,
+  MODEL_INPUT_SIZE,
+  chooseOrtBackend,
+  chooseRemoveBgModel,
+  openModelSessions,
+  postprocess,
+  predictMask,
+  preprocess,
+  removeBgModelFor,
+  sessionOptions
+} from '../../src/engine/tools/removebg'
 import { MAGIC, makeTempDir, startsWith, tinyOnnxModel } from '../helpers/fixtures'
 import { convertOk } from '../helpers/engine'
 
@@ -25,7 +37,7 @@ describe('pre/post-processing (matches rembg DisSession)', () => {
   it('divides by the max pixel, subtracts 0.5, NCHW planes', () => {
     // 2×2 image, RGB: pixel values chosen so max = 200
     const rgb = Uint8Array.from([200, 100, 0, 50, 50, 50, 0, 0, 0, 100, 200, 150])
-    const t = preprocess(rgb, 2)
+    const t = preprocess(rgb, 2, 'isnet')
     expect(t).toHaveLength(12)
     const n = 4
     // R plane
@@ -40,21 +52,21 @@ describe('pre/post-processing (matches rembg DisSession)', () => {
   })
 
   it('handles an all-black image without dividing by zero', () => {
-    const t = preprocess(new Uint8Array(12), 2)
+    const t = preprocess(new Uint8Array(12), 2, 'isnet')
     expect(Array.from(t).every((v) => v === -0.5)).toBe(true)
   })
 
   it('rejects wrong buffer sizes', () => {
-    expect(() => preprocess(new Uint8Array(5), 2)).toThrow()
+    expect(() => preprocess(new Uint8Array(5), 2, 'isnet')).toThrow()
   })
 
   it('min-max normalises the prediction to 0..255', () => {
-    const m = postprocess(Float32Array.from([0.2, 0.6, 1.0, 0.4]))
+    const m = postprocess(Float32Array.from([0.2, 0.6, 1.0, 0.4]), 4, 'isnet')
     expect(Array.from(m)).toEqual([0, 127, 255, 63])
   })
 
   it('a flat prediction yields an empty (fully transparent) mask', () => {
-    expect(Array.from(postprocess(Float32Array.from([0.5, 0.5])))).toEqual([0, 0])
+    expect(Array.from(postprocess(Float32Array.from([0.5, 0.5]), 2, 'isnet'))).toEqual([0, 0])
   })
 
   it('picks onnxruntime-node where binaries exist, else wasm', () => {
@@ -66,25 +78,88 @@ describe('pre/post-processing (matches rembg DisSession)', () => {
   })
 })
 
+describe('BiRefNet pre/post-processing (matches rembg BiRefNetSessionGeneral)', () => {
+  it('divides by the max pixel, then ImageNet mean/std per channel, NCHW planes', () => {
+    const rgb = Uint8Array.from([200, 100, 0, 50, 50, 50, 0, 0, 0, 100, 200, 150])
+    const t = preprocess(rgb, 2, 'birefnet-lite')
+    const n = 4
+    expect(t[0]).toBeCloseTo((200 / 200 - 0.485) / 0.229, 5)
+    expect(t[1]).toBeCloseTo((50 / 200 - 0.485) / 0.229, 5)
+    expect(t[n + 3]).toBeCloseTo((200 / 200 - 0.456) / 0.224, 5)
+    expect(t[2 * n + 3]).toBeCloseTo((150 / 200 - 0.406) / 0.225, 5)
+    expect(t[2 * n + 2]).toBeCloseTo((0 - 0.406) / 0.225, 5)
+  })
+
+  it('sigmoid of the logits, then min-max to 0..255 (truncated like numpy astype)', () => {
+    const logits = Float32Array.from([-4, 0, 4, 1])
+    const s = Array.from(logits, (x) => 1 / (1 + Math.exp(-x)))
+    const [mi, ma] = [Math.min(...s), Math.max(...s)]
+    const expected = s.map((v) => Math.floor(((v - mi) / (ma - mi)) * 255))
+    expect(Array.from(postprocess(logits, 4, 'birefnet-lite'))).toEqual(expected)
+    expect(expected).toEqual([0, 127, 255, 188])
+    // Without the sigmoid (ISNet recipe) the same numbers give a different, linear mask.
+    expect(Array.from(postprocess(logits, 4, 'isnet'))).toEqual([0, 127, 255, 159])
+  })
+
+  it('a flat prediction yields an empty mask', () => {
+    expect(Array.from(postprocess(Float32Array.from([3, 3, 3]), 3, 'birefnet-lite'))).toEqual([0, 0, 0])
+  })
+})
+
+describe('model choice (D25)', () => {
+  const GiB = 1024 ** 3
+  it('BiRefNet on onnxruntime-node with enough memory, ISNet on wasm or with less memory', () => {
+    expect(chooseRemoveBgModel('node', 16 * GiB)).toBe('birefnet-lite')
+    expect(chooseRemoveBgModel('node', 15.5 * GiB)).toBe('birefnet-lite') // a 16 GB PC reports a little less
+    expect(chooseRemoveBgModel('node', BIREFNET_MIN_TOTAL_MEM)).toBe('birefnet-lite')
+    expect(chooseRemoveBgModel('node', 8 * GiB)).toBe('isnet')
+    expect(chooseRemoveBgModel('web', 64 * GiB)).toBe('isnet') // wasm32: BiRefNet fails with bad_alloc
+  })
+
+  it('developer override: LUD_MODEL_KIND, else the known file name of LUD_MODEL_PATH, else the machine choice', () => {
+    expect(removeBgModelFor('node', { LUD_MODEL_KIND: 'isnet' }, 64 * GiB)).toBe('isnet')
+    expect(removeBgModelFor('web', { LUD_MODEL_KIND: 'birefnet-lite' }, 1 * GiB)).toBe('birefnet-lite')
+    expect(removeBgModelFor('node', { LUD_MODEL_PATH: `/x/${ISNET.file}` }, 64 * GiB)).toBe('isnet')
+    expect(removeBgModelFor('node', { LUD_MODEL_PATH: `/m/${BIREFNET_LITE.file}` }, 4 * GiB)).toBe('birefnet-lite')
+    expect(removeBgModelFor('node', { LUD_MODEL_PATH: '/x/tiny.onnx', LUD_MODEL_KIND: 'bogus' }, 64 * GiB)).toBe('birefnet-lite')
+    expect(removeBgModelFor('node', {}, 8 * GiB)).toBe('isnet')
+  })
+
+  it('session options: wasm EP on web; BiRefNet on node without arena/mem-pattern; ISNet on node unchanged', () => {
+    expect(sessionOptions('web', 'isnet')).toEqual({ executionProviders: ['wasm'] })
+    expect(sessionOptions('node', 'birefnet-lite')).toEqual({ enableCpuMemArena: false, enableMemPattern: false })
+    expect(sessionOptions('node', 'isnet')).toEqual({})
+  })
+
+  it('the two models are pinned separately and never share a file name', () => {
+    expect(BIREFNET_LITE.file).not.toBe(ISNET.file)
+    expect(BIREFNET_LITE.sha256).toBe('5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333')
+    expect([BIREFNET_LITE.sizeBytes, BIREFNET_LITE.sizeMB]).toEqual([224_005_088, 224])
+    expect([ISNET.sizeBytes, ISNET.sizeMB]).toEqual([178_648_008, 179])
+    expect(Math.round(BIREFNET_LITE.sizeBytes / 1e6)).toBe(BIREFNET_LITE.sizeMB)
+    expect(Math.round(ISNET.sizeBytes / 1e6)).toBe(ISNET.sizeMB)
+  })
+})
+
 describe('pipeline with a tiny stand-in model', () => {
   it.each(['node', 'web'] as const)('onnxruntime-%s runs the model and returns a 1024² mask', async (backend) => {
     const rgb = new Uint8Array(MODEL_INPUT_SIZE * MODEL_INPUT_SIZE * 3)
     for (let i = 0; i < rgb.length; i += 3) rgb[i] = i % 7 === 0 ? 255 : 10 // some contrast
-    const mask = await predictMask(tinyModel, rgb, backend)
+    const mask = await predictMask(tinyModel, rgb, { prefer: backend })
     expect(mask).toHaveLength(MODEL_INPUT_SIZE * MODEL_INPUT_SIZE)
     expect(Math.max(...mask.subarray(0, 4096))).toBe(255)
   })
 
-  it('Remove BG option → "name-nobg.png" with an alpha channel at the original size', async () => {
-    const src = join(dir, 'portrait.jpg')
+  it.each(['isnet', 'birefnet-lite'] as const)('Remove BG option (%s recipe) → "name-nobg.png" with an alpha channel at the original size', async (kind) => {
+    const src = join(dir, `portrait-${kind}.jpg`)
     // left half bright, right half dark: the tiny model's mask follows brightness
     const left = await sharp({ create: { width: 60, height: 80, channels: 3, background: '#ffffff' } }).png().toBuffer()
     await sharp({ create: { width: 120, height: 80, channels: 3, background: '#000000' } })
       .composite([{ input: left, left: 0, top: 0 }])
       .jpeg()
       .toFile(src)
-    const [out] = await convertOk('remove-bg', [src], { options: { env: { LUD_MODEL_PATH: tinyModel } } })
-    expect(basename(out!)).toBe('portrait-nobg.png')
+    const [out] = await convertOk('remove-bg', [src], { options: { env: { LUD_MODEL_PATH: tinyModel, LUD_MODEL_KIND: kind } } })
+    expect(basename(out!)).toBe(`portrait-${kind}-nobg.png`)
     const buf = await readFile(out!)
     expect(startsWith(buf, MAGIC.png)).toBe(true)
     const { data, info } = await sharp(buf).raw().toBuffer({ resolveWithObject: true })
@@ -149,7 +224,7 @@ describe('session lifecycle (D24)', () => {
   it.each(['node', 'web'] as const)('onnxruntime-%s: every run gets a new session that is released afterwards', async (backend) => {
     spied = await spySessions(backend)
     for (let i = 0; i < 3; i++) {
-      expect(await predictMask(tinyModel, rgb(), backend)).toHaveLength(MODEL_INPUT_SIZE * MODEL_INPUT_SIZE)
+      expect(await predictMask(tinyModel, rgb(), { prefer: backend })).toHaveLength(MODEL_INPUT_SIZE * MODEL_INPUT_SIZE)
     }
     expect(spied.creates).toBe(3)
     expect(spied.releases).toBe(3)
@@ -158,18 +233,18 @@ describe('session lifecycle (D24)', () => {
 
   it.each(['node', 'web'] as const)('onnxruntime-%s: a failing run still releases its session', async (backend) => {
     spied = await spySessions(backend)
-    await expect(predictMask(tinyModel, new Uint8Array(7), backend)).rejects.toThrow()
+    await expect(predictMask(tinyModel, new Uint8Array(7), { prefer: backend })).rejects.toThrow()
     expect([spied.creates, spied.releases]).toEqual([1, 1])
     expect(openModelSessions()).toBe(0)
     // and the next run works
-    expect(await predictMask(tinyModel, rgb(), backend)).toHaveLength(MODEL_INPUT_SIZE * MODEL_INPUT_SIZE)
+    expect(await predictMask(tinyModel, rgb(), { prefer: backend })).toHaveLength(MODEL_INPUT_SIZE * MODEL_INPUT_SIZE)
     expect(spied.releases).toBe(2)
   })
 
   it('a job cancelled while the session loads releases it and reports CANCELLED', async () => {
     const ac = new AbortController()
     spied = await spySessions('node', () => ac.abort())
-    await expect(predictMask(tinyModel, rgb(), 'node', ac.signal)).rejects.toMatchObject({ code: 'CANCELLED' })
+    await expect(predictMask(tinyModel, rgb(), { prefer: 'node', signal: ac.signal })).rejects.toMatchObject({ code: 'CANCELLED' })
     expect([spied.creates, spied.releases]).toEqual([1, 1])
     expect(openModelSessions()).toBe(0)
   })
@@ -178,21 +253,21 @@ describe('session lifecycle (D24)', () => {
     const ac = new AbortController()
     ac.abort()
     spied = await spySessions('node')
-    await expect(predictMask(tinyModel, rgb(), 'node', ac.signal)).rejects.toMatchObject({ code: 'CANCELLED' })
+    await expect(predictMask(tinyModel, rgb(), { prefer: 'node', signal: ac.signal })).rejects.toMatchObject({ code: 'CANCELLED' })
     expect(spied.creates).toBe(0)
   })
 
   it('a broken model file → TOOL_FAILED, nothing left open', async () => {
     const bad = join(dir, 'broken.onnx')
     await writeFile(bad, Buffer.from('not an onnx model'))
-    await expect(predictMask(bad, rgb(), 'node')).rejects.toMatchObject({ code: 'TOOL_FAILED' })
+    await expect(predictMask(bad, rgb(), { prefer: 'node' })).rejects.toMatchObject({ code: 'TOOL_FAILED' })
     expect(openModelSessions()).toBe(0)
-    expect(await predictMask(tinyModel, rgb(), 'node')).toHaveLength(MODEL_INPUT_SIZE * MODEL_INPUT_SIZE)
+    expect(await predictMask(tinyModel, rgb(), { prefer: 'node' })).toHaveLength(MODEL_INPUT_SIZE * MODEL_INPUT_SIZE)
   })
 
   it('parallel jobs run inference one at a time (one session in memory)', async () => {
     spied = await spySessions('node')
-    const runs = await Promise.all([1, 2, 3].map(() => predictMask(tinyModel, rgb(), 'node')))
+    const runs = await Promise.all([1, 2, 3].map(() => predictMask(tinyModel, rgb(), { prefer: 'node' })))
     expect(runs).toHaveLength(3)
     expect(spied.creates).toBe(3)
     expect(spied.maxOpen).toBe(1)
@@ -211,34 +286,3 @@ describe('session lifecycle (D24)', () => {
     expect(openModelSessions()).toBe(0)
   })
 })
-
-const realModel = process.env['LUD_MODEL_PATH']
-const hasRealModel = !!realModel && existsSync(realModel)
-
-describe.skipIf(!hasRealModel)('real isnet-general-use model (set LUD_MODEL_PATH to run)', () => {
-  it('cuts a bright subject out of a dark background', async () => {
-    const src = join(dir, 'subject.png')
-    // Raw pixels, not SVG: the engine blocks libvips' SVG loader process-wide (SEC-50).
-    const [w, h] = [400, 300]
-    const px = Buffer.alloc(w * h * 3)
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const inside = (x - 200) ** 2 + (y - 150) ** 2 <= 90 ** 2
-        px.set(inside ? [0xf0, 0xc0, 0x20] : [0x20, 0x28, 0x30], (y * w + x) * 3)
-      }
-    }
-    await sharp(px, { raw: { width: w, height: h, channels: 3 } }).png().toFile(src)
-    const [out] = await convertOk('remove-bg', [src], { options: { env: { LUD_MODEL_PATH: realModel } } })
-    const { data, info } = await sharp(out!).raw().toBuffer({ resolveWithObject: true })
-    expect(info.channels).toBe(4)
-    const alphaAt = (x: number, y: number): number => data[(y * info.width + x) * 4 + 3]!
-    expect(alphaAt(200, 150)).toBeGreaterThan(128) // subject kept
-    expect(alphaAt(10, 10)).toBeLessThan(128) // background removed
-  })
-})
-
-if (!hasRealModel) {
-  describe('real model test', () => {
-    it.skip('skipped: env LUD_MODEL_PATH is not set to the real isnet-general-use.onnx (run scripts/fetch-model.mjs)', () => undefined)
-  })
-}

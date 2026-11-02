@@ -1,16 +1,28 @@
 // Remove-BG model manager: one-time download on first use (TPM decision D10), streaming,
 // SHA-256 verified, atomic rename into the cache, shared by concurrent jobs.
 //
-// Model: ISNet "isnet-general-use" (IS-Net, Qin et al., "Highly Accurate Dichotomous Image
-// Segmentation", ECCV 2022), ONNX export as distributed by the rembg project.
-// License notes (verified 2026-10-21 from primary sources, see the engine report):
-//   - DIS repository (github.com/xuebinqin/DIS): "Our code and evaluation metric use Apache License 2.0"
-//     (LICENSE.md = Apache-2.0). The README states no separate license for the pretrained weights.
-//   - rembg (github.com/danielgatis/rembg), which hosts the ONNX file: MIT.
-//   - The upstream file matches rembg's pinned MD5 fc16ebd8b0c10d971d3513d564d01e29.
-// Because the weights' license is not stated upstream, we do NOT mirror them (D10): the upstream
-// rembg release asset is the primary source. Our own release URL is only tried second, in case the
-// product owner decides to mirror later; today it answers 404 at once.
+// Two pinned models (TPM decision D25); removebg.ts `chooseRemoveBgModel` picks one per machine:
+//
+// 1. BiRefNet_lite, general (Zheng et al., "Bilateral Reference for High-Resolution Dichotomous Image
+//    Segmentation", CAAI AIR 2024; Swin-T backbone, epoch 232): the official ONNX export from the
+//    author's GitHub release. Code and weights: MIT (github.com/ZhengPeng7/BiRefNet, LICENSE).
+//    The same bytes are a rembg release asset (rembg's "birefnet-general-lite", pinned there with
+//    MD5 4fab47adc4ff364be1713e97b7e66334; verified byte-identical on 2026-11-02): second source.
+//    Used with onnxruntime-node on machines with enough memory: one 1024×1024 inference peaked at
+//    ~6.6 GB RSS with our session options (~7.5 GB with ORT defaults), measured (D25).
+// 2. ISNet "isnet-general-use" (IS-Net, Qin et al., "Highly Accurate Dichotomous Image
+//    Segmentation", ECCV 2022), ONNX export as distributed by the rembg project. Kept for the
+//    onnxruntime-web (wasm) fallback, where BiRefNet fails with std::bad_alloc (wasm32: 4 GB at
+//    most), and for machines with less memory. License notes (verified 2026-10-21 from primary sources):
+//      - DIS repository (github.com/xuebinqin/DIS): "Our code and evaluation metric use Apache
+//        License 2.0" (LICENSE.md = Apache-2.0). The README states no license for the pretrained weights.
+//      - rembg (github.com/danielgatis/rembg), which hosts the ONNX file: MIT.
+//      - The upstream file matches rembg's pinned MD5 fc16ebd8b0c10d971d3513d564d01e29.
+//    Because the weights' license is not stated upstream, we do NOT mirror them (D10): the upstream
+//    rembg release asset is the primary source. Our own release URL is only tried second, in case
+//    the product owner decides to mirror later; today it answers 404 at once.
+//
+// Each model has its own file name, so a cached file is only ever checked against its own hash.
 //
 // Network rules (SEC-120/121): https only, hard-coded URLs, redirects followed manually and only to
 // GitHub's release hosts, a byte cap (the pinned size), a connect timeout (response headers only)
@@ -25,31 +37,82 @@ import { pipeline } from 'node:stream/promises'
 import { EngineError, FRIENDLY_MESSAGES, cancelledOrTimeout, errMessage } from '../errors'
 import { MODEL_CONNECT_TIMEOUT_MS, MODEL_STALL_TIMEOUT_MS } from '../limits'
 
-export const MODEL_FILE = 'isnet-general-use.onnx'
-/** Primary (D10): the upstream rembg release asset. */
-export const MODEL_UPSTREAM_URL = 'https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-general-use.onnx'
-/** Optional secondary: our own release, used only if it ever exists (not published today, D10). */
-export const MODEL_MIRROR_URL = 'https://github.com/dev-wm-monsters/let-us-drag/releases/download/models-v1/isnet-general-use.onnx'
-/** Sources in the order they are tried. */
-export const MODEL_URLS: readonly string[] = [MODEL_UPSTREAM_URL, MODEL_MIRROR_URL]
-/** @deprecated kept for older imports: the primary URL. */
-export const MODEL_URL = MODEL_UPSTREAM_URL
+export type RemoveBgModelId = 'birefnet-lite' | 'isnet'
 
-/** Hosts a download may start at or be redirected to (GitHub release downloads). */
-export const MODEL_ALLOWED_HOSTS: readonly string[] = ['github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com']
-const MAX_REDIRECTS = 5
+/** A pinned Remove-BG model: where it comes from and what its bytes must be. */
+export interface RemoveBgModel {
+  id: RemoveBgModelId
+  /** File name in the cache folder (unique per model). */
+  file: string
+  /** Sources in the order they are tried. */
+  urls: readonly string[]
+  sha256: string
+  sizeBytes: number
+  /** Size the user is told before and during the one-time download (D15), in MB (10^6 bytes). */
+  sizeMB: number
+}
+
+/**
+ * >>> TPM-PINNED CONSTANT <<<
+ * SHA-256 of BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx. Computed by the engine dev on
+ * 2026-11-02 from the author's release asset (224,005,088 bytes); the rembg copy is byte-identical
+ * (MD5 4fab47adc4ff364be1713e97b7e66334 = rembg's own pin). Re-check with `node scripts/fetch-model.mjs`.
+ */
+export const BIREFNET_LITE_SHA256 = '5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333'
 
 /**
  * >>> TPM-PINNED CONSTANT <<<
  * SHA-256 of isnet-general-use.onnx. Computed by the engine dev on 2026-10-21 from the upstream
  * rembg asset (178,648,008 bytes; MD5 fc16ebd8b0c10d971d3513d564d01e29 = rembg's own pin).
- * Re-check with `node scripts/fetch-model.mjs`.
+ * Re-check with `node scripts/fetch-model.mjs --model isnet`.
  */
-export const MODEL_SHA256 = '60920e99c45464f2ba57bee2ad08c919a52bbf852739e96947fbb4358c0d964a'
-export const MODEL_SIZE_BYTES = 178_648_008
+export const ISNET_SHA256 = '60920e99c45464f2ba57bee2ad08c919a52bbf852739e96947fbb4358c0d964a'
+
+export const BIREFNET_LITE: RemoveBgModel = {
+  id: 'birefnet-lite',
+  file: 'BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx',
+  urls: [
+    // Primary: the author's own release (MIT).
+    'https://github.com/ZhengPeng7/BiRefNet/releases/download/v1/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx',
+    // Secondary: the byte-identical file on the rembg release.
+    'https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx'
+  ],
+  sha256: BIREFNET_LITE_SHA256,
+  sizeBytes: 224_005_088,
+  sizeMB: 224
+}
+
+/** Primary ISNet source (D10): the upstream rembg release asset. */
+export const MODEL_UPSTREAM_URL = 'https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-general-use.onnx'
+/** Optional secondary ISNet source: our own release, used only if it ever exists (not published today, D10). */
+export const MODEL_MIRROR_URL = 'https://github.com/dev-wm-monsters/let-us-drag/releases/download/models-v1/isnet-general-use.onnx'
+
+export const ISNET: RemoveBgModel = {
+  id: 'isnet',
+  file: 'isnet-general-use.onnx',
+  urls: [MODEL_UPSTREAM_URL, MODEL_MIRROR_URL],
+  sha256: ISNET_SHA256,
+  sizeBytes: 178_648_008,
+  sizeMB: 179
+}
+
+export const REMOVE_BG_MODELS: Readonly<Record<RemoveBgModelId, RemoveBgModel>> = { 'birefnet-lite': BIREFNET_LITE, isnet: ISNET }
+
+/** The default model (D25); the MODEL_* constants describe it. */
+export const DEFAULT_MODEL = BIREFNET_LITE
+export const MODEL_FILE = DEFAULT_MODEL.file
+export const MODEL_URLS: readonly string[] = DEFAULT_MODEL.urls
+export const MODEL_SHA256 = DEFAULT_MODEL.sha256
+export const MODEL_SIZE_BYTES = DEFAULT_MODEL.sizeBytes
+
+/** Hosts a download may start at or be redirected to (GitHub release downloads). */
+export const MODEL_ALLOWED_HOSTS: readonly string[] = ['github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com']
+const MAX_REDIRECTS = 5
 
 export interface ModelOptions {
   cacheDir: string
+  /** Which pinned model (default DEFAULT_MODEL). */
+  model?: RemoveBgModel
   signal: AbortSignal
   /** Download progress 0..1 (only called while downloading). */
   onProgress?: (p: number) => void
@@ -58,9 +121,10 @@ export interface ModelOptions {
   env?: NodeJS.ProcessEnv
   /** Injectable for tests. */
   fetchImpl?: typeof fetch
+  /** Test overrides (default: the model's own sources and hash). */
   urls?: readonly string[]
   sha256?: string
-  /** Exact expected size (defaults to MODEL_SIZE_BYTES with the pinned hash, else unchecked). */
+  /** Exact expected size (defaults to the model's size with its pinned hash, else unchecked). */
   sizeBytes?: number
   allowedHosts?: readonly string[]
   connectTimeoutMs?: number
@@ -104,17 +168,43 @@ export async function ensureModel(opts: ModelOptions): Promise<string> {
     if (!existsSync(local)) throw new EngineError('MODEL_DOWNLOAD_FAILED', 'The background-removal model file is missing.', `LUD_MODEL_PATH=${local}`)
     return local
   }
-  const expected = opts.sha256 ?? MODEL_SHA256
-  const target = join(opts.cacheDir, MODEL_FILE)
+  const model = opts.model ?? DEFAULT_MODEL
+  const expected = opts.sha256 ?? model.sha256
+  const target = join(opts.cacheDir, model.file)
   if (verified.has(target) && existsSync(target)) return target
   if (!inflight.has(target) && existsSync(target)) {
     if ((await sha256File(target)) === expected) {
       verified.add(target)
+      await removeSupersededModels(opts.cacheDir, model)
       return target
     }
     await rm(target, { force: true }) // corrupted or outdated: fetch again
   }
-  return joinDownload(target, expected, opts)
+  const path = await joinDownload(target, expected, opts)
+  await removeSupersededModels(opts.cacheDir, model)
+  return path
+}
+
+/**
+ * Once BiRefNet is verified on a machine that uses it, the ISNet file an earlier version
+ * downloaded (179 MB) is not needed there any more: delete it and its download leftovers (best
+ * effort, never fails the job). Never the other way round: a machine on the ISNet fallback may
+ * use BiRefNet again later, and each model has its own file, so nothing else is touched.
+ */
+async function removeSupersededModels(cacheDir: string, model: RemoveBgModel): Promise<void> {
+  if (model.id !== 'birefnet-lite') return
+  const stale = ISNET.file
+  const stalePath = join(cacheDir, stale)
+  if (inflight.has(stalePath)) return
+  let names: string[]
+  try {
+    names = await readdir(cacheDir)
+  } catch {
+    return
+  }
+  const doomed = names.filter((n) => n === stale || (n.startsWith(`${stale}.`) && n.endsWith('.part')))
+  await Promise.all(doomed.map((n) => rm(join(cacheDir, n), { force: true }).catch(() => undefined)))
+  verified.delete(stalePath)
 }
 
 /** Start or join the shared download of `target`, leaving it (without stopping it for others) on abort. */
@@ -168,14 +258,14 @@ function joinDownload(target: string, expected: string, opts: ModelOptions): Pro
 }
 
 /** Remove leftovers of interrupted downloads ("<file>.<random>.part"). Only one download runs per target. */
-async function cleanPartials(cacheDir: string): Promise<void> {
+async function cleanPartials(cacheDir: string, file: string): Promise<void> {
   let names: string[]
   try {
     names = await readdir(cacheDir)
   } catch {
     return
   }
-  await Promise.all(names.filter((n) => n.startsWith(`${MODEL_FILE}.`) && n.endsWith('.part')).map((n) => rm(join(cacheDir, n), { force: true }).catch(() => undefined)))
+  await Promise.all(names.filter((n) => n.startsWith(`${file}.`) && n.endsWith('.part')).map((n) => rm(join(cacheDir, n), { force: true }).catch(() => undefined)))
 }
 
 /** Why one source failed; decides which friendly message the user finally sees. */
@@ -205,7 +295,7 @@ const KIND_PRIORITY: readonly FailureKind[] = ['timeout', 'integrity', 'network'
  * fetch with manual, allow-listed redirects and a connect timeout that only covers waiting for the
  * response headers of each hop. Once headers arrive the timer is cleared, so the body stream is
  * governed only by `signal` (user cancel) and the caller's stall timeout, never by a wall clock:
- * a slow but steady 179 MB download must not be cut off after `connectTimeoutMs`.
+ * a slow but steady 224 MB download must not be cut off after `connectTimeoutMs`.
  */
 async function fetchAllowed(url: string, opts: ModelOptions, signal: AbortSignal): Promise<Response> {
   const doFetch = opts.fetchImpl ?? fetch
@@ -239,10 +329,11 @@ async function fetchAllowed(url: string, opts: ModelOptions, signal: AbortSignal
 }
 
 async function download(target: string, expected: string, opts: ModelOptions, signal: AbortSignal, onProgress: (p: number) => void): Promise<string> {
-  const urls = opts.urls ?? MODEL_URLS
-  const size = opts.sizeBytes ?? (expected === MODEL_SHA256 ? MODEL_SIZE_BYTES : undefined)
+  const model = opts.model ?? DEFAULT_MODEL
+  const urls = opts.urls ?? model.urls
+  const size = opts.sizeBytes ?? (expected === model.sha256 ? model.sizeBytes : undefined)
   await mkdir(opts.cacheDir, { recursive: true })
-  await cleanPartials(opts.cacheDir)
+  await cleanPartials(opts.cacheDir, model.file)
   const failures: string[] = []
   const kinds = new Set<FailureKind>()
   for (const url of urls) {
@@ -306,9 +397,9 @@ async function download(target: string, expected: string, opts: ModelOptions, si
 }
 
 /** Size of the cached model if present (for UI/diagnostics). */
-export async function cachedModelSize(cacheDir: string): Promise<number | undefined> {
+export async function cachedModelSize(cacheDir: string, model: RemoveBgModel = DEFAULT_MODEL): Promise<number | undefined> {
   try {
-    return (await stat(join(cacheDir, MODEL_FILE))).size
+    return (await stat(join(cacheDir, model.file))).size
   } catch {
     return undefined
   }
