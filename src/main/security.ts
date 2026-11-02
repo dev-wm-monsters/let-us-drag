@@ -110,3 +110,25 @@ export function disableSpellChecker(ses: Pick<Session, 'setSpellCheckerEnabled' 
   ses.setSpellCheckerEnabled(false)
   ses.setSpellCheckerDictionaryDownloadURL(NO_DICTIONARY_URL)
 }
+
+/**
+ * D26: the in-memory session used only for the licence calls to Dodo (main process, `ses.fetch`, so
+ * the OS proxy settings apply). Every request to another origin is cancelled; no cookies are kept
+ * (in-memory partition), no permissions, no downloads.
+ */
+export function isAllowedLicenceRequest(url: string, allowedOrigin: string): boolean {
+  try {
+    return new URL(url).origin === new URL(allowedOrigin).origin
+  } catch {
+    return false
+  }
+}
+
+export function restrictLicenceSession(ses: Session, allowedOrigin: string, log?: (message: string) => void): void {
+  hardenSession(ses)
+  ses.webRequest.onBeforeRequest((details, callback) => {
+    const ok = isAllowedLicenceRequest(details.url, allowedOrigin)
+    if (!ok) log?.(`licence session: blocked request: ${details.url.slice(0, 120)}`)
+    callback({ cancel: !ok })
+  })
+}

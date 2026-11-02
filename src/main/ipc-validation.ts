@@ -4,6 +4,7 @@ import { stat } from 'node:fs/promises'
 import { basename, extname, isAbsolute, normalize } from 'node:path'
 import { z } from 'zod'
 import { OPTIONS } from '../shared/catalog'
+import { LICENCE_LINKS, MAX_LICENCE_KEY_LENGTH, type LicenceLink } from '../shared/licence'
 import type { DroppedItem, JobRequest, OptionId } from '../shared/types'
 
 export const MAX_INPUTS = 500
@@ -56,6 +57,12 @@ export const jobRequestSchema = z
   .strict()
 
 export const booleanSchema = z.boolean()
+
+/** A pasted licence key (D26): a string of bounded length; main trims it. Empty is allowed ("Activate again"). */
+export const licenceKeySchema = z.string().max(MAX_LICENCE_KEY_LENGTH * 4)
+
+/** The links the renderer may ask main to open (never a URL from the page). */
+export const licenceLinkSchema = z.enum(LICENCE_LINKS as [LicenceLink, ...LicenceLink[]])
 
 /** Friendly error for the renderer; ipcMain.handle forwards `message`. */
 export class IpcInputError extends Error {

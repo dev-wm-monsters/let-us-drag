@@ -77,7 +77,12 @@ describe('IPC policy (SEC-11, SEC-12)', () => {
       IPC.overlayDone,
       IPC.overlayEngaged,
       IPC.openFeedWindow,
-      IPC.openSettingsWindow
+      IPC.openSettingsWindow,
+      IPC.getLicence,
+      IPC.activateLicence,
+      IPC.deactivateLicence,
+      IPC.openLicenceLink,
+      IPC.openActivation
     ]
     expect(Object.keys(IPC_ALLOWLIST).sort()).toEqual([...invokeChannels].sort())
   })
@@ -278,7 +283,13 @@ describe('test hooks (TPM D2/D3)', () => {
       sendFeedDrop: async (p) => {
         log.push(`feedDrop:${p.paths.join(',')}:${p.optionId}`)
       },
-      sendCancel: () => log.push('cancel')
+      sendCancel: () => log.push('cancel'),
+      licence: {
+        view: () => ({ status: 'active', maskedKey: null, activatedAt: null, lastCheckedAt: null, environment: 'test', testMode: true }),
+        recheckNow: async () => 'valid',
+        resume: () => log.push('resume'),
+        openedUrls: () => []
+      }
     }
   }
   it('dropFilesOnFeed validates and forwards; cancelActive forwards', async () => {

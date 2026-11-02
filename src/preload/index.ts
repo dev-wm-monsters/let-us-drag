@@ -10,6 +10,7 @@ import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'ele
 import { IPC, type LudApi, type LudTestApi, type OverlayArmInfo } from '../shared/api'
 import { DEBUG_DRAG_CHANNEL, DEBUG_RENDERER_ARG } from '../shared/debug'
 import { TEST_CANCEL_CHANNEL, TEST_DROP_CHANNEL, TEST_FEED_DROP_CHANNEL, type TestDropPayload } from '../shared/test-hooks'
+import type { LicenceView } from '../shared/licence'
 import type { JobEvent, PlatformStatus, Settings } from '../shared/types'
 
 const E2E = process.argv.includes('--lud-e2e')
@@ -47,6 +48,12 @@ const api: LudApi & LudTestApi = {
   openSettingsWindow: () => ipcRenderer.invoke(IPC.openSettingsWindow),
   setOverlayClickThrough: (clickThrough) => ipcRenderer.invoke(IPC.overlayClickThrough, clickThrough),
   onPlatformStatusChanged: (cb) => subscribe<PlatformStatus>(IPC.platformStatusChanged, cb),
+  getLicence: () => ipcRenderer.invoke(IPC.getLicence),
+  activateLicence: (key) => ipcRenderer.invoke(IPC.activateLicence, key),
+  deactivateLicence: () => ipcRenderer.invoke(IPC.deactivateLicence),
+  openLicenceLink: (link) => ipcRenderer.invoke(IPC.openLicenceLink, link),
+  openActivation: () => ipcRenderer.invoke(IPC.openActivation),
+  onLicenceChanged: (cb) => subscribe<LicenceView>(IPC.licenceChanged, cb),
   onTestDrop: (cb) => (E2E ? subscribe<TestDropPayload>(TEST_DROP_CHANNEL, cb) : () => undefined),
   onTestFeedDrop: (cb) => (E2E ? subscribe<TestDropPayload>(TEST_FEED_DROP_CHANNEL, cb) : () => undefined),
   onTestCancel: (cb) => (E2E ? subscribe<void>(TEST_CANCEL_CHANNEL, () => cb()) : () => undefined)

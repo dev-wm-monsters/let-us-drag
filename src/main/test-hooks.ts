@@ -10,6 +10,7 @@
 
 import { z } from 'zod'
 import { TEST_FEED_DROP_CHANNEL, type LudTestHooks, type TestDropPayload } from '../shared/test-hooks'
+import type { LicenceView } from '../shared/licence'
 import type { JobEvent, OptionId } from '../shared/types'
 import { optionIdSchema, parseOrThrow, pathListSchema } from './ipc-validation'
 import { withTimeout } from './serial-queue'
@@ -32,6 +33,12 @@ export interface TestHookDeps {
   sendFeedDrop(payload: TestDropPayload): Promise<void>
   /** Deliver TEST_CANCEL_CHANNEL to the overlay and Feed Window renderers. */
   sendCancel(): void
+  licence: {
+    view(): LicenceView
+    recheckNow(): Promise<string | null>
+    resume(): void
+    openedUrls(): string[]
+  }
 }
 
 const optionOrNull = z.union([optionIdSchema, z.null()])
@@ -72,6 +79,18 @@ export function createTestHooks(deps: TestHookDeps): LudTestHooks {
     },
     async cancelActive() {
       deps.sendCancel()
+    },
+    licence() {
+      return deps.licence.view()
+    },
+    async licenceRecheckNow() {
+      return deps.licence.recheckNow()
+    },
+    async licenceResume() {
+      deps.licence.resume()
+    },
+    openedUrls() {
+      return deps.licence.openedUrls()
     }
   }
 }

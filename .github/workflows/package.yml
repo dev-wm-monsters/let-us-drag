@@ -65,7 +65,14 @@ jobs:
           { lipo -archs "$out"; codesign -dv "$out" 2>&1 | head -5; } | tee ci-logs/modifier-helper.log
       - name: Build
         shell: bash
-        run: set -o pipefail && npm run build 2>&1 | tee ci-logs/build.log
+        # Licensing (TPM D26): Dodo environment + product from repository variables (Settings →
+        # Variables), falling back to test mode. Not secrets: the app holds no Dodo API key.
+        env:
+          DODO_ENV: ${{ vars.DODO_ENV || 'test' }}
+          DODO_PRODUCT_ID: ${{ vars.DODO_PRODUCT_ID || 'pdt_0Nqn0nhO4z3NeUwcXy0n3' }}
+        run: |
+          echo "Dodo licensing: $DODO_ENV / $DODO_PRODUCT_ID" | tee ci-logs/licensing.log
+          set -o pipefail && npm run build 2>&1 | tee ci-logs/build.log
       - name: Package
         shell: bash
         run: set -o pipefail && npx electron-builder ${{ matrix.builder }} --publish never 2>&1 | tee ci-logs/package.log

@@ -1,11 +1,12 @@
 // IPC channel names and the preload API (window.lud). Contract owner: TPM.
+import type { LicenceActionResult, LicenceLink, LicenceView, StartJobResult } from './licence'
 import type { TestDropPayload } from './test-hooks'
 import type { DroppedItem, JobEvent, JobRequest, OptionId, PlatformStatus, Settings } from './types'
 
 export const IPC = {
   // renderer → main (invoke)
   describePaths: 'lud:describe-paths', // (paths: string[]) => DroppedItem[]
-  startJob: 'lud:start-job', // (req: JobRequest) => void   (events arrive on jobEvent)
+  startJob: 'lud:start-job', // (req: JobRequest) => StartJobResult (events arrive on jobEvent; refused without a licence, D26)
   cancelJob: 'lud:cancel-job', // (jobId: string) => void
   revealPath: 'lud:reveal-path', // (path: string) => void  (only paths produced by a job)
   getSettings: 'lud:get-settings', // () => Settings
@@ -18,13 +19,20 @@ export const IPC = {
   overlayEngaged: 'lud:overlay-engaged', // () => void  renderer saw a real file dragenter; overlay is now visible (stop following the cursor)
   openSettingsWindow: 'lud:open-settings-window', // () => void
   overlayClickThrough: 'lud:overlay-click-through', // (clickThrough: boolean) => void  D20: ignore mouse except over interactive elements
+  // licence (TPM D26): renderers see the state only; keys, instance IDs and network calls stay in main
+  getLicence: 'lud:get-licence', // () => LicenceView
+  activateLicence: 'lud:activate-licence', // (key: string) => LicenceActionResult   (settings only)
+  deactivateLicence: 'lud:deactivate-licence', // () => LicenceActionResult           (settings only)
+  openLicenceLink: 'lud:open-licence-link', // (link: LicenceLink) => void  opens checkout / website in the default browser
+  openActivation: 'lud:open-activation', // () => void  "I have a key": opens Settings → Activate
   // main → renderer (send)
   jobEvent: 'lud:job-event', // JobEvent
   overlayArm: 'lud:overlay-arm', // (info: OverlayArmInfo)
   overlayDisarm: 'lud:overlay-disarm', // ()  mouse released without a file drop
   cursor: 'lud:cursor', // (p: {x:number,y:number}) cursor in overlay-window coordinates (for eye tracking)
   settingsChanged: 'lud:settings-changed', // (s: Settings)
-  platformStatusChanged: 'lud:platform-status-changed' // (s: PlatformStatus) e.g. after macOS Accessibility is granted
+  platformStatusChanged: 'lud:platform-status-changed', // (s: PlatformStatus) e.g. after macOS Accessibility is granted
+  licenceChanged: 'lud:licence-changed' // (v: LicenceView)
 } as const
 
 export interface OverlayArmInfo {
@@ -38,7 +46,8 @@ export interface LudApi {
   /** Resolve absolute paths for dropped File objects (Electron webUtils). */
   pathsForFiles(files: File[]): string[]
   describePaths(paths: string[]): Promise<DroppedItem[]>
-  startJob(req: JobRequest): Promise<void>
+  /** Resolves `{ started: false, reason: 'LICENCE_REQUIRED' }` when main refuses (no active licence, D26). */
+  startJob(req: JobRequest): Promise<StartJobResult>
   cancelJob(jobId: string): Promise<void>
   revealPath(path: string): Promise<void>
   getSettings(): Promise<Settings>
@@ -59,6 +68,17 @@ export interface LudApi {
   /** D20: when true the overlay ignores the mouse (forwarding moves) except where the renderer turns it off. */
   setOverlayClickThrough(clickThrough: boolean): Promise<void>
   onPlatformStatusChanged(cb: (s: PlatformStatus) => void): () => void
+  /** Licence state (D26): status + masked key only. */
+  getLicence(): Promise<LicenceView>
+  /** Settings → Activate. The key is trimmed in main. */
+  activateLicence(key: string): Promise<LicenceActionResult>
+  /** Settings → Deactivate this computer. */
+  deactivateLicence(): Promise<LicenceActionResult>
+  /** Open the checkout or a website page in the default browser (never an in-app web view). */
+  openLicenceLink(link: LicenceLink): Promise<void>
+  /** "I have a key": open Settings with the Activate field. */
+  openActivation(): Promise<void>
+  onLicenceChanged(cb: (v: LicenceView) => void): () => void
   /**
    * E2E only (LUD_E2E=1): simulated drops sent by the test hooks (src/shared/test-hooks.ts).
    * In normal runs this never calls back and returns a no-op unsubscribe.

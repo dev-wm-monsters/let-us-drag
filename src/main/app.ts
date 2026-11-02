@@ -1,8 +1,9 @@
 // Application wiring: windows, tray, engine, gesture, IPC, settings. Called once the app is ready
 // and the single-instance lock is held (see index.ts).
 
-import { app, BrowserWindow, ipcMain, Menu, powerMonitor, screen, session, utilityProcess } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, powerMonitor, safeStorage, screen, session, shell, utilityProcess } from 'electron'
 import { readFileSync } from 'node:fs'
+import { release } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { IPC } from '../shared/api'
 import { DEBUG_DRAG_CHANNEL, DEBUG_REPORT_MAX } from '../shared/debug'
@@ -15,11 +16,16 @@ import { HtmlToPdf } from './html-to-pdf'
 import { parseOrThrow } from './ipc-validation'
 import { registerIpc } from './ipc'
 import { JobRegistry } from './job-registry'
+import { buildLicenceConfig, e2eDodoBaseUrl, E2E_NO_NETWORK_BASE, licenceLinkUrl } from './licence/config'
+import { DodoClient, type FetchLike } from './licence/dodo-client'
+import { deviceLabel } from './licence/logic'
+import { LicenceManager } from './licence/manager'
+import { LicenceStore, loadInstallId } from './licence/store'
 import { devServerOrigin, engineWorkerPath, modifierHelperPath, resourcesDir, type RendererPage, type RuntimeLayout } from './paths'
 import { PdfRenderer } from './pdf-render'
 import { GestureManager } from './platform/gesture'
 import { AccessibilityPermission } from './platform/permissions'
-import { blockRemoteRequests, hardenSession, hardenWebContents } from './security'
+import { blockRemoteRequests, hardenSession, hardenWebContents, restrictLicenceSession } from './security'
 import { SettingsStore, settingsPatchSchema } from './settings-store'
 import { AppTray } from './tray'
 import { engineWorkerEnv } from './worker-env'
@@ -113,6 +119,46 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
   await settings.load()
   if (quitting) return stub
 
+  // --- licence (TPM D26) --------------------------------------------------------------------
+  // Network: only the three public Dodo licence endpoints, from main (never a renderer), and never
+  // during start-up itself (the background re-check runs after a random delay; D22 exception).
+  // E2E (LUD_E2E=1 AND unpackaged only, D12/D18): LUD_E2E_DODO_URL points the client at a local mock
+  // server (loopback only), otherwise at an unroutable address, so tests never reach Dodo.
+  const licenceConfig = buildLicenceConfig()
+  const e2eLicence = e2e && !app.isPackaged
+  const dodoBase = e2eLicence ? (e2eDodoBaseUrl(process.env['LUD_E2E_DODO_URL']) ?? E2E_NO_NETWORK_BASE) : licenceConfig.apiBaseUrl
+  const installId = await loadInstallId(userData, log)
+  // A separate in-memory session: Chromium's network stack (system proxy settings apply), only the
+  // Dodo origin is reachable from it, and the app windows' session keeps blocking every remote request.
+  const licenceSession = session.fromPartition('lud-licence', { cache: false })
+  restrictLicenceSession(licenceSession, dodoBase, log)
+  // Privacy (website promise): a generic user agent (no OS / Chromium details) and no Accept-Language.
+  licenceSession.setUserAgent(`LetsDrag/${app.getVersion()}`, '')
+  const licenceFetch: FetchLike = (url, init) => licenceSession.fetch(url, { ...init, credentials: 'omit' })
+  const licence = new LicenceManager({
+    config: licenceConfig,
+    client: new DodoClient({ baseUrl: dodoBase, fetchImpl: licenceFetch, ...(e2eLicence ? { timeoutMs: E2E_DODO_TIMEOUT_MS } : {}) }),
+    store: new LicenceStore({ dir: userData, encryptor: safeStorage, log }),
+    deviceLabel: deviceLabel(platform, process.arch, release(), installId),
+    ...(e2eLicence ? { confirmDelayMs: E2E_CONFIRM_DELAY_MS } : {}),
+    log
+  })
+  await licence.init()
+  if (e2eLicence && process.env['LUD_E2E_LICENSE'] === 'active') licence.seedActive()
+  log(`licence: ${licenceConfig.environment} environment, ${licence.status}`)
+  cleanups.push(() => licence.stop())
+  /** URLs "opened" in E2E runs (no browser is started then). */
+  const openedUrls: string[] = []
+  const openLicenceLink = async (link: Parameters<typeof licenceLinkUrl>[0]): Promise<void> => {
+    const url = licenceLinkUrl(link, licenceConfig)
+    if (e2eLicence) {
+      openedUrls.push(url)
+      return
+    }
+    await shell.openExternal(url)
+  }
+  if (quitting) return stub
+
   // --- windows ----------------------------------------------------------------------------
   /** webContents id → the page main loads into it (IPC trusts only these, for that page only). */
   const ownWebContents = new Map<number, RendererPage>()
@@ -152,6 +198,11 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
     for (const w of targets) if (w && !w.isDestroyed()) w.webContents.send(channel, payload)
   }
 
+  licence.onChange((view) => {
+    broadcast(IPC.licenceChanged, view)
+    tray.update({ licensed: view.status === 'active' })
+  })
+
   // --- engine -----------------------------------------------------------------------------
   const registry = new JobRegistry(e2e)
   const pdf = new HtmlToPdf(log)
@@ -178,6 +229,8 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
   cleanups.push(() => engine.stop())
 
   const startJob = (req: JobRequest, from: { page: RendererPage }): void => {
+    // D26, second line of defence (ipc.ts already answers LICENCE_REQUIRED): no licence, no engine job.
+    if (!licence.isUnlocked()) throw new Error('No active licence.')
     const fromOverlay = from.page === 'overlay'
     if (fromOverlay) overlay.jobStarted(req.id)
     try {
@@ -221,10 +274,15 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
       void gesture.setPaused(paused).then(() => tray.update({ paused }))
     },
     quit: () => app.quit(),
+    buyLicence: () => void openLicenceLink('checkout').catch((err: unknown) => log(`open checkout failed: ${String(err)}`)),
+    openActivation: () => void settingsWin.open(),
+    // Hidden developer action (unpackaged builds only): forget the licence locally, no network.
+    ...(app.isPackaged ? {} : { resetLicence: () => void licence.resetLocal() }),
     log
   })
   cleanups.push(() => permission.stopPolling(), () => gesture.stop())
   tray.create()
+  tray.update({ licensed: licence.isUnlocked() })
   cleanups.push(() => tray.destroy())
   const initialStatus = await gesture.refresh()
   if (quitting) {
@@ -282,7 +340,15 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
     },
     overlay,
     openFeedWindow: () => feedWin.open(),
-    openSettingsWindow: () => settingsWin.open()
+    openSettingsWindow: () => settingsWin.open(),
+    licence: {
+      isUnlocked: () => licence.isUnlocked(),
+      view: () => licence.view(),
+      activate: (key) => licence.activate(key),
+      deactivate: () => licence.deactivate(),
+      openLink: openLicenceLink,
+      openActivation: () => settingsWin.open()
+    }
   })
 
   // --- E2E hooks --------------------------------------------------------------------------
@@ -300,7 +366,13 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
         // Opens the Feed Window if needed (open() resolves once its page has loaded), then waits
         // for the renderer to subscribe before sending (B-055).
         sendFeedDrop: async (payload: TestDropPayload) => deliverFeedDrop(await feedWin.open(), payload),
-        sendCancel: () => broadcast(TEST_CANCEL_CHANNEL, undefined, [overlay.win, feedWin.window])
+        sendCancel: () => broadcast(TEST_CANCEL_CHANNEL, undefined, [overlay.win, feedWin.window]),
+        licence: {
+          view: () => licence.view(),
+          recheckNow: () => licence.recheckNow(),
+          resume: () => licence.onResume(),
+          openedUrls: () => [...openedUrls]
+        }
       })
     )
     log('e2e hooks installed')
@@ -311,9 +383,13 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
   const hideOverlay = (): void => overlay.forceHide()
   powerMonitor.on('lock-screen', hideOverlay)
   powerMonitor.on('suspend', hideOverlay)
+  // D26: after waking from sleep, re-check the licence (later, silently) if the 24 h are over.
+  const licenceResume = (): void => licence.onResume()
+  powerMonitor.on('resume', licenceResume)
   cleanups.push(() => {
     powerMonitor.removeListener('lock-screen', hideOverlay)
     powerMonitor.removeListener('suspend', hideOverlay)
+    powerMonitor.removeListener('resume', licenceResume)
   })
   // B-078 (Windows): key-ups that happen on the lock screen never reach the low-level hook (Win+L
   // leaves the Windows key "held"); restarting the hook re-reads the real modifier state.
@@ -334,6 +410,9 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
     lossTimer.unref()
     cleanups.push(() => clearInterval(lossTimer))
   }
+
+  // Background licence re-check (D26): scheduled, never during start-up itself.
+  licence.start()
 
   // --- lifecycle --------------------------------------------------------------------------
   // A tray app keeps running with no windows open.
@@ -368,6 +447,10 @@ function watchOverlayRenderer(overlay: OverlayController, debug: (message: strin
   wc.on('did-fail-load', (_e, code, description) => debug(`overlay page failed to load: ${code} ${description}`))
   wc.on('render-process-gone', (_e, details) => debug(`overlay renderer gone: ${details.reason}`))
 }
+
+/** E2E only: short Dodo request timeout and confirm delay, so the re-check specs run in seconds. */
+const E2E_DODO_TIMEOUT_MS = 1_500
+const E2E_CONFIRM_DELAY_MS = 200
 
 /** How often (macOS) we check that the Accessibility grant is still there while the hook runs. */
 const PERMISSION_LOSS_POLL_MS = 5_000

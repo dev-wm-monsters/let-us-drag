@@ -18,6 +18,11 @@ type InvokeChannel =
   | typeof IPC.overlayEngaged
   | typeof IPC.openFeedWindow
   | typeof IPC.openSettingsWindow
+  | typeof IPC.getLicence
+  | typeof IPC.activateLicence
+  | typeof IPC.deactivateLicence
+  | typeof IPC.openLicenceLink
+  | typeof IPC.openActivation
 
 const ALL: readonly RendererPage[] = ['overlay', 'feed', 'settings']
 const CONVERTERS: readonly RendererPage[] = ['overlay', 'feed']
@@ -28,6 +33,8 @@ const CONVERTERS: readonly RendererPage[] = ['overlay', 'feed']
  * - Settings changes: the settings window, and the feed window (it may offer quick toggles).
  * - Accessibility prompt: settings/onboarding only.
  * - Overlay lifecycle: the overlay only.
+ * - Licence (D26): every page reads the state and may open the checkout / website links; only
+ *   Settings activates or deactivates; the two Uncle pages may open Settings → Activate.
  */
 export const IPC_ALLOWLIST: Readonly<Record<InvokeChannel, readonly RendererPage[]>> = {
   [IPC.describePaths]: CONVERTERS,
@@ -43,7 +50,12 @@ export const IPC_ALLOWLIST: Readonly<Record<InvokeChannel, readonly RendererPage
   [IPC.overlayDone]: ['overlay'],
   [IPC.overlayEngaged]: ['overlay'],
   [IPC.openFeedWindow]: ['settings'],
-  [IPC.openSettingsWindow]: ['feed']
+  [IPC.openSettingsWindow]: ['feed'],
+  [IPC.getLicence]: ALL,
+  [IPC.activateLicence]: ['settings'],
+  [IPC.deactivateLicence]: ['settings'],
+  [IPC.openLicenceLink]: ALL,
+  [IPC.openActivation]: CONVERTERS
 }
 
 export function isAllowedChannel(channel: string, page: RendererPage): boolean {

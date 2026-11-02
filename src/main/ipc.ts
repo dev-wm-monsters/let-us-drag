@@ -5,6 +5,7 @@
 
 import { ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
 import { IPC } from '../shared/api'
+import type { LicenceActionResult, LicenceLink, LicenceView, StartJobResult } from '../shared/licence'
 import type { JobRequest, PlatformStatus, Settings } from '../shared/types'
 import {
   absolutePathSchema,
@@ -12,6 +13,8 @@ import {
   describePaths,
   IpcInputError,
   jobIdSchema,
+  licenceKeySchema,
+  licenceLinkSchema,
   parseOrThrow,
   validateJobRequest
 } from './ipc-validation'
@@ -38,6 +41,15 @@ export interface IpcDeps {
   }
   openFeedWindow(): Promise<unknown>
   openSettingsWindow(): Promise<unknown>
+  licence: {
+    /** Conversions (and with them the Remove BG model download) need an active licence (D26). */
+    isUnlocked(): boolean
+    view(): LicenceView
+    activate(key: string): Promise<LicenceActionResult>
+    deactivate(): Promise<LicenceActionResult>
+    openLink(link: LicenceLink): Promise<void>
+    openActivation(): Promise<unknown>
+  }
 }
 
 export class UntrustedSenderError extends Error {
@@ -83,11 +95,14 @@ export function registerIpc(deps: IpcDeps): () => void {
 
   handle(IPC.describePaths, (_e, paths) => describePaths(paths))
 
-  handle(IPC.startJob, async (e, raw) => {
+  handle(IPC.startJob, async (e, raw): Promise<StartJobResult> => {
     const req = await validateJobRequest(raw)
     const page = deps.pageOfWebContents(e.sender.id)
     if (!page) throw new UntrustedSenderError()
+    // D26: the paywall is enforced here too, not only in the UI. No job, no engine, no model download.
+    if (!deps.licence.isUnlocked()) return { started: false, reason: 'LICENCE_REQUIRED' }
     deps.startJob(req, { page, webContentsId: e.sender.id })
+    return { started: true }
   })
 
   handle(IPC.cancelJob, (_e, raw) => {
@@ -119,6 +134,17 @@ export function registerIpc(deps: IpcDeps): () => void {
   })
   handle(IPC.openSettingsWindow, async () => {
     await deps.openSettingsWindow()
+  })
+
+  // --- licence (D26) ---
+  handle(IPC.getLicence, () => deps.licence.view())
+  handle(IPC.activateLicence, (_e, raw) => deps.licence.activate(parseOrThrow(licenceKeySchema, raw, 'licence key')))
+  handle(IPC.deactivateLicence, () => deps.licence.deactivate())
+  handle(IPC.openLicenceLink, async (_e, raw) => {
+    await deps.licence.openLink(parseOrThrow(licenceLinkSchema, raw, 'link'))
+  })
+  handle(IPC.openActivation, async () => {
+    await deps.licence.openActivation()
   })
 
   return () => {

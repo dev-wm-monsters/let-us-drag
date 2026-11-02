@@ -1,5 +1,6 @@
 // E2E test-hook contract (Playwright `_electron`). Contract owner: TPM.
 // Active ONLY when the app is started with env LUD_E2E=1; otherwise never installed.
+import type { LicenceView } from './licence'
 import type { JobEvent, OptionId } from './types'
 
 /**
@@ -36,7 +37,32 @@ export interface LudTestHooks {
    * running job ignore it. Resolves when delivered (watch jobEvents() for the CANCELLED event).
    */
   cancelActive(): Promise<void>
+  /** ADDITIVE (D26): the licence state main holds (what renderers get from getLicence). */
+  licence(): LicenceView
+  /**
+   * ADDITIVE (D26): run the background licence re-check now, through the same code path as its
+   * timer. Resolves with 'valid' | 'transient' | 'disabled' | 'reactivate', or null (nothing to check).
+   */
+  licenceRecheckNow(): Promise<string | null>
+  /** ADDITIVE (D26): what powerMonitor 'resume' does (reschedules the re-check when 24 h are over). */
+  licenceResume(): Promise<void>
+  /**
+   * ADDITIVE (D26): URLs main would have opened in the default browser (shell.openExternal is
+   * replaced by this recorder in E2E runs, so no browser starts).
+   */
+  openedUrls(): string[]
 }
+
+/**
+ * E2E-only launch environment for licensing (D26), honoured ONLY when LUD_E2E=1 and the app is not
+ * packaged (D12, D18):
+ * - LUD_E2E_LICENSE=active: start with an active licence (no network). The E2E fixture sets it by
+ *   default so the conversion specs keep converting; licensing specs pass 'none'.
+ * - LUD_E2E_DODO_URL=http://127.0.0.1:<port>: the mock Dodo server (loopback only). Without it the
+ *   client points at an unroutable local address, so E2E never reaches Dodo.
+ */
+export const E2E_LICENCE_ENV = 'LUD_E2E_LICENSE' as const
+export const E2E_DODO_URL_ENV = 'LUD_E2E_DODO_URL' as const
 
 /** IPC channel used by main to deliver a simulated drop to the overlay renderer (E2E only). */
 export const TEST_DROP_CHANNEL = 'lud:test-drop' as const
