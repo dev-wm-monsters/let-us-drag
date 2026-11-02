@@ -83,7 +83,7 @@ export class OverlayController {
         focusable: this.ov.focusable,
         // LUD_OVERLAY_PANEL (macOS): NSWindowStyleMaskNonactivatingPanel, floats over full-screen apps.
         ...(panel ? { type: 'panel' } : {}),
-        title: 'Let us drag!',
+        title: "Let's Drag!",
         // acceptFirstMouse (macOS): the overlay is never key (focusable: false outside feedMe), so
         // without it the first click on the cancel button / a result card would only try to
         // activate the window instead of reaching the page (D19, D20: clickable without focus).

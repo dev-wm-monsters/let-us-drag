@@ -88,7 +88,7 @@ jobs:
         run: |
           case "$RUNNER_OS" in
             macOS) app=$(find release -maxdepth 2 -name "*.app" | head -1) ;;
-            Windows) app="release/win-unpacked/Let us drag!.exe" ;;
+            Windows) app="release/win-unpacked/Let's Drag!.exe" ;;
             *) app=release/linux-unpacked/let-us-drag ;;
           esac
           npx --yes @electron/fuses@1.8.0 read --app "$app" 2>&1 | tee ci-logs/fuses.log
@@ -108,7 +108,7 @@ jobs:
           done
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: LetUsDrag-${{ matrix.name }}
+          name: LetsDrag-${{ matrix.name }}
           path: |
             release/*.dmg
             release/*.exe
@@ -134,5 +134,5 @@ jobs:
           TAG: ${{ inputs.release_tag || github.ref_name }}
         run: |
           gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --draft --prerelease --title "Let us drag! $TAG" \
+            --draft --prerelease --title "Let's Drag! $TAG" \
             --notes "Private test build. Install notes and the manual test checklist: docs/qa/MANUAL_CHECKLIST.md. Project report: docs/REPORT.md."

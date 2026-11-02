@@ -39,7 +39,7 @@ describe('pdf.js data-folder URLs (B-016, B-017)', () => {
 
   it('POSIX: unchanged apart from the trailing "/" (a backslash is a normal file-name character there)', () => {
     expect(pdfjsAssetUrl('/opt/app/node_modules/pdfjs-dist/cmaps', 'linux')).toBe('/opt/app/node_modules/pdfjs-dist/cmaps/')
-    expect(pdfjsAssetUrl('/Applications/Let us drag!.app/x\\y/wasm/', 'darwin')).toBe('/Applications/Let us drag!.app/x\\y/wasm/')
+    expect(pdfjsAssetUrl('/Applications/Let\'s Drag!.app/x\\y/wasm/', 'darwin')).toBe('/Applications/Let\'s Drag!.app/x\\y/wasm/')
   })
 
   it('every option for a Windows install is a forward-slash path ending in "/"', () => {

@@ -55,7 +55,7 @@ export interface RunningApp {
 
 function forkEngine(modulePath: string, env: Record<string, string> | undefined): WorkerLike {
   // env undefined → inherit process.env (unpackaged); packaged → no LUD_* keys (F-16, D18).
-  const child = utilityProcess.fork(modulePath, [], env ? { serviceName: 'Let us drag! engine', env } : { serviceName: 'Let us drag! engine' })
+  const child = utilityProcess.fork(modulePath, [], env ? { serviceName: "Let's Drag! engine", env } : { serviceName: "Let's Drag! engine" })
   return {
     postMessage: (m) => child.postMessage(m),
     on(event: 'message' | 'exit', listener: ((m: unknown) => void) | ((code: number) => void)) {

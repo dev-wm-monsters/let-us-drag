@@ -46,7 +46,7 @@ export class AppTray {
   create(): boolean {
     try {
       this.tray = new Tray(loadTrayIcon(this.deps.platform, this.deps.resourcesDir))
-      this.tray.setToolTip('Let us drag!')
+      this.tray.setToolTip("Let's Drag!")
       if (this.deps.platform === 'win32') {
         // Windows users expect a left click to do something.
         this.tray.on('click', () => this.tray?.popUpContextMenu())

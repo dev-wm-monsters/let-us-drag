@@ -11,7 +11,7 @@ export function createFeedWindow(ctx: WindowContext): SingletonWindow {
     height: 460,
     minWidth: 300,
     minHeight: 340,
-    title: 'Let us drag! — Feed the Uncle',
+    title: "Let's Drag! — Feed the Uncle",
     fullscreenable: false,
     maximizable: false,
     backgroundColor: '#fff8ee'

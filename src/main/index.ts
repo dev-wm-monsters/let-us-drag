@@ -14,7 +14,7 @@ import { SANDBOX_PRIVILEGES, SANDBOX_SCHEME } from './sandbox-protocol'
 const e2e = isE2E(process.env, app.isPackaged)
 // Field diagnostics (README "Field diagnostics"): LUD_DEBUG=1, or a debug.flag file in userData so
 // a user can turn them on without Terminal. Then every log line is timestamped and also written to
-// <logs>/debug.log (macOS: ~/Library/Logs/Let us drag!/debug.log).
+// <logs>/debug.log (macOS: ~/Library/Logs/Let's Drag!/debug.log).
 const debugOn = diagnosticsEnabled(process.env, flagFileExists())
 const debugLog = debugOn ? createDebugLogger() : null
 const log = debugLog ?? createLogger(!app.isPackaged)
@@ -75,7 +75,7 @@ if (debugSwitch !== null) {
     })
     .catch((err: unknown) => {
       log(`startup failed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`)
-      dialog.showErrorBox('Let us drag!', "Let us drag! couldn't start. Please try again, or reinstall the app if this keeps happening.")
+      dialog.showErrorBox("Let's Drag!", "Let's Drag! couldn't start. Please try again, or reinstall the app if this keeps happening.")
       app.exit(1)
     })
 }

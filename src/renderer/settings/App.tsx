@@ -135,7 +135,7 @@ export function SettingsApp() {
         </div>
         <div>
           <h1>
-            Let us drag<span>!</span>
+            Let's Drag<span>!</span>
           </h1>
           <p>Drag a file, hold {labels[settings.triggerKey]}, and feed it to the Uncle.</p>
         </div>

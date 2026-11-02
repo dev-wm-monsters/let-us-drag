@@ -213,7 +213,7 @@ function asValue(d: Data): unknown {
 async function writeXlsx(t: Table): Promise<Buffer> {
   const ExcelJS = await loadExcel()
   const wb = new ExcelJS.Workbook()
-  wb.creator = 'Let us drag!'
+  wb.creator = "Let's Drag!"
   const ws = wb.addWorksheet('Sheet1')
   ws.addRow(t.header)
   ws.getRow(1).font = { bold: true }

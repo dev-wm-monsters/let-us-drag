@@ -1,4 +1,4 @@
-# Let us drag! v0.1 — hands-on checklist for the product owner
+# Let's Drag! v0.1 — hands-on checklist for the product owner
 
 Hi! This is the run on real computers: the parts our robots cannot do (real Finder/Explorer drags,
 permissions, SmartScreen, sounds, how the Uncle *feels*). About **45 minutes per OS**.
@@ -23,8 +23,8 @@ unticked and describe it, that still helps. Send the file back to QA when done (
 ## 0. Before you start (both computers)
 
 1. [ ] Download from the draft GitHub release:
-   macOS **Apple silicon** (M1–M4): `LetUsDrag-0.1.0-mac-arm64.dmg` · macOS **Intel**: `LetUsDrag-0.1.0-mac-x64.dmg` ·
-   Windows: `LetUsDrag-0.1.0-win-x64-setup.exe` (and optionally `…-portable.exe`).
+   macOS **Apple silicon** (M1–M4): `LetsDrag-0.1.0-mac-arm64.dmg` · macOS **Intel**: `LetsDrag-0.1.0-mac-x64.dmg` ·
+   Windows: `LetsDrag-0.1.0-win-x64-setup.exe` (and optionally `…-portable.exe`).
 2. [ ] Make a folder **`LUD test`** on the Desktop with:
    `photo.png` + 3 more pictures · a portrait photo (person/pet) for Remove BG · `photo.heic` (Mac, AirDrop from an iPhone, optional) ·
    `document.pdf` (2+ pages) · `clip.mp4` (10–30 s, with sound) · `long.mp4` (2+ min) · `big.mp4` or `.mov` (**> 200 MB**) ·
@@ -37,14 +37,14 @@ unticked and describe it, that still helps. Send the file back to QA when done (
 
 **Install and first launch**
 
-1. [ ] Open the `.dmg`, drag **Let us drag!** to **Applications**, double-click it there.
+1. [ ] Open the `.dmg`, drag **Let's Drag!** to **Applications**, double-click it there.
    Expect: macOS blocks it ("cannot be opened" / "Apple could not verify…"). That is normal for a free app without an Apple certificate.
 2. [ ] Open it anyway. **macOS 14 or older:** right-click (Control-click) the app → **Open** → **Open**.
    **macOS 15 or newer:** click **Done**, then **System Settings → Privacy & Security**, scroll down, **Open Anyway**, confirm with your password, then **Open**.
    Expect: a small Uncle icon in the **menu bar**, **no Dock icon**, a welcome window. (If macOS says the app "is damaged": untick and send a screenshot.)
-3. [ ] In the welcome window click **Grant** → System Settings → Accessibility opens with **Let us drag!** listed. Switch it on.
+3. [ ] In the welcome window click **Grant** → System Settings → Accessibility opens with **Let's Drag!** listed. Switch it on.
    Expect: back in the app, Settings says the gesture is ready **without restarting the app**. (If it asks for a restart, note it.)
-4. [ ] Check **System Settings → Privacy & Security → Input Monitoring**. Expect: Let us drag! is **not** needed there.
+4. [ ] Check **System Settings → Privacy & Security → Input Monitoring**. Expect: Let's Drag! is **not** needed there.
 
 **The gesture (Finder)**
 
@@ -89,8 +89,8 @@ unticked and describe it, that still helps. Send the file back to QA when done (
 27. [ ] **Launch at login** on → log out and in. Expect: the menu-bar icon is back; **System Settings → General → Login Items** lists it.
 28. [ ] Wi-Fi off: repeat two conversions from 14. Expect: they work offline.
 29. [ ] Accessibility **off** in System Settings while the app runs. Expect: no crash; Settings says it needs Accessibility; the Feed Window still works. Switch it back **on**: the gesture works again without restarting the app.
-30. [ ] *(Next update only)* After installing a newer build over this one, does the gesture still work? If not: remove Let us drag! from the Accessibility list (–), add it again, switch on. Note what you had to do.
-31. [ ] Quit, check **Activity Monitor** for "Let us drag" / "ffmpeg". Expect: nothing left.
+30. [ ] *(Next update only)* After installing a newer build over this one, does the gesture still work? If not: remove Let's Drag! from the Accessibility list (–), add it again, switch on. Note what you had to do.
+31. [ ] Quit, check **Activity Monitor** for "Let's Drag" / "ffmpeg". Expect: nothing left.
 
 **Uncle on macOS, 1–5 and why** (cartoon look, liveliness, mole, head turn): ______
 
@@ -100,8 +100,8 @@ unticked and describe it, that still helps. Send the file back to QA when done (
 
 **Install and first launch**
 
-1. [ ] Run `LetUsDrag-0.1.0-win-x64-setup.exe`. Expect: blue **"Windows protected your PC"** (SmartScreen). Normal for a free app without a paid certificate.
-2. [ ] **More info → Run anyway**, keep the defaults. Expect: installs **without** an admin prompt; Start-menu entry "Let us drag!".
+1. [ ] Run `LetsDrag-0.1.0-win-x64-setup.exe`. Expect: blue **"Windows protected your PC"** (SmartScreen). Normal for a free app without a paid certificate.
+2. [ ] **More info → Run anyway**, keep the defaults. Expect: installs **without** an admin prompt; Start-menu entry "Let's Drag!".
 3. [ ] Start it. Expect: tray icon (check the **^** overflow near the clock), welcome window. The tray icon looks **sharp**, not blurry (also at 125/150 % scaling).
 4. [ ] Right-click the tray icon. Expect: Open Feed Window, Settings…, Pause gesture, Quit. Each window opens **in front** of other apps.
 
@@ -139,7 +139,7 @@ unticked and describe it, that still helps. Send the file back to QA when done (
 21. [ ] Quit from the tray, start again. Expect: settings kept.
 22. [ ] **Launch at login** on → restart Windows. Expect: tray icon after login.
 23. [ ] *(Optional)* Portable `.exe` from Downloads (SmartScreen again → More info → Run anyway). Expect: works like the installed app.
-24. [ ] Quit; Task Manager shows no "Let us drag!" / `ffmpeg.exe`. Then **Settings → Apps → Installed apps → Let us drag! → Uninstall**. Expect: removed.
+24. [ ] Quit; Task Manager shows no "Let's Drag!" / `ffmpeg.exe`. Then **Settings → Apps → Installed apps → Let's Drag! → Uninstall**. Expect: removed.
 
 **Windows-only checks from the code review** (things CI cannot see; just note what happens)
 
@@ -147,8 +147,8 @@ unticked and describe it, that still helps. Send the file back to QA when done (
 26. [ ] After clicking a result card or the red × (step 7/16): the window you were in keeps its **active title bar**; nothing else (taskbar, another window) jumps to the front. While the Uncle offers options after a drop on his **mouth**, he never appears as a button on the **taskbar** (B-077).
 27. [ ] Trigger key **Windows key** (Settings): Win-drag a file, drop, release the key. Note whether the **Start menu opens** after release (Windows does this when the key is pressed and released alone; the app cannot prevent it without faking key presses). Then press **Win+L**, log back in, and drag a window by its title bar **without** any key: the Uncle must **not** appear (B-078).
 28. [ ] Trigger key **Alt**: after an Alt-drop, note whether Explorer shows its menu/key tips when you release Alt. Trigger **Ctrl**: the drop still converts (no "link"/"shortcut" created).
-29. [ ] **Mixed scaling** (step 10) once more with **diagnostics on**: put an empty `debug.flag` in `%APPDATA%\Let us drag!`, do one drag that crosses from one screen to the other while holding Shift, quit, send `%APPDATA%\Let us drag!\logs\debug.log`. We look for `follow: setBounds … scale=` lines whose size stays 560×560 (Electron can mis-size a window moved between screens with different scaling).
-30. [ ] Press **Alt+Tab** while the Uncle (or a result card) is visible: note whether a "Let us drag!" entry appears.
+29. [ ] **Mixed scaling** (step 10) once more with **diagnostics on**: put an empty `debug.flag` in `%APPDATA%\Let's Drag!`, do one drag that crosses from one screen to the other while holding Shift, quit, send `%APPDATA%\Let's Drag!\logs\debug.log`. We look for `follow: setBounds … scale=` lines whose size stays 560×560 (Electron can mis-size a window moved between screens with different scaling).
+30. [ ] Press **Alt+Tab** while the Uncle (or a result card) is visible: note whether a "Let's Drag!" entry appears.
 31. [ ] *(If you use a left-handed mouse setup — buttons swapped)* Shift-drag with the button you normally drag with: note whether the Uncle appears (the global hook may see the physical button).
 32. [ ] A file on a **network share** (`\\server\share\photo.png`) and a OneDrive file that is **"online-only"** (cloud icon) → JPG. Expect: converts (OneDrive downloads it first) or a friendly error; no hang. A file inside `C:\Program Files\…` → JPG: a friendly "can't save here" message.
 33. [ ] Cancel a long conversion (step 16), then check **Task Manager → Details** for a leftover `ffmpeg.exe`; also delete the source folder afterwards (no "file in use" error).
@@ -162,13 +162,13 @@ unticked and describe it, that still helps. Send the file back to QA when done (
 **Logs.** The app writes no log files on its own. To capture one, quit the app (tray/menu bar → Quit), then start it from a terminal, repeat the problem, quit, and attach the file:
 
 - **macOS** (Terminal):
-  `LUD_DEBUG=1 "/Applications/Let us drag!.app/Contents/MacOS/Let us drag!" > ~/Desktop/lud-log.txt 2>&1`
+  `LUD_DEBUG=1 "/Applications/Let's Drag!.app/Contents/MacOS/Let's Drag!" > ~/Desktop/lud-log.txt 2>&1`
 - **Windows** (Command Prompt; right-click the Start-menu entry → *Open file location* to find the folder):
-  `set LUD_DEBUG=1` then `"Let us drag!.exe" > "%USERPROFILE%\Desktop\lud-log.txt" 2>&1`
+  `set LUD_DEBUG=1` then `"Let's Drag!.exe" > "%USERPROFILE%\Desktop\lud-log.txt" 2>&1`
   (If the file stays empty on Windows, just send the screen recording.)
 
-Settings live in `~/Library/Application Support/Let us drag!/settings.json` (macOS) and
-`%APPDATA%\Let us drag!\settings.json` (Windows); the Remove BG model is in the `models` folder next to it.
+Settings live in `~/Library/Application Support/Let's Drag!/settings.json` (macOS) and
+`%APPDATA%\Let's Drag!\settings.json` (Windows); the Remove BG model is in the `models` folder next to it.
 
 **Reporting a bug.** One line per problem under the step, plus:
 1. what you did (step number + file type), 2. what you expected, 3. what happened (exact message on the Uncle's card),

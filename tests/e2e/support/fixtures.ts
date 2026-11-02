@@ -36,7 +36,7 @@ export async function makePdf(path: string, pages = 1): Promise<string> {
   const doc = await PDFDocument.create()
   const font = await doc.embedFont(StandardFonts.Helvetica)
   for (let i = 0; i < pages; i++) {
-    doc.addPage([300, 200]).drawText(`Let us drag! page ${i + 1}`, { x: 20, y: 100, size: 18, font })
+    doc.addPage([300, 200]).drawText(`Let's Drag! page ${i + 1}`, { x: 20, y: 100, size: 18, font })
   }
   writeFileSync(path, await doc.save())
   return path

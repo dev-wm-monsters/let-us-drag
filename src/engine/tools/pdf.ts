@@ -284,7 +284,7 @@ export async function pdfToText(path: string, signal: AbortSignal, onProgress?: 
 export async function mergePdfs(paths: readonly string[], signal: AbortSignal, onEach?: (i: number) => void): Promise<Uint8Array> {
   const { PDFDocument } = await import('pdf-lib')
   const out = await PDFDocument.create()
-  out.setProducer('Let us drag!')
+  out.setProducer("Let's Drag!")
   for (let i = 0; i < paths.length; i++) {
     throwIfAborted(signal)
     onEach?.(i)

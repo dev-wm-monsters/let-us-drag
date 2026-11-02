@@ -1,7 +1,7 @@
 appId: com.letusdrag.app
-productName: Let us drag!
-copyright: Copyright © 2026 Let us drag! contributors
-artifactName: LetUsDrag-${version}-${os}-${arch}.${ext}
+productName: Let's Drag!
+copyright: Copyright © 2026 Wakeup Monster LLP
+artifactName: LetsDrag-${version}-${os}-${arch}.${ext}
 directories:
   output: release
   buildResources: resources
@@ -79,7 +79,7 @@ mac:
   extendInfo:
     LSUIElement: true
 dmg:
-  title: Let us drag!
+  title: Let's Drag!
 win:
   target:
     - nsis
@@ -89,9 +89,14 @@ nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
-  artifactName: LetUsDrag-${version}-win-${arch}-setup.${ext}
+  artifactName: LetsDrag-${version}-win-${arch}-setup.${ext}
 portable:
-  artifactName: LetUsDrag-${version}-win-${arch}-portable.${ext}
+  artifactName: LetsDrag-${version}-win-${arch}-portable.${ext}
+# The website's download buttons expect exactly these Linux names (linux-x64 / linux-amd64).
+appImage:
+  artifactName: LetsDrag-${version}-linux-x64.${ext}
+deb:
+  artifactName: LetsDrag-${version}-linux-amd64.${ext}
 linux:
   target:
     - AppImage
@@ -99,6 +104,6 @@ linux:
   category: Utility
   executableName: let-us-drag
   icon: resources/icon.png
-  maintainer: Let us drag! contributors <343486206+dev-wm-monsters@users.noreply.github.com>
+  maintainer: Wakeup Monster LLP <support@wakeupmonster.com>
   synopsis: Drag a file, hold Shift, feed it to the Uncle.
 publish: null

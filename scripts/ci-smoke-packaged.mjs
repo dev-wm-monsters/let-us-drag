@@ -9,11 +9,11 @@ import { join } from 'node:path'
 const release = join(process.cwd(), 'release')
 function findExecutable() {
   if (process.platform === 'darwin') {
-    const dir = readdirSync(release).find((d) => d.startsWith('mac') && existsSync(join(release, d, 'Let us drag!.app')))
+    const dir = readdirSync(release).find((d) => d.startsWith('mac') && existsSync(join(release, d, "Let's Drag!.app")))
     if (!dir) throw new Error('no .app found under release/')
-    return join(release, dir, 'Let us drag!.app', 'Contents', 'MacOS', 'Let us drag!')
+    return join(release, dir, "Let's Drag!.app", 'Contents', 'MacOS', "Let's Drag!")
   }
-  if (process.platform === 'win32') return join(release, 'win-unpacked', 'Let us drag!.exe')
+  if (process.platform === 'win32') return join(release, 'win-unpacked', "Let's Drag!.exe")
   return join(release, 'linux-unpacked', 'let-us-drag')
 }
 

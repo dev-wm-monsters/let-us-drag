@@ -94,7 +94,7 @@ export const CRASH_ERROR: JobError = {
 
 export const UNAVAILABLE_ERROR: JobError = {
   code: 'INTERNAL',
-  message: "The converter couldn't start. Please restart Let us drag!."
+  message: "The converter couldn't start. Please restart Let's Drag!."
 }
 
 export const CANCELLED_ERROR: JobError = { code: 'CANCELLED', message: 'Cancelled.' }

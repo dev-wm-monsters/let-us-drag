@@ -263,18 +263,18 @@ describe('D22 / B-058: remote-debugging switches', () => {
     }
   })
   it('refuses every argv form, on every OS', () => {
-    const exe = '/Applications/Let us drag!.app/Contents/MacOS/Let us drag!'
+    const exe = "/Applications/Let's Drag!.app/Contents/MacOS/Let's Drag!"
     expect(forbiddenDebugSwitch([exe, '--remote-debugging-port=9222'], none, 'darwin')).toBe('remote-debugging-port')
     expect(forbiddenDebugSwitch([exe, '--remote-debugging-port', '9222'], none, 'darwin')).toBe('remote-debugging-port')
-    expect(forbiddenDebugSwitch(['C:\\LetUsDrag.exe', '--REMOTE-DEBUGGING-PIPE'], none, 'win32')).toBe('remote-debugging-pipe')
-    expect(forbiddenDebugSwitch(['C:\\LetUsDrag.exe', '/remote-debugging-port=0'], none, 'win32')).toBe('remote-debugging-port')
+    expect(forbiddenDebugSwitch(['C:\\LetsDrag.exe', '--REMOTE-DEBUGGING-PIPE'], none, 'win32')).toBe('remote-debugging-pipe')
+    expect(forbiddenDebugSwitch(['C:\\LetsDrag.exe', '/remote-debugging-port=0'], none, 'win32')).toBe('remote-debugging-port')
     expect(forbiddenDebugSwitch(['/app', '--inspect=9229'], none, 'linux')).toBe('inspect')
     expect(forbiddenDebugSwitch(['/app', '--js-flags=--allow-natives-syntax'], none, 'linux')).toBe('js-flags')
   })
   it('lets normal launches through', () => {
     expect(forbiddenDebugSwitch(['/app/let-us-drag'], none, 'linux')).toBeNull()
     expect(forbiddenDebugSwitch(['/app/let-us-drag', '--no-sandbox', '--user-data-dir=/tmp/x', '-psn_0_12345'], none, 'darwin')).toBeNull()
-    expect(forbiddenDebugSwitch(['C:\\LetUsDrag.exe', 'C:\\remote-debugging-port.png'], none, 'win32')).toBeNull()
+    expect(forbiddenDebugSwitch(['C:\\LetsDrag.exe', 'C:\\remote-debugging-port.png'], none, 'win32')).toBeNull()
     expect(FORBIDDEN_DEBUG_SWITCHES).toContain('remote-debugging-port')
     expect(FORBIDDEN_DEBUG_SWITCHES).toContain('remote-debugging-pipe')
   })

@@ -161,7 +161,7 @@ export function spawnFfmpeg(ffmpeg: string, args: readonly string[], opts: RunOp
       settled = true
       opts.signal.removeEventListener('abort', onAbort)
       if (errnoCode(err) === 'ENOENT') {
-        reject(new EngineError('TOOL_MISSING', 'FFmpeg is missing, so I cannot convert audio or video. Reinstalling Let us drag! should fix it.', `${ffmpeg}: ${String(err)}`))
+        reject(new EngineError('TOOL_MISSING', "FFmpeg is missing, so I cannot convert audio or video. Reinstalling Let's Drag! should fix it.", `${ffmpeg}: ${String(err)}`))
       } else {
         reject(new EngineError('TOOL_FAILED', undefined, String(err)))
       }

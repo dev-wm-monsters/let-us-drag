@@ -7,7 +7,7 @@ export const FRIENDLY_MESSAGES: Readonly<Record<JobErrorCode, string>> = {
   INPUT_NOT_FOUND: "I can't find that file anymore. Was it moved or deleted?",
   INPUT_INVALID: "This file looks damaged, or it isn't what its name says.",
   OUTPUT_NOT_WRITABLE: "I can't save next to the original. That folder doesn't let me write.",
-  TOOL_MISSING: 'A helper tool is missing. Reinstalling Let us drag! should fix it.',
+  TOOL_MISSING: "A helper tool is missing. Reinstalling Let's Drag! should fix it.",
   TOOL_FAILED: 'Something went wrong while converting this file.',
   MODEL_DOWNLOAD_FAILED:
     "I couldn't download the background-removal model. Check your internet connection and try again.",

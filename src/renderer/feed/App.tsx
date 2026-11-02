@@ -54,7 +54,7 @@ export function FeedApp() {
     <div className="feed">
       <header className="feed-head">
         <h1>
-          Let us drag<span>!</span>
+          Let's Drag<span>!</span>
         </h1>
         <div className="feed-sub">
           <p className={held ? 'is-covered' : undefined}>Feed me a file. I'll cook it right next to the original.</p>

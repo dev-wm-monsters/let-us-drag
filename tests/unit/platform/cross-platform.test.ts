@@ -92,7 +92,7 @@ describe('settings rename retry (Windows file locks)', () => {
 })
 
 describe('login item settings (macOS / Windows)', () => {
-  const base = { enabled: true, isPackaged: true, execPath: 'C:\\Users\\u\\AppData\\Local\\Programs\\let-us-drag\\Let us drag!.exe', appPath: 'C:\\x' }
+  const base = { enabled: true, isPackaged: true, execPath: 'C:\\Users\\u\\AppData\\Local\\Programs\\let-us-drag\\Let\'s Drag!.exe', appPath: 'C:\\x' }
   it('macOS: Electron defaults (the app bundle)', () => {
     expect(loginItemSettings({ ...base, platform: 'darwin' })).toEqual({ openAtLogin: true })
     expect(loginItemSettings({ ...base, platform: 'darwin', isPackaged: false, portableExecutable: '/x' })).toEqual({ openAtLogin: true })
@@ -102,9 +102,9 @@ describe('login item settings (macOS / Windows)', () => {
     expect(loginItemSettings({ ...base, platform: 'win32', enabled: false })).toEqual({ openAtLogin: false })
   })
   it('Windows portable build: the portable exe, not the unpacked temp copy', () => {
-    expect(loginItemSettings({ ...base, platform: 'win32', portableExecutable: 'D:\\Tools\\LetUsDrag.exe' })).toEqual({
+    expect(loginItemSettings({ ...base, platform: 'win32', portableExecutable: 'D:\\Tools\\LetsDrag.exe' })).toEqual({
       openAtLogin: true,
-      path: 'D:\\Tools\\LetUsDrag.exe'
+      path: 'D:\\Tools\\LetsDrag.exe'
     })
     expect(loginItemSettings({ ...base, platform: 'win32', portableExecutable: 'relative.exe' })).toEqual({ openAtLogin: true })
   })

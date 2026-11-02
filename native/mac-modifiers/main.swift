@@ -1,4 +1,4 @@
-// lud-modifiers: tiny macOS helper for "Let us drag!" (src/main/platform/modifier-probe.ts).
+// lud-modifiers: tiny macOS helper for "Let's Drag!" (src/main/platform/modifier-probe.ts).
 //
 // During a Finder drag the app's CGEventTap (uiohook) stops receiving events, so a trigger key
 // pressed mid-drag is never seen. The main process runs this helper only while a left-button drag

@@ -9,7 +9,7 @@ export function createSettingsWindow(ctx: WindowContext): SingletonWindow {
     height: 680,
     minWidth: 420,
     minHeight: 480,
-    title: 'Let us drag! — Settings',
+    title: "Let's Drag! — Settings",
     fullscreenable: false,
     maximizable: false,
     backgroundColor: '#fff8ee'

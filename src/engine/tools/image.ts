@@ -299,7 +299,7 @@ export async function imagesToPdf(
 ): Promise<Uint8Array> {
   const { PDFDocument } = await import('pdf-lib')
   const doc = await PDFDocument.create()
-  doc.setProducer('Let us drag!')
+  doc.setProducer("Let's Drag!")
   for (let i = 0; i < inputs.length; i++) {
     onEach?.(i)
     const { path, ext } = inputs[i]!

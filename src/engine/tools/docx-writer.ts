@@ -238,7 +238,7 @@ export async function htmlToDocx(html: string, title: string): Promise<Buffer> {
   if (b.blocks.length === 0) b.blocks.push(new d.Paragraph({ children: [] }))
   const doc = new d.Document({
     title,
-    creator: 'Let us drag!',
+    creator: "Let's Drag!",
     numbering: {
       config: [
         {

@@ -209,7 +209,7 @@ async function docsToPdfJob(ctx: JobContext): Promise<void> {
   }
   const { PDFDocument } = await import('pdf-lib')
   const merged = await PDFDocument.create()
-  merged.setProducer('Let us drag!')
+  merged.setProducer("Let's Drag!")
   const n = ctx.items.length
   for (let i = 0; i < n; i++) {
     throwIfAborted(ctx.signal)

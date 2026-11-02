@@ -1,10 +1,10 @@
 {
   "name": "let-us-drag",
-  "productName": "Let us drag!",
+  "productName": "Let's Drag!",
   "version": "0.1.0",
   "description": "Drag a file, hold Shift, feed it to the Uncle. A free, local, cartoon file converter.",
   "main": "./out/main/index.js",
-  "author": "Let us drag! contributors",
+  "author": "Wakeup Monster LLP",
   "license": "MIT",
   "private": true,
   "homepage": "https://github.com/dev-wm-monsters/let-us-drag",

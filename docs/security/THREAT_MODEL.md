@@ -1,4 +1,4 @@
-# Let us drag! — Threat model (v0.1)
+# Let's Drag! — Threat model (v0.1)
 
 Owner: Security analyst. Status: phase 1 (design-time model, written before the implementation exists); phase 2
 re-review of the implementation and new findings F-15..F-22: [REVIEW.md](REVIEW.md).

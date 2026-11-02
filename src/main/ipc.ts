@@ -96,7 +96,7 @@ export function registerIpc(deps: IpcDeps): () => void {
 
   handle(IPC.revealPath, (_e, raw) => {
     const p = parseOrThrow(absolutePathSchema, raw, 'path')
-    if (!deps.registry.isRevealable(p)) throw new IpcInputError('That file was not made by Let us drag!.')
+    if (!deps.registry.isRevealable(p)) throw new IpcInputError("That file was not made by Let's Drag!.")
     shell.showItemInFolder(p)
   })
 

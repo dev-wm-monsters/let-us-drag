@@ -112,7 +112,7 @@ try {
   step('startJob → engine host → worker → events recorded')
 
   const denied = await overlay.evaluate((p) => window.lud.revealPath(p).then(() => 'ok', (e) => String(e)), input)
-  assert.match(denied, /not made by Let us drag/)
+  assert.match(denied, /not made by Let's Drag/)
   const badJob = await overlay.evaluate(() => window.lud.startJob({ id: '../x', optionId: 'to-png', inputPaths: ['relative'] }).then(() => 'ok', (e) => String(e)))
   assert.match(badJob, /Invalid job request/)
   const notAllowed = await overlay.evaluate(() => window.lud.setSettings({ triggerKey: 'alt' }).then(() => 'ok', (e) => String(e)))

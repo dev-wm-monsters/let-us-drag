@@ -1,6 +1,6 @@
 <div align="center">
 
-# Let us drag!
+# Let's Drag!
 
 **Drag any file. Hold Shift. Feed it to the Uncle.**<br>
 He chews it up and spits out the format you picked — right next to the original.
@@ -47,7 +47,7 @@ Feed him an `.exe` and he'll cross his arms. Some things an uncle just won't eat
 
 Download the installer for your system from the latest [release](https://github.com/dev-wm-monsters/let-us-drag/releases) / CI build.
 
-- **macOS** — open the `.dmg` and drag *Let us drag!* to Applications. The beta is not notarized yet, so the first time:
+- **macOS** — open the `.dmg` and drag *Let's Drag!* to Applications. The beta is not notarized yet, so the first time:
   right-click the app → **Open** (on macOS 15: try to open it once, then *System Settings → Privacy & Security → Open Anyway*).
   Then allow **Accessibility** when asked — that is how the app notices "dragging + Shift". It sees only that; it records and sends nothing.
 - **Windows** — run the `setup.exe` (or the portable `.exe`). SmartScreen may warn about an unknown publisher: **More info → Run anyway**.

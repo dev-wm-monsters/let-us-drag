@@ -37,7 +37,7 @@ export function buildDesktopEntry(command: readonly string[]): string {
   return [
     '[Desktop Entry]',
     'Type=Application',
-    'Name=Let us drag!',
+    "Name=Let's Drag!",
     'Comment=Drag a file, hold Shift, feed it to the Uncle.',
     `Exec=${command.map(quoteExecArg).join(' ')}`,
     'Terminal=false',

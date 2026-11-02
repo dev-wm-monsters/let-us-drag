@@ -155,14 +155,14 @@ normal runs.
 **Turning it on** (either is enough; read once at startup, restart the app after changing):
 
 - `LUD_DEBUG=1` in the environment, e.g.
-  `LUD_DEBUG=1 "/Applications/Let us drag!.app/Contents/MacOS/Let us drag!"`, or
+  `LUD_DEBUG=1 "/Applications/Let's Drag!.app/Contents/MacOS/Let's Drag!"`, or
 - an (empty) file `debug.flag` in userData, no Terminal launch needed:
   `touch ~/Library/Application\ Support/Let\ us\ drag\!/debug.flag` (macOS),
-  `%APPDATA%\Let us drag!\debug.flag` (Windows), `~/.config/Let us drag!/debug.flag` (Linux).
+  `%APPDATA%\Let's Drag!\debug.flag` (Windows), `~/.config/Let's Drag!/debug.flag` (Linux).
 
 **Output:** timestamped lines (`[lud <ISO time>] …`) on stderr and appended to
-`app.getPath('logs')/debug.log`: macOS `~/Library/Logs/Let us drag!/debug.log`, Windows
-`%APPDATA%\Let us drag!\logs\debug.log`, Linux `~/.config/Let us drag!/logs/debug.log`. A file
+`app.getPath('logs')/debug.log`: macOS `~/Library/Logs/Let's Drag!/debug.log`, Windows
+`%APPDATA%\Let's Drag!\logs\debug.log`, Linux `~/.config/Let's Drag!/logs/debug.log`. A file
 over 5 MB is moved to `debug.old.log` at startup. All normal log lines go there too.
 
 **What is logged:** app/Electron version, platform, displays (size, scale); the effective overlay

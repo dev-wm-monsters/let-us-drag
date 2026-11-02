@@ -70,9 +70,9 @@ describe('autostart (Linux)', () => {
     expect(quoteExecArg('/tmp/100%')).toBe('/tmp/100%%')
   })
   it('builds a desktop entry and rejects newlines', () => {
-    const entry = buildDesktopEntry(['/opt/Let us drag!/let-us-drag'])
+    const entry = buildDesktopEntry(["/opt/Let's Drag!/let-us-drag"])
     expect(entry).toContain('[Desktop Entry]')
-    expect(entry).toContain('Exec="/opt/Let us drag!/let-us-drag"')
+    expect(entry).toContain('Exec="/opt/Let\'s Drag!/let-us-drag"')
     expect(() => buildDesktopEntry(['/x\nExec=evil'])).toThrow()
     expect(() => buildDesktopEntry([])).toThrow()
   })

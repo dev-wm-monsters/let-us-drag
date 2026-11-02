@@ -36,9 +36,9 @@ const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 /** Installer file-name patterns from electron-builder.yml (linux arch naming is left open on purpose). */
 function installerPatterns(platform, arch, version) {
   const v = escapeRe(version)
-  if (platform === 'darwin') return [new RegExp(`^LetUsDrag-${v}-mac-${arch}\\.dmg$`)]
-  if (platform === 'win32') return [new RegExp(`^LetUsDrag-${v}-win-${arch}-setup\\.exe$`), new RegExp(`^LetUsDrag-${v}-win-${arch}-portable\\.exe$`)]
-  return [new RegExp(`^LetUsDrag-${v}-linux-[A-Za-z0-9_]+\\.AppImage$`), new RegExp(`^LetUsDrag-${v}-linux-[A-Za-z0-9_]+\\.deb$`)]
+  if (platform === 'darwin') return [new RegExp(`^LetsDrag-${v}-mac-${arch}\\.dmg$`)]
+  if (platform === 'win32') return [new RegExp(`^LetsDrag-${v}-win-${arch}-setup\\.exe$`), new RegExp(`^LetsDrag-${v}-win-${arch}-portable\\.exe$`)]
+  return [new RegExp(`^LetsDrag-${v}-linux-[A-Za-z0-9_]+\\.AppImage$`), new RegExp(`^LetsDrag-${v}-linux-[A-Za-z0-9_]+\\.deb$`)]
 }
 
 /** The packaged app's Resources directory inside the electron-builder output folder. */
