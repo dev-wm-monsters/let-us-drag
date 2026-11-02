@@ -157,6 +157,52 @@ unticked and describe it, that still helps. Send the file back to QA when done (
 
 ---
 
+## L. Licensing (TPM D26, do it on both computers)
+
+You need a **test** licence key (buy on the website in Dodo test mode, or use `LAUNCH50`) and, for L8, a third
+computer or a VM. The builds from CI are test-mode builds unless the repository variables `DODO_ENV=live` and
+`DODO_PRODUCT_ID` are set; Settings shows a small **Test mode** tag in a test build.
+
+1. [ ] Fresh install (or delete `licence.dat` / `licence.json` in the settings folder, see C), start the app.
+   Expect: the tray/menu-bar menu starts with **Buy a licence…** and **Activate…**; Settings has a **Licence** card at
+   the top saying **Not activated**, with an empty key field and **Buy a licence ($9.50)**.
+2. [ ] Shift-drag `photo.png`. Expect: the Uncle appears with **one** big bubble **Unlock for $9.50** and two round
+   buttons **Buy $9.50** / **I have a key**, no format bubbles. Drop the file anywhere: nothing is converted, no new
+   file appears. Release the mouse: the bubble stays; **×** and **Esc** close him.
+3. [ ] Click **Buy $9.50**. Expect: the default browser opens the Dodo checkout (test: `test.checkout.dodopayments.com/buy/pdt_…`),
+   never a window inside the app. The Uncle goes away.
+4. [ ] Feed Window (tray → Open Feed Window). Expect: the Uncle rests on the same unlock bubble. **Choose a file…** and a drop
+   both lead to it; no conversion. Click **I have a key**: Settings opens with the cursor in the key field.
+5. [ ] Remove BG on a photo while unlicensed. Expect: no "One-time download" and no `models` folder in the settings folder.
+6. [ ] Paste the key **with a space and a line break** around it, press **Activate**. Expect: "Activated on this computer.
+   Your licence works on 2 computers.", status **Active**, the key shown masked (`ABCD-…-WXYZ`), the tray items gone, and the
+   very next Shift-drag converts.
+7. [ ] Quit, switch **Wi-Fi off**, start again. Expect: still **Active**, conversions work, no message about being offline.
+   Leave it offline for a while (and through a sleep/wake): it never locks.
+8. [ ] Activate the same key on a **second** computer (works) and a **third** one. Expect on the third: "This key is already
+   active on 2 computers. On one of them, go to Settings → Deactivate this computer, then try again."
+9. [ ] Wrong key (type a few letters): "We couldn't find that key…". Wi-Fi off + Activate: "Activating needs the internet once…".
+10. [ ] On computer 2, **Deactivate this computer** → a confirm dialog → **Keep it** does nothing; again → **Deactivate** with
+    **Wi-Fi off**: "Deactivating needs the internet so the seat is freed…" and the licence stays. Wi-Fi on → Deactivate: status
+    **Not activated**, the Uncle shows the unlock bubble again. Now step 8's third computer activates.
+11. [ ] **Disabled key** (refund): in the Dodo dashboard disable the key (License Keys → disable). The app notices at its next
+    background check (at most once a day). To see it now: quit the app, set the computer's clock **2 days ahead**, start it,
+    wait ~3 minutes. Expect: Settings shows **Disabled** with "This licence key was disabled (for example after a refund)…",
+    the Uncle shows the unlock bubble with that text, nothing converts, no crash, settings and files untouched.
+    Re-enable the key, repeat: it unlocks again. (Set the clock back afterwards.)
+12. [ ] **Activation removed**: in the dashboard delete this computer's activation instance (keep the key active), force a check
+    as in 11. Expect: **Needs activating again** ("This computer's activation was removed, but your key is still valid…"), and **Activate again** (empty
+    field) works.
+13. [ ] **macOS Keychain after an update** (the beta is ad-hoc signed, so every build has a new signature): install the next
+    build over the activated one and start it. Note whether macOS asks for Keychain access ("Let's Drag! wants to use …
+    Safe Storage"). Click **Always Allow**: expect **Active**. If you click **Deny**: expect **Not activated** (no crash);
+    Activate again then uses a seat, so deactivate the old seat first if you hit the 2-computer limit.
+14. [ ] Settings → Privacy says: "Activating needs the internet once. Only the licence key, an anonymous device ID and a
+    device label are sent…". Footer: "Local only · v0.1 · © Wakeup Monster LLP". In the Dodo dashboard the activation is
+    named like `macOS · Apple silicon · 3f9a2c` / `Windows 11 · x64 · 3f9a2c` (never your computer or user name).
+
+---
+
 ## C. When something goes wrong
 
 **Logs.** The app writes no log files on its own. To capture one, quit the app (tray/menu bar → Quit), then start it from a terminal, repeat the problem, quit, and attach the file:
@@ -168,7 +214,8 @@ unticked and describe it, that still helps. Send the file back to QA when done (
   (If the file stays empty on Windows, just send the screen recording.)
 
 Settings live in `~/Library/Application Support/Let's Drag!/settings.json` (macOS) and
-`%APPDATA%\Let's Drag!\settings.json` (Windows); the Remove BG model is in the `models` folder next to it.
+`%APPDATA%\Let's Drag!\settings.json` (Windows); the Remove BG model is in the `models` folder next to it. The licence is
+`licence.dat` (encrypted with the system keychain / DPAPI) next to it, the anonymous device ID is `install-id`.
 
 **Reporting a bug.** One line per problem under the step, plus:
 1. what you did (step number + file type), 2. what you expected, 3. what happened (exact message on the Uncle's card),

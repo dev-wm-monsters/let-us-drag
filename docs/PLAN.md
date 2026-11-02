@@ -31,6 +31,8 @@ uses the Feed Window fallback).
 - Procedurally generated sound effects (WebAudio, no audio assets), mute toggle.
 - Installers: macOS `.dmg` (arm64, x64; ad-hoc signed), Windows NSIS installer + portable `.exe`,
   Linux AppImage + `.deb`.
+- Paid licence (added after v0.1 planning, TPM D26): hard paywall, $9.50 one-time for 2 computers, activated with a
+  Dodo Payments licence key in Settings; conversions are refused in main without an active licence.
 
 ### Out of scope for v0.1
 Auto-update, code signing/notarization with paid certificates, cloud anything, telemetry,
@@ -88,7 +90,8 @@ Key decisions (with reasons):
 8. **Binaries**: FFmpeg is resolved in this order: env `LUD_FFMPEG_PATH` → packaged
    `process.resourcesPath/bin/ffmpeg[.exe]` → `ffmpeg` on PATH. CI packaging places a pinned
    ffmpeg-static binary into `resources/bin` per platform/arch. No network calls at runtime
-   except the optional, user-initiated Remove-BG model download.
+   except the optional, user-initiated Remove-BG model download and the licence calls to Dodo
+   Payments (TPM D26).
 9. **Child processes** always via `spawn(file, argsArray)` with `shell: false`. Never build
    shell strings.
 

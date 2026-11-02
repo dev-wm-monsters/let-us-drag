@@ -23,6 +23,38 @@ Owner: Backend dev, Platform (docs/PLAN.md section 7). The preload lives in `src
 | `autostart.ts` | Linux XDG autostart entry; `loginItemSettings()` builds the macOS/Windows `app.setLoginItemSettings` argument (Windows portable exe; electron.exe + project dir in development) |
 | `job-registry.ts` | Paths produced by finished jobs (only those can be revealed) + recorded events for E2E |
 | `test-hooks.ts` | `globalThis.__ludTest` (E2E only; loaded with a dynamic import) |
+| `licence/config.ts` | Pure: build-time `DODO_ENV` / `DODO_PRODUCT_ID` (electron-vite `define`, `build-config.d.ts`), API host, checkout URL, the website links main may open, the loopback-only E2E mock URL (TPM D26) |
+| `licence/dodo-client.ts` | Pure Node: the three public licence endpoints (`fetch` injected; main passes the `lud-licence` session's `fetch`), 15 s timeout, redirects refused, results `ok` / `http` / `network` |
+| `licence/logic.ts` | Pure: error mapping, re-check classification + procedure (confirm, then key-only), scheduling (24 h, start-up / wake delay, retries), device label |
+| `licence/store.ts` | `licence.dat` (safeStorage-encrypted) or the 0600 `licence.json` fallback; the anonymous `install-id` (UUID v4) |
+| `licence/manager.ts` | Licence state owner: activate / deactivate / background re-check / timers; listeners broadcast `licenceChanged` and update the tray |
+
+## Licensing (TPM D26)
+
+- **Paywall in main.** `IPC.startJob` returns `{ started: false, reason: 'LICENCE_REQUIRED' }` without an active licence and
+  starts nothing (no engine job, so no Remove BG model download either). The renderer turns that into the `locked` state
+  ("Unlock for $9.50"). Every renderer reads only the `LicenceView` (`getLicence`, `licenceChanged`); `activateLicence` and
+  `deactivateLicence` are allowed from the Settings page only; `openLicenceLink` takes an enum (`checkout`, `pricing`, `terms`,
+  `refund`, `privacy`) and main opens the URL with `shell.openExternal`; `openActivation` ("I have a key") opens Settings.
+- **Network.** Only `POST /licenses/{activate,validate,deactivate}` on the build's Dodo host, from main, through the in-memory
+  session `lud-licence` (`restrictLicenceSession`: only that origin; generic `User-Agent: LetsDrag/<version>`, no
+  `Accept-Language`). Bodies carry the key, the instance ID and the device label only. No API key exists.
+- **When.** Activate / deactivate on user action. Background re-check (`LicenceManager.start()` at the end of start-up,
+  `onResume()` on powerMonitor `resume`): at most once per 24 h after the last definite answer, 45–165 s after start-up or
+  wake when due, otherwise when the 24 h are over (+ up to 15 min jitter); transient failures retry after 1/3/6/12 h.
+  Nothing runs at launch itself and nothing runs without a stored licence (the D22 exception is only this).
+- **Locking.** Only a definite answer (2xx `valid:false`, 403, 404), confirmed by a second validate after 60 s, then a
+  key-only validate: still valid → `reactivate` ("activate again"), else `disabled`. Everything else keeps the state.
+- **Storage.** `userData/licence.dat` (safeStorage) or `licence.json` (0600) when encryption is unavailable (logged once);
+  `userData/install-id`. A licence for the other `DODO_ENV` is ignored.
+- **Build config.** `DODO_ENV=test|live`, `DODO_PRODUCT_ID=pdt_…` in the build environment (CI: repository variables;
+  default test + `pdt_0Nqn0nhO4z3NeUwcXy0n3`). Invalid values, or `live` with the test product, fail the build.
+- **E2E** (`LUD_E2E=1` and unpackaged only): `LUD_E2E_LICENSE=active` starts licensed (in memory, nothing written);
+  `LUD_E2E_DODO_URL=http://127.0.0.1:<port>` points the client at a mock (loopback only; otherwise an unroutable address);
+  timeouts 1.5 s and confirm delay 200 ms; `shell.openExternal` is replaced by a recorder (`__ludTest.openedUrls()`);
+  `__ludTest.licence()`, `licenceRecheckNow()`, `licenceResume()`. The E2E fixture defaults to `LUD_E2E_LICENSE=active`.
+- **Development builds** (unpackaged) get a tray item "Reset licence (development)" that forgets the licence locally.
+- **Real Dodo check:** `node scripts/dodo-smoke.mjs <test licence key>` (activate → validate → deactivate on the test host).
 
 ## Overlay lifecycle
 

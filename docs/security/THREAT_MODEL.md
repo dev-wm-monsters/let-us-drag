@@ -213,9 +213,29 @@ See [CHECKLIST.md §H and §K](CHECKLIST.md) (baseline findings F-01..F-14). Key
 - Default workflow token `contents: read`; `contents: write` only in the job that creates the draft release, and that job MUST NOT run `npm ci`. `actions/checkout` with `persist-credentials: false`. Pin third-party and GitHub actions to full commit SHAs [W: GitHub hardening guidance]. (SEC-142..144)
 - Track `npm audit` results (§9) for every release. (SEC-145)
 
+### 5.14 Licensing (Dodo Payments, TPM D26) — owner: Platform (main) + Frontend (UI)
+
+What it protects: the $9.50 paywall against **casual sharing** (passing a key around, copying the app folder or the licence
+file to another computer). It does **not** protect against a determined user: Electron's main-process JavaScript ships in
+`app.asar` and can be patched to skip the check, the open-source build can be rebuilt without it, and on Linux without a
+keyring the licence file is plain JSON. That is an accepted trade-off at $9.50 (no obfuscation, no hardware fingerprinting).
+
+| Threat | Mitigation |
+|---|---|
+| API key extracted from the app | There is none. Only the three **public** licence endpoints (`/licenses/activate`, `/validate`, `/deactivate`) are called; they need no key. No secret in code, config, CI (`DODO_ENV` / `DODO_PRODUCT_ID` are repository *variables*). `grep -rn dodo --include=*.ts src` shows URLs and the product ID only. |
+| Renderer (compromised or buggy) unlocks itself | The paywall is enforced in **main**: `startJob` returns `LICENCE_REQUIRED` and starts nothing (no conversion, no Remove BG model download). Renderers only get a `LicenceView` (status + masked key); activate/deactivate are allowed from the Settings page only (`IPC_ALLOWLIST`), payloads are zod-validated, links are an enum mapped to URLs in main (`openLicenceLink`), never a URL from the page. |
+| Licence file copied to another computer / edited | `licence.dat` is encrypted with `safeStorage` (Keychain / DPAPI / libsecret), so a copy does not decrypt elsewhere and a hand-written `licence.json` is ignored while encryption is available. Without encryption (Linux without a keyring, CI) the fallback is a mode-0600 JSON file: editable by the user (accepted, logged). Undecryptable or invalid data reads as "no licence"; it never crashes. |
+| Key for another Dodo product | If Dodo's activate/validate answer names a product, it must equal the build's `DODO_PRODUCT_ID`; otherwise the seat is freed again and the key refused. Test keys only work against the test host and vice versa (`DODO_ENV`). |
+| Privacy of licence calls | Body: licence key, activation instance ID, device label (`<OS> · <CPU> · <first 6 hex of a random install UUID>`). No hostname, user name, email or file data. The calls run in main through a dedicated in-memory session (`lud-licence`) whose request filter allows only the configured Dodo origin, with a generic `User-Agent: LetsDrag/<version>`, no `Accept-Language`, no cookies. |
+| Network failure locks paying users (availability) | Only a definite answer locks: HTTP 2xx with `valid: false`, or 403/404, confirmed by a second check after a delay; then the key alone decides between *disabled* and *activate again*. Offline, DNS, TLS, timeouts (15 s), captive portals (redirects / non-JSON bodies), 5xx, 429 and anything unexpected keep the current state and retry later (1 h, 3 h, 6 h, 12 h). No offline time limit. |
+| Test bypass reaching users | `LUD_E2E_LICENSE` / `LUD_E2E_DODO_URL` are read only when `LUD_E2E=1` **and** `!app.isPackaged` (D12/D18); the mock URL must be loopback; the E2E seed is in memory only. The engine worker never sees `LUD_*` in packaged builds anyway. The "Reset licence (development)" tray item exists only in unpackaged builds. |
+| Man-in-the-middle | HTTPS to `test.` / `live.dodopayments.com` with Chromium's certificate verification; redirects are refused (`redirect: 'error'`). |
+
 ## 6. HTML→PDF and "local only" guarantee: network policy (summary)
 
-The app makes **no** network requests at runtime except the user-initiated model download. Enforcement:
+The app makes **no** network requests at runtime except the user-initiated model download and the licence calls to
+Dodo (TPM D26: activate / deactivate when the user asks; a silent background re-check at most once a day, after a random
+45–165 s delay, never during start-up itself; a documented exception to D22). Enforcement:
 
 1. Default session: `webRequest.onBeforeRequest` cancels any `http:`, `https:`, `ws:`, `wss:` or `ftp:` request from our renderers (in production; the dev server is allowed only when `!app.isPackaged`). (SEC-150)
 2. htmlToPdf session: deny everything except the document itself (§5.7). (SEC-82)
@@ -223,6 +243,7 @@ The app makes **no** network requests at runtime except the user-initiated model
 4. pdf.js: no remote cmaps/fonts (§5.6). (SEC-71)
 5. Engine Node code: the only `fetch`/`https` usage is the model downloader (grep gate). (SEC-151)
 6. No telemetry, no crash upload: `crashReporter` not started, or started with `uploadToServer: false`; no analytics SDKs. (SEC-152)
+7. Licence calls (D26): main process only, through the `lud-licence` in-memory session that can reach only the configured Dodo origin (§5.14). The default session keeps blocking every remote request from our windows.
 
 ## 7. Privacy invariants for the global hook (MUST, release blockers)
 
@@ -239,6 +260,7 @@ The app makes **no** network requests at runtime except the user-initiated model
 - A compromised renderer can still ask main to convert any user-readable file the IPC accepts, and write new (never overwriting) files next to it. Main cannot independently verify that a path came from a real drop. Impact: limited to creating new files. Accepted, because renderers load no remote content.
 - Converted outputs (CSV from XLSX, HTML from MD) can carry active content that other programs act on (formula injection, links). Documented.
 - Same-user malware can tamper with our unpacked native modules or userData. Out of scope, apart from the fuses (SEC-17) and model re-hashing (SEC-121).
+- Licensing (D26) is casual-sharing protection only: patching `app.asar`, rebuilding from source, or editing the 0600 fallback file on Linux without a keyring unlocks the app. Accepted at $9.50 (§5.14).
 
 ## 9. Dependency audit and licensing (baseline at e9fae72)
 
