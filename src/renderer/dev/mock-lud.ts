@@ -170,7 +170,8 @@ export function createMockLud(opts: MockOptions = {}): MockControl {
     activatedAt: status === 'unlicensed' ? null : '2026-10-30T09:12:00.000Z',
     lastCheckedAt: status === 'unlicensed' ? null : '2026-11-01T18:40:00.000Z',
     environment: 'test',
-    testMode: true
+    testMode: true,
+      teamBuild: false
   })
   let licence = makeView(opts.licence ?? 'active')
   const setLicence = (status: LicenceStatus) => {

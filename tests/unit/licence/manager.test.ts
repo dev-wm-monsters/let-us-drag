@@ -108,7 +108,7 @@ describe('LicenceManager: activation', () => {
     await h.m.init()
     expect(h.m.status).toBe('unlicensed')
     expect(h.m.isUnlocked()).toBe(false)
-    expect(h.m.view()).toEqual({ status: 'unlicensed', maskedKey: null, activatedAt: null, lastCheckedAt: null, environment: 'test', testMode: true })
+    expect(h.m.view()).toEqual({ status: 'unlicensed', maskedKey: null, activatedAt: null, lastCheckedAt: null, environment: 'test', testMode: true, teamBuild: false })
   })
 
   it('activates a trimmed key with the device label, stores it and unlocks at once', async () => {
@@ -352,5 +352,23 @@ describe('LicenceManager: scheduling', () => {
     h.m.start()
     h.m.stop()
     expect(activeTimers(h)).toHaveLength(0)
+  })
+})
+
+describe('LicenceManager: team / demo build (LUD_LICENSING=off)', () => {
+  it('is unlocked without a key, never calls Dodo, never stores anything, never schedules checks', async () => {
+    const h = setup({})
+    await h.m.init()
+    h.m.enableTeamBuild()
+    h.m.start()
+    expect(h.m.isUnlocked()).toBe(true)
+    expect(h.m.view()).toMatchObject({ status: 'active', teamBuild: true })
+    const a = await h.m.activate('LD7Q-29XK-PM3A-1A2B')
+    const d = await h.m.deactivate()
+    expect(a.ok && d.ok).toBe(true)
+    expect(h.m.isUnlocked()).toBe(true)
+    expect(h.activations.length + h.validations.length + h.deactivations.length).toBe(0)
+    expect(activeTimers(h)).toHaveLength(0)
+    expect(h.store.rec()).toBeNull()
   })
 })

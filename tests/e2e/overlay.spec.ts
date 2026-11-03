@@ -1,7 +1,9 @@
 // E2E-OVERLAY: arming, sensor behaviour, focus, disarm/hide, text drags.
 // Test plan IDs: E2E-10..E2E-14, OVL-01, OVL-03, OVL-09 (docs/qa/TEST_PLAN.md).
 // All tests need the Platform (__ludTest, overlay window) and Frontend (overlay DOM contract).
+import { join } from 'node:path'
 import type { Page } from '@playwright/test'
+import { makePng } from './support/fixtures'
 import {
   NEEDS_INTEGRATION,
   T,
@@ -38,8 +40,8 @@ async function dispatchTextDrag(page: Page): Promise<string[]> {
 }
 
 /** Dispatch a synthetic FILE dragenter (a PNG) on the overlay page: engages the Uncle (appear). */
-async function dispatchFileDragEnter(page: Page): Promise<void> {
-  await page.evaluate(() => {
+async function dispatchFileDragEnter(page: Page, mime = 'image/png', name = 'photo.png'): Promise<void> {
+  await page.evaluate(([mime, name]) => {
     interface Target {
       dispatchEvent(e: unknown): boolean
     }
@@ -51,10 +53,10 @@ async function dispatchFileDragEnter(page: Page): Promise<void> {
     }
     const g = globalThis as unknown as G
     const dt = new g.DataTransfer()
-    dt.items.add(new g.File(['x'], 'photo.png', { type: 'image/png' }))
+    dt.items.add(new g.File(['x'], name!, { type: mime! }))
     const target = g.document.querySelector('[data-testid="overlay-root"]') ?? g.document.body
     target.dispatchEvent(new g.DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: dt, clientX: 20, clientY: 20 }))
-  })
+  }, [mime, name])
 }
 
 test.describe('overlay', () => {
@@ -168,5 +170,25 @@ test.describe('overlay', () => {
     expect(await hook(app, 'overlayVisible'), 'the overlay must not hide mid-gesture').toBe(true)
     await hook(app, 'disarm')
     await expect.poll(() => hook(app, 'overlayVisible'), { timeout: T.hide }).toBe(false)
+  })
+
+  test('E2E-16 macOS: a drop that arrives after the mouse-up still feeds him in feedMe (unknown file type)', async ({ lud }) => {
+    // A file whose type Chromium can't tell during the drag (empty MIME) engages feedMe with no
+    // bubbles: "drop it on me". macOS delivers the global mouse-up (disarm) BEFORE the drop, so the
+    // B-068 grace must cover feedMe too, or he leaves and the drop is lost (product owner, beta.7).
+    const app = await lud.launchReady()
+    const input = await makePng(join(lud.workDir, 'notes.png'))
+    await hook(app, 'arm')
+    await expect.poll(() => hook(app, 'overlayVisible'), { timeout: T.state }).toBe(true)
+    const overlay = await waitForPage(app, 'overlay')
+    await dispatchFileDragEnter(overlay, '', 'notes.unknown')
+    await expectUncleState(overlay, 'feedMe')
+    await hook(app, 'disarm')
+    await overlay.waitForTimeout(80)
+    await hook(app, 'dropFiles', [input], null)
+    await expectUncleState(overlay, 'feedMe')
+    await expect(overlay.getByTestId('held-files'), 'the dropped file is held and its options are offered').toBeVisible()
+    await expect(overlay.getByTestId('option-to-jpg')).toBeVisible()
+    expect(await hook(app, 'overlayVisible')).toBe(true)
   })
 })

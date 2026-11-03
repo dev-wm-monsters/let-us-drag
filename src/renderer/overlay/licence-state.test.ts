@@ -24,7 +24,8 @@ const view = (status: LicenceStatus): LicenceView => ({
   activatedAt: null,
   lastCheckedAt: null,
   environment: 'test',
-  testMode: true
+  testMode: true,
+      teamBuild: false
 })
 const png: DroppedItem = { path: '/home/u/a.png', name: 'a.png', ext: 'png', isDirectory: false, sizeBytes: 10 }
 const exe: DroppedItem = { path: '/home/u/a.exe', name: 'a.exe', ext: 'exe', isDirectory: false, sizeBytes: 10 }

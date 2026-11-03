@@ -37,7 +37,7 @@ const input = join(dir, 'a.png')
 writeFileSync(input, 'x')
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
 
-const view: LicenceView = { status: 'unlicensed', maskedKey: null, activatedAt: null, lastCheckedAt: null, environment: 'test', testMode: true }
+const view: LicenceView = { status: 'unlicensed', maskedKey: null, activatedAt: null, lastCheckedAt: null, environment: 'test', testMode: true, teamBuild: false }
 
 async function setup(unlocked: boolean) {
   handlers.clear()

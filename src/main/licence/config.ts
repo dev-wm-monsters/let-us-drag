@@ -61,6 +61,11 @@ export function buildLicenceConfig(): LicenceConfig {
   return makeLicenceConfig(env, product)
 }
 
+/** False only in team / demo builds made with LUD_LICENSING=off (everything unlocked, no licence calls). */
+export function buildLicensingEnabled(): boolean {
+  return !(typeof __LUD_LICENSING__ === 'string' && __LUD_LICENSING__ === 'off')
+}
+
 /** Every URL the app may open in the default browser (the renderer only names one). */
 export function licenceLinkUrl(link: LicenceLink, config: Pick<LicenceConfig, 'checkoutUrl'>): string {
   switch (link) {

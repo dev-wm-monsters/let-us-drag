@@ -352,7 +352,11 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
       }),
       subscribe('onOverlayDisarm', () => {
         const wasHidden = modelRef.current.state === 'hidden'
-        if (!wasHidden && (modelRef.current.state === 'appear' || modelRef.current.state === 'hover')) {
+        const m0 = modelRef.current
+        // feedMe without held files ("drop it on me", file type unknown during the drag) needs the
+        // grace too: otherwise he leaves before the late macOS drop lands (product owner, beta.7).
+        const waitsForDrop = m0.state === 'appear' || m0.state === 'hover' || (m0.state === 'feedMe' && !m0.held)
+        if (!wasHidden && waitsForDrop) {
           // macOS reports the global mouse-up a few ms BEFORE Chromium delivers the drop. Give the drop
           // a moment to arrive; once it has, the reducer ignores DISARM (m.dropping / state changed).
           // Only for THIS session: a new gesture (arm + dragenter) inside the grace is left alone.

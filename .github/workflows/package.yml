@@ -11,6 +11,12 @@ on:
         description: 'Create a DRAFT release with this tag (e.g. v0.1.0-beta.1) on the dispatched commit; empty = artifacts only'
         required: false
         default: ''
+      licensing:
+        description: 'Licensing in the app: "on" for user builds, "off" for team / demo builds (everything unlocked, no licence calls)'
+        required: false
+        default: 'on'
+        type: choice
+        options: ['on', 'off']
 
 permissions:
   contents: read
@@ -70,8 +76,9 @@ jobs:
         env:
           DODO_ENV: ${{ vars.DODO_ENV || 'test' }}
           DODO_PRODUCT_ID: ${{ vars.DODO_PRODUCT_ID || 'pdt_0Nqn0nhO4z3NeUwcXy0n3' }}
+          LUD_LICENSING: ${{ inputs.licensing || 'on' }}
         run: |
-          echo "Dodo licensing: $DODO_ENV / $DODO_PRODUCT_ID" | tee ci-logs/licensing.log
+          echo "Dodo licensing: $DODO_ENV / $DODO_PRODUCT_ID, licensing=$LUD_LICENSING" | tee ci-logs/licensing.log
           set -o pipefail && npm run build 2>&1 | tee ci-logs/build.log
       - name: Package
         shell: bash

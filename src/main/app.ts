@@ -16,7 +16,7 @@ import { HtmlToPdf } from './html-to-pdf'
 import { parseOrThrow } from './ipc-validation'
 import { registerIpc } from './ipc'
 import { JobRegistry } from './job-registry'
-import { buildLicenceConfig, e2eDodoBaseUrl, E2E_NO_NETWORK_BASE, licenceLinkUrl } from './licence/config'
+import { buildLicenceConfig, buildLicensingEnabled, e2eDodoBaseUrl, E2E_NO_NETWORK_BASE, licenceLinkUrl } from './licence/config'
 import { DodoClient, type FetchLike } from './licence/dodo-client'
 import { deviceLabel } from './licence/logic'
 import { LicenceManager } from './licence/manager'
@@ -145,6 +145,8 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
   })
   await licence.init()
   if (e2eLicence && process.env['LUD_E2E_LICENSE'] === 'active') licence.seedActive()
+  // Team / demo builds (LUD_LICENSING=off at build time): everything unlocked, no licence calls.
+  if (!buildLicensingEnabled()) licence.enableTeamBuild()
   log(`licence: ${licenceConfig.environment} environment, ${licence.status}`)
   cleanups.push(() => licence.stop())
   /** URLs "opened" in E2E runs (no browser is started then). */

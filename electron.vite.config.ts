@@ -20,12 +20,17 @@ function dodoBuildSettings(env: NodeJS.ProcessEnv): { dodoEnv: 'test' | 'live'; 
   return { dodoEnv, productId }
 }
 const dodo = dodoBuildSettings(process.env)
+/** LUD_LICENSING=off: team / demo build, everything unlocked, no licence network calls (D26 addendum). */
+const rawLicensing = (process.env['LUD_LICENSING'] ?? '').trim()
+if (rawLicensing !== '' && rawLicensing !== 'on' && rawLicensing !== 'off') throw new Error(`LUD_LICENSING must be "on" or "off", got "${rawLicensing}"`)
+const licensing = rawLicensing === 'off' ? 'off' : 'on'
 
 export default defineConfig({
   main: {
     define: {
       __DODO_ENV__: JSON.stringify(dodo.dodoEnv),
-      __DODO_PRODUCT_ID__: JSON.stringify(dodo.productId)
+      __DODO_PRODUCT_ID__: JSON.stringify(dodo.productId),
+      __LUD_LICENSING__: JSON.stringify(licensing)
     },
     build: {
       rollupOptions: {

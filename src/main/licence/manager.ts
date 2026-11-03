@@ -124,7 +124,8 @@ export class LicenceManager {
       activatedAt: r?.activatedAt ?? null,
       lastCheckedAt: r?.lastCheckedAt ?? null,
       environment: this.deps.config.environment,
-      testMode: this.deps.config.environment === 'test'
+      testMode: this.deps.config.environment === 'test',
+      teamBuild: this.teamBuild
     }
   }
 
@@ -136,6 +137,7 @@ export class LicenceManager {
   // ——— user actions ———————————————————————————————————————————————————————————————————
 
   async activate(raw: unknown): Promise<LicenceActionResult> {
+    if (this.teamBuild) return { ok: true, message: LICENCE_MESSAGES.teamBuild, view: this.view() }
     const fail = (code: LicenceErrorCode): LicenceActionResult => ({ ok: false, code, message: activateErrorMessage(code), view: this.view() })
     const typed = normaliseLicenceKey(raw)
     // "Activate again" (reactivate) may send an empty field: reuse the stored key.
@@ -179,6 +181,7 @@ export class LicenceManager {
   }
 
   async deactivate(): Promise<LicenceActionResult> {
+    if (this.teamBuild) return { ok: true, message: LICENCE_MESSAGES.teamBuild, view: this.view() }
     const rec = this.rec
     if (!rec) return { ok: false, code: 'NO_LICENCE', message: LICENCE_MESSAGES.noLicence, view: this.view() }
     if (this.busy) return { ok: false, code: 'BUSY', message: LICENCE_MESSAGES.busy, view: this.view() }
@@ -202,14 +205,21 @@ export class LicenceManager {
     this.cancelTimer()
   }
 
+  /** Team / demo build (LUD_LICENSING=off): unlocked in memory, never stored, never checked online. */
+  private teamBuild = false
+  enableTeamBuild(): void {
+    this.teamBuild = true
+    this.seedActive('TEAM-BUILD-UNLOCKED-0000', 'lki_team_build')
+  }
+
   /** E2E only: start as if activated (no network). In memory only: nothing is written to disk. */
-  seedActive(): void {
+  seedActive(key = 'E2E-TEST-KEY-0000-0000', instanceId = 'lki_e2e_seed'): void {
     const at = new Date(this.now()).toISOString()
     this.generation++
     this.rec = {
       v: 1,
-      licenseKey: 'E2E-TEST-KEY-0000-0000',
-      instanceId: 'lki_e2e_seed',
+      licenseKey: key,
+      instanceId,
       environment: this.deps.config.environment,
       activatedAt: at,
       lastCheckedAt: at,
@@ -222,6 +232,7 @@ export class LicenceManager {
 
   /** Start background checking (after start-up). */
   start(): void {
+    if (this.teamBuild) return // no background checks in team builds
     this.started = true
     this.schedule()
   }

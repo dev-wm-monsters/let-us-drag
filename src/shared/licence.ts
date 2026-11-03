@@ -31,6 +31,8 @@ export interface LicenceView {
   environment: DodoEnvironment
   /** A test-mode build (Dodo test environment): Settings shows a small "Test mode" tag. */
   testMode: boolean
+  /** Team / demo build (LUD_LICENSING=off): unlocked, no licence calls, no licence UI. */
+  teamBuild: boolean
 }
 
 export function isUnlocked(view: Pick<LicenceView, 'status'> | null | undefined): boolean {
@@ -73,6 +75,7 @@ export const LICENCE_MESSAGES = {
   deactivateOffline: 'Deactivating needs the internet so the seat is freed. Try again when you\'re online.',
   deactivateGeneric: `We couldn't deactivate this computer. Please try again, or write to ${SUPPORT_EMAIL}.`,
   noLicence: 'There is no licence on this computer.',
+  teamBuild: 'Team build: licensing is off and everything is unlocked.',
   alreadyActive: 'This computer is already activated. Deactivate it first to use another key.',
   busy: 'One moment, still talking to Dodo Payments.',
   disabled: `This licence key was disabled (for example after a refund). Buy a new licence, or write to ${SUPPORT_EMAIL} if this is a mistake.`,

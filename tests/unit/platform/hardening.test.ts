@@ -285,7 +285,7 @@ describe('test hooks (TPM D2/D3)', () => {
       },
       sendCancel: () => log.push('cancel'),
       licence: {
-        view: () => ({ status: 'active', maskedKey: null, activatedAt: null, lastCheckedAt: null, environment: 'test', testMode: true }),
+        view: () => ({ status: 'active', maskedKey: null, activatedAt: null, lastCheckedAt: null, environment: 'test', testMode: true, teamBuild: false }),
         recheckNow: async () => 'valid',
         resume: () => log.push('resume'),
         openedUrls: () => []
