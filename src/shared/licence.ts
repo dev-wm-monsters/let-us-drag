@@ -66,7 +66,7 @@ export const LICENCE_MESSAGES = {
   network: 'Activating needs the internet once. Check your connection and try again.',
   notFound: "We couldn't find that key. Check it against your email from Dodo Payments.",
   notActive: `This key isn't active (it may have been refunded). Write to ${SUPPORT_EMAIL}.`,
-  limit: `This key is already active on ${LICENCE_SEATS} computers. On one of them, go to Settings → Deactivate this computer, then try again.`,
+  limit: `This key is already active on ${LICENCE_SEATS} computers. On one of them, go to Settings → Deactivate this computer, then try again. If that computer is lost or broken, write to ${SUPPORT_EMAIL} and we'll free the seat.`,
   wrongProduct: `That key is for a different product. Check it against your email from Dodo Payments, or write to ${SUPPORT_EMAIL}.`,
   emptyKey: 'Paste your licence key first.',
   generic: `Something went wrong while talking to Dodo Payments. Please try again, or write to ${SUPPORT_EMAIL}.`,
@@ -77,6 +77,7 @@ export const LICENCE_MESSAGES = {
   busy: 'One moment, still talking to Dodo Payments.',
   disabled: `This licence key was disabled (for example after a refund). Buy a new licence, or write to ${SUPPORT_EMAIL} if this is a mistake.`,
   reactivate: "This computer's activation was removed, but your key is still valid: activate it again in Settings → Activate.",
+  lostKey: `Can't find your key? Search your email for "Dodo Payments", or write to ${SUPPORT_EMAIL}.`,
   unlicensed: `Feed me a licence first! One-time, works on ${LICENCE_SEATS} computers.`
 } as const
 

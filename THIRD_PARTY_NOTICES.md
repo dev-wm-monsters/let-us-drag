@@ -1,6 +1,6 @@
 # Third-party notices
 
-**Let's Drag! 0.1.0.** Let's Drag! itself is free software under the MIT License (see `LICENSE`).
+**Let's Drag! 0.1.0.** Let's Drag! itself is proprietary software, © 2026 Wakeup Monster LLP, all rights reserved (see `LICENSE`).
 The app is built on, and ships, software from other people. Their licenses are listed here, together
 with the way to get the source code of the parts that are under the GNU GPL or LGPL.
 

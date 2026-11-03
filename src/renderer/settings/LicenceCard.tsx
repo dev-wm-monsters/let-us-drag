@@ -1,7 +1,7 @@
 // Settings → Licence (TPM D26): state, masked key, Activate, Buy a licence, Deactivate this computer.
 // The renderer only sees the LicenceView; activation and deactivation run in main.
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
-import { LICENCE_PRICE, lockedExplanation, type LicenceActionResult, type LicenceView } from '../../shared/licence'
+import { LICENCE_MESSAGES, LICENCE_PRICE, lockedExplanation, type LicenceActionResult, type LicenceView } from '../../shared/licence'
 import { call } from '../common/lud'
 import { licenceStatusLabel, licenceSummary } from './labels'
 
@@ -154,6 +154,11 @@ export function LicenceCard({ view, onView }: { view: LicenceView | null; onView
           </button>
         )}
       </div>
+      {!active && (
+        <p className="set-small" data-testid="licence-lost-key">
+          {LICENCE_MESSAGES.lostKey}
+        </p>
+      )}
       <p className="set-small set-licence-links">
         <button type="button" className="set-link" onClick={() => void call('openLicenceLink', undefined, 'refund')}>
           7-day refunds

@@ -5,7 +5,7 @@
   "description": "Drag a file, hold Shift, feed it to the Uncle. A free, local, cartoon file converter.",
   "main": "./out/main/index.js",
   "author": "Wakeup Monster LLP",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "private": true,
   "homepage": "https://github.com/dev-wm-monsters/let-us-drag",
   "engines": {

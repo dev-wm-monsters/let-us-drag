@@ -162,7 +162,7 @@ test.describe('licensing (D26)', () => {
       "This key isn't active (it may have been refunded). Write to support@wakeupmonster.com."
     )
     expect(await activateIn(settings, 'FULL-KEY-0001')).toBe(
-      'This key is already active on 2 computers. On one of them, go to Settings → Deactivate this computer, then try again.'
+      "This key is already active on 2 computers. On one of them, go to Settings → Deactivate this computer, then try again. If that computer is lost or broken, write to support@wakeupmonster.com and we'll free the seat."
     )
     await screenshot(settings, testInfo, 'settings-error-422')
     mock.mode = 'drop'

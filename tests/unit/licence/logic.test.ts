@@ -54,7 +54,7 @@ describe('activation error mapping', () => {
     expect(activateErrorMessage('NOT_FOUND')).toBe("We couldn't find that key. Check it against your email from Dodo Payments.")
     expect(activateErrorMessage('NOT_ACTIVE')).toBe("This key isn't active (it may have been refunded). Write to support@wakeupmonster.com.")
     expect(activateErrorMessage('LIMIT_REACHED')).toBe(
-      'This key is already active on 2 computers. On one of them, go to Settings → Deactivate this computer, then try again.'
+      "This key is already active on 2 computers. On one of them, go to Settings → Deactivate this computer, then try again. If that computer is lost or broken, write to support@wakeupmonster.com and we'll free the seat."
     )
     expect(activateErrorMessage('UNKNOWN')).toContain('support@wakeupmonster.com')
   })
