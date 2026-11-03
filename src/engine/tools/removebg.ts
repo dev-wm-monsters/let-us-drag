@@ -5,6 +5,9 @@
 //      divide by std 1.0, NCHW float32,
 //   3. take output[0][:, 0], min-max normalise to 0..1, ×255 → uint8 mask,
 //   4. resize the mask back to the original size (LANCZOS) and use it as the alpha channel (PNG).
+// Steps 1–3 match rembg exactly (checked against rembg 2.0.86: mean 0.5, std 1.0, 1024² LANCZOS).
+// Step 4 adds our post-processing (D27, refineCutout): island removal, alpha levels, colour
+// decontamination.
 // Runtime: onnxruntime-node where its prebuilt binary exists, otherwise onnxruntime-web (wasm).
 // Both are loaded lazily on first use so the engine starts fast. One session per run (D24).
 import { cpus } from 'node:os'
@@ -14,6 +17,7 @@ import { MAX_INPUT_PIXELS } from '../limits'
 import { sharp, sharpError, type Sharp } from './sharp-safe'
 import { EngineError, errMessage, throwIfAborted } from '../errors'
 import { resolveEntry } from '../resolve'
+import { applyLevels, decontaminate, refineMatte, workSize } from './mask-refine'
 
 export const MODEL_INPUT_SIZE = 1024
 const MEAN = [0.5, 0.5, 0.5] as const
@@ -207,11 +211,41 @@ export async function removeBackground(img: Sharp, modelPath: string, signal: Ab
   const mask1024 = await predictMask(modelPath, small, chooseOrtBackend(), signal)
   throwIfAborted(signal)
   onStage(0.9, 'Cutting it out')
-  const mask = await sharp(mask1024, { raw: { width: MODEL_INPUT_SIZE, height: MODEL_INPUT_SIZE, channels: 1 }, limitInputPixels: MAX_INPUT_PIXELS })
-    .resize(width, height, { fit: 'fill', kernel: 'lanczos3' })
-    .extractChannel(0) // sharp would otherwise emit a 3-channel sRGB buffer
-    .raw()
-    .toBuffer()
-  if (mask.length !== width * height) throw new EngineError('INTERNAL', undefined, `mask size ${mask.length} != ${width * height}`)
-  return sharp(rgb, raw).joinChannel(mask, { raw: { width, height, channels: 1 } }).png().toBuffer()
+  const { alpha, rgb: cut } = await refineCutout(rgb, width, height, mask1024, signal)
+  return sharp(cut, raw).joinChannel(alpha, { raw: { width, height, channels: 1 } }).png().toBuffer()
+}
+
+/**
+ * Post-processing (TPM decision D27), after the rembg-identical mask: at a work size of at most
+ * 1024 px, drop small stray islands and estimate foreground colours; then at full size upscale the
+ * mask (lanczos), apply the alpha levels (kills faint ghosting, makes the subject truly opaque) and
+ * decontaminate the colours of semi-transparent edge pixels. Returns the alpha plane and the RGB
+ * pixels (`rgb` is modified in place).
+ */
+export async function refineCutout(
+  rgb: Buffer,
+  width: number,
+  height: number,
+  mask1024: Uint8Array,
+  signal?: AbortSignal
+): Promise<{ alpha: Buffer; rgb: Buffer; islandsRemoved: number }> {
+  const { w, h } = workSize(width, height)
+  const full = w === width && h === height
+  const raw = { raw: { width, height, channels: 3 as const }, limitInputPixels: MAX_INPUT_PIXELS }
+  const resizeMask = (src: Uint8Array, sw: number, sh: number, tw: number, th: number): Promise<Buffer> =>
+    sharp(src, { raw: { width: sw, height: sh, channels: 1 }, limitInputPixels: MAX_INPUT_PIXELS })
+      .resize(tw, th, { fit: 'fill', kernel: 'lanczos3' })
+      .extractChannel(0) // sharp would otherwise emit a 3-channel sRGB buffer
+      .raw()
+      .toBuffer()
+  const maskWork = await resizeMask(mask1024, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE, w, h)
+  const rgbWork = full ? rgb : await sharp(rgb, raw).resize(w, h, { fit: 'fill', kernel: 'lanczos3' }).raw().toBuffer()
+  if (signal) throwIfAborted(signal)
+  const matte = refineMatte(maskWork, rgbWork, w, h)
+  const alpha = full ? Buffer.from(matte.cleaned.buffer, matte.cleaned.byteOffset, matte.cleaned.length) : await resizeMask(matte.cleaned, w, h, width, height)
+  if (alpha.length !== width * height) throw new EngineError('INTERNAL', undefined, `mask size ${alpha.length} != ${width * height}`)
+  applyLevels(alpha)
+  if (signal) throwIfAborted(signal)
+  decontaminate(rgb, alpha, width, height, matte.colours)
+  return { alpha, rgb, islandsRemoved: matte.islandsRemoved }
 }
