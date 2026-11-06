@@ -75,21 +75,6 @@ export function LicenceCard({ view, onView }: { view: LicenceView | null; onView
   if (view?.teamBuild) return null
 
   return (
-      <section className="set-card set-licence is-active" data-testid="licence-card" data-licence-status="team" aria-labelledby="licence-title">
-        <div className="set-licence-head">
-          <h2 id="licence-title">Licence</h2>
-          <span className="set-pill is-ok" data-testid="licence-status">
-            Team build
-          </span>
-        </div>
-        <p className="set-small set-licence-summary" data-testid="licence-team">
-          {LICENCE_MESSAGES.teamBuild} No licence calls are made.
-        </p>
-      </section>
-    )
-  }
-
-  return (
     <section className={`set-card set-licence is-${status}`} data-testid="licence-card" data-licence-status={status} aria-labelledby="licence-title">
       <div className="set-licence-head">
         <h2 id="licence-title">Licence</h2>
