@@ -28,6 +28,11 @@ import { AccessibilityPermission } from './platform/permissions'
 import { blockRemoteRequests, hardenSession, hardenWebContents, restrictLicenceSession } from './security'
 import { SettingsStore, settingsPatchSchema } from './settings-store'
 import { AppTray } from './tray'
+import { buildManifestUrl, e2eManifestUrl, E2E_NO_UPDATE_URL, updatePlatformKey } from './update/config'
+import { UpdateManager } from './update/manager'
+import { restrictUpdateSession, UPDATE_PARTITION } from './update/session'
+import { UpdateStore } from './update/store'
+import { updateTrayLabel } from '../shared/update'
 import { engineWorkerEnv } from './worker-env'
 import type { WindowContext } from './windows/common'
 import { createFeedWindow } from './windows/feed'
@@ -161,6 +166,36 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
   }
   if (quitting) return stub
 
+  // --- updates (TPM D29) begin ---------------------------------------------------------------
+  // Soft / force update notices, no auto-install. Network: one plain GET of the manifest, from main
+  // only, through its own in-memory session restricted to the manifest's origin, never during
+  // start-up itself (first check after a random 20–60 s delay; D22 exception, like the licence).
+  // E2E (LUD_E2E=1 AND unpackaged only, D12/D18): LUD_E2E_UPDATE_URL points at a loopback mock,
+  // otherwise at an unroutable address, so E2E runs start with no update state.
+  const e2eUpdate = e2e && !app.isPackaged
+  const manifestUrl = e2eUpdate ? (e2eManifestUrl(process.env['LUD_E2E_UPDATE_URL']) ?? E2E_NO_UPDATE_URL) : buildManifestUrl()
+  const updates = new UpdateManager({
+    currentVersion: app.getVersion(),
+    manifestUrl,
+    fetchImpl: restrictUpdateSession(session.fromPartition(UPDATE_PARTITION, { cache: false }), manifestUrl, `LetsDrag/${app.getVersion()}`, log),
+    store: new UpdateStore({ dir: userData, log }),
+    platformKey: updatePlatformKey(platform, process.arch),
+    ...(e2eUpdate ? { timeoutMs: E2E_UPDATE_TIMEOUT_MS } : {}),
+    log
+  })
+  await updates.init()
+  cleanups.push(() => updates.stop())
+  const openUpdateDownload = async (): Promise<void> => {
+    const url = updates.downloadUrl()
+    if (e2eUpdate) {
+      openedUrls.push(url) // E2E: recorded, no browser starts
+      return
+    }
+    await shell.openExternal(url)
+  }
+  // --- updates (TPM D29) end
+  if (quitting) return stub
+
   // --- windows ----------------------------------------------------------------------------
   /** webContents id → the page main loads into it (IPC trusts only these, for that page only). */
   const ownWebContents = new Map<number, RendererPage>()
@@ -233,6 +268,8 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
   const startJob = (req: JobRequest, from: { page: RendererPage }): void => {
     // D26, second line of defence (ipc.ts already answers LICENCE_REQUIRED): no licence, no engine job.
     if (!licence.isUnlocked()) throw new Error('No active licence.')
+    // D29, same: a forced update blocks every job (ipc.ts answers UPDATE_REQUIRED first).
+    if (updates.isBlocked()) throw new Error('Update required.')
     const fromOverlay = from.page === 'overlay'
     if (fromOverlay) overlay.jobStarted(req.id)
     try {
@@ -278,6 +315,7 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
     quit: () => app.quit(),
     buyLicence: () => void openLicenceLink('checkout').catch((err: unknown) => log(`open checkout failed: ${String(err)}`)),
     openActivation: () => void settingsWin.open(),
+    openUpdate: () => void settingsWin.open(), // D29
     // Hidden developer action (unpackaged builds only): forget the licence locally, no network.
     ...(app.isPackaged ? {} : { resetLicence: () => void licence.resetLocal() }),
     log
@@ -286,6 +324,12 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
   tray.create()
   tray.update({ licensed: licence.isUnlocked() })
   cleanups.push(() => tray.destroy())
+  // --- updates (D29): renderers and the tray follow the update state
+  tray.update({ update: updateTrayLabel(updates.view()) })
+  updates.onChange((view) => {
+    broadcast(IPC.updateChanged, view)
+    tray.update({ update: updateTrayLabel(view) })
+  })
   const initialStatus = await gesture.refresh()
   if (quitting) {
     gesture.stop() // the hook may have started after the cleanups ran
@@ -350,6 +394,14 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
       deactivate: () => licence.deactivate(),
       openLink: openLicenceLink,
       openActivation: () => settingsWin.open()
+    },
+    update: {
+      isBlocked: () => updates.isBlocked(),
+      view: () => updates.view(),
+      check: () => updates.checkForUpdates(),
+      dismiss: () => updates.dismiss(),
+      openDownload: openUpdateDownload,
+      hintSeen: () => updates.hintSeen()
     }
   })
 
@@ -374,6 +426,11 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
           recheckNow: () => licence.recheckNow(),
           resume: () => licence.onResume(),
           openedUrls: () => [...openedUrls]
+        },
+        update: {
+          view: () => updates.view(),
+          checkNow: () => updates.checkNow(),
+          resume: () => updates.onResume()
         }
       })
     )
@@ -415,6 +472,11 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
 
   // Background licence re-check (D26): scheduled, never during start-up itself.
   licence.start()
+  // --- updates (D29): background checks (first after 20–60 s, then every 6 h, and after a long sleep)
+  updates.start()
+  const updateResume = (): void => updates.onResume()
+  powerMonitor.on('resume', updateResume)
+  cleanups.push(() => powerMonitor.removeListener('resume', updateResume))
 
   // --- lifecycle --------------------------------------------------------------------------
   // A tray app keeps running with no windows open.
@@ -453,6 +515,8 @@ function watchOverlayRenderer(overlay: OverlayController, debug: (message: strin
 /** E2E only: short Dodo request timeout and confirm delay, so the re-check specs run in seconds. */
 const E2E_DODO_TIMEOUT_MS = 1_500
 const E2E_CONFIRM_DELAY_MS = 200
+/** E2E only: short manifest request timeout (D29). */
+const E2E_UPDATE_TIMEOUT_MS = 1_500
 
 /** How often (macOS) we check that the Accessibility grant is still there while the hook runs. */
 const PERMISSION_LOSS_POLL_MS = 5_000

@@ -25,12 +25,33 @@ const rawLicensing = (process.env['LUD_LICENSING'] ?? '').trim()
 if (rawLicensing !== '' && rawLicensing !== 'on' && rawLicensing !== 'off') throw new Error(`LUD_LICENSING must be "on" or "off", got "${rawLicensing}"`)
 const licensing = rawLicensing === 'off' ? 'off' : 'on'
 
+// --- updates (TPM D29) begin: UPDATE_MANIFEST_URL, the soft/force update manifest (not a secret).
+// Empty / unset → our website. Anything set must be a plain https URL (no credentials, query or hash).
+const DEFAULT_UPDATE_MANIFEST_URL = 'https://letsdrag.wakeupmonster.com/update.json'
+function updateManifestUrl(env: NodeJS.ProcessEnv): string {
+  const raw = (env['UPDATE_MANIFEST_URL'] ?? '').trim()
+  if (raw === '') return DEFAULT_UPDATE_MANIFEST_URL
+  let u: URL
+  try {
+    u = new URL(raw)
+  } catch {
+    throw new Error(`UPDATE_MANIFEST_URL is not a URL: "${raw}"`)
+  }
+  if (u.protocol !== 'https:' || u.username || u.password || u.search || u.hash) {
+    throw new Error(`UPDATE_MANIFEST_URL must be a plain https URL, got "${raw}"`)
+  }
+  return u.href
+}
+const manifestUrl = updateManifestUrl(process.env)
+// --- updates (TPM D29) end
+
 export default defineConfig({
   main: {
     define: {
       __DODO_ENV__: JSON.stringify(dodo.dodoEnv),
       __DODO_PRODUCT_ID__: JSON.stringify(dodo.productId),
-      __LUD_LICENSING__: JSON.stringify(licensing)
+      __LUD_LICENSING__: JSON.stringify(licensing),
+      __UPDATE_MANIFEST_URL__: JSON.stringify(manifestUrl) // D29
     },
     build: {
       rollupOptions: {

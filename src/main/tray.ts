@@ -1,4 +1,4 @@
-// Tray / menu-bar icon: (unlicensed: Buy a licence…, Activate…), Open Feed Window, Settings…, Pause gesture, Quit.
+// Tray / menu-bar icon: (update known: Update available (v…)…), (unlicensed: Buy a licence…, Activate…), Open Feed Window, Settings…, Pause gesture, Quit.
 
 import { existsSync } from 'node:fs'
 import { Menu, nativeImage, Tray, type MenuItemConstructorOptions, type NativeImage } from 'electron'
@@ -17,6 +17,8 @@ export interface TrayDeps {
   openActivation(): void
   /** Development builds only: forget the licence locally. */
   resetLicence?(): void
+  /** D29: "Update available (v…)…" → Settings, where the Updates banner is. */
+  openUpdate?(): void
   log?: (message: string) => void
 }
 
@@ -26,6 +28,8 @@ export interface TrayState {
   gestureUnavailable: string | null
   /** An active licence: hides "Buy a licence…" / "Activate…". */
   licensed: boolean
+  /** D29: "Update available (v0.2.0)…" / "Update required (v0.2.0)…", or null/absent. */
+  update?: string | null
 }
 
 /** The menu template (pure; unit tested). */
@@ -38,8 +42,13 @@ export function trayMenuTemplate(state: TrayState, deps: Omit<TrayDeps, 'platfor
         { label: 'Activate…', click: () => deps.openActivation() },
         { type: 'separator' }
       ]
+  // --- updates (D29): first item while an update is known
+  const update: MenuItemConstructorOptions[] = state.update
+    ? [{ label: state.update, click: () => deps.openUpdate?.() }, { type: 'separator' }]
+    : []
   const dev: MenuItemConstructorOptions[] = deps.resetLicence ? [{ label: 'Reset licence (development)', click: () => deps.resetLicence?.() }] : []
   return [
+    ...update,
     ...licence,
     { label: 'Open Feed Window', click: () => deps.openFeedWindow() },
     { label: 'Settings…', click: () => deps.openSettingsWindow() },

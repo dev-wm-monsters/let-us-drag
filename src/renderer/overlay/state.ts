@@ -2,6 +2,7 @@
 // Side effects (IPC, timers, sounds) live in common/useUncleSession.ts and react to state changes.
 // States follow docs/PLAN.md §6; 'idle' is the Feed Window's resting state (the overlay rests in 'hidden').
 import { isUnlocked, type LicenceView } from '../../shared/licence'
+import { isUpdateRequired, type UpdateView } from '../../shared/update'
 import type { ConversionOption, DragProbe, DroppedItem, JobError, JobEvent, OptionId, Settings } from '../../shared/types'
 import { DEFAULT_SETTINGS } from '../../shared/types'
 import { isHamster, isStruggle, itemsAreBlocked, optionsForItems, optionsForProbe, categoryForProbe } from '../common/drag'
@@ -21,8 +22,14 @@ export type UncleState =
   | 'leave'
   /** The user cancelled the meal (D3): he spits the file back ("Fine, keep it.") and leaves. */
   | 'cancel'
-  /** No active licence (D26): one big "Unlock for $9.50" bubble instead of the options; nothing is eaten. */
+  /**
+   * Conversions are locked: no active licence (D26, "Unlock for $9.50"), or a forced update is pending
+   * (D29, "Please update me"; see Model.lockReason). One big bubble instead of the options; nothing is eaten.
+   */
   | 'locked'
+
+/** Why the Uncle is locked (D26 licence, D29 forced update). The update wins: it has to happen first. */
+export type LockReason = 'licence' | 'update'
 
 export type Host = 'overlay' | 'feed'
 
@@ -69,6 +76,14 @@ export interface Model {
   licence: LicenceView | null
   /** locked: the gesture is over (mouse released or file dropped), so the unlock bubble may take clicks/focus. */
   lockSettled: boolean
+  // --- updates (D29) begin
+  /** Update notice state from main; null until it arrived (main's own check still applies). */
+  update: UpdateView | null
+  /** Which panel the locked state shows (set on entering 'locked'). */
+  lockReason: LockReason | null
+  /** This session announces a soft update ("I learned new tricks!"), once per version. */
+  updateHint: boolean
+  // --- updates (D29) end
 }
 
 export type Action =
@@ -92,8 +107,10 @@ export type Action =
   | { type: 'LEAVE_DONE' }
   /** Licence state from main (getLicence / onLicenceChanged). */
   | { type: 'LICENCE'; view: LicenceView }
-  /** Main refused to start this job: no active licence (StartJobResult LICENCE_REQUIRED). */
-  | { type: 'LOCKED'; jobId: string }
+  /** Main refused to start this job: no active licence (LICENCE_REQUIRED) or a forced update (UPDATE_REQUIRED). */
+  | { type: 'LOCKED'; jobId: string; reason?: LockReason }
+  /** Update notice state from main (getUpdate / onUpdateChanged), D29. */
+  | { type: 'UPDATE'; view: UpdateView }
 
 export const TIMING = {
   /** File flies into the mouth + jaw snaps shut. */
@@ -114,7 +131,12 @@ export function restState(host: Host): UncleState {
   return host === 'overlay' ? 'hidden' : 'idle'
 }
 
-export function initialModel(host: Host, settings: Settings = DEFAULT_SETTINGS, licence: LicenceView | null = null): Model {
+export function initialModel(
+  host: Host,
+  settings: Settings = DEFAULT_SETTINGS,
+  licence: LicenceView | null = null,
+  update: UpdateView | null = null
+): Model {
   return {
     host,
     state: restState(host),
@@ -137,26 +159,63 @@ export function initialModel(host: Host, settings: Settings = DEFAULT_SETTINGS, 
     struggle: false,
     session: 0,
     licence,
-    lockSettled: false
+    lockSettled: false,
+    update,
+    lockReason: null,
+    updateHint: false
   }
 }
 
-/** Reset everything except host/settings/session/licence. */
+/** Reset everything except host/settings/session/licence/update. */
 function rest(m: Model): Model {
-  return { ...initialModel(m.host, m.settings, m.licence), session: m.session }
+  return { ...initialModel(m.host, m.settings, m.licence, m.update), session: m.session }
 }
 
 /**
- * Conversions are locked (D26): main said the licence is not active. Unknown (not arrived yet)
+ * The licence locks conversions (D26): main said the licence is not active. Unknown (not arrived yet)
  * counts as unlocked here; main refuses the job anyway and the reply locks the Uncle then.
  */
-export function isLocked(m: Pick<Model, 'licence'>): boolean {
+export function isLicenceLocked(m: Pick<Model, 'licence'>): boolean {
   return m.licence !== null && !isUnlocked(m.licence)
 }
 
-/** Show the "Unlock for $9.50" bubble: the locked state, or the Feed Window resting while locked. */
-export function showsUnlock(m: Pick<Model, 'state' | 'licence'>): boolean {
+/** A forced update locks conversions (D29). Unknown counts as unlocked (main checks again). */
+export function isUpdateLocked(m: Partial<Pick<Model, 'update'>>): boolean {
+  return isUpdateRequired(m.update)
+}
+
+/** Conversions are locked: forced update (D29) or no active licence (D26). */
+export function isLocked(m: Pick<Model, 'licence'> & Partial<Pick<Model, 'update'>>): boolean {
+  return isUpdateLocked(m) || isLicenceLocked(m)
+}
+
+/** Why conversions are locked right now (the update first), or null. */
+export function lockReasonOf(m: Pick<Model, 'licence'> & Partial<Pick<Model, 'update'>>): LockReason | null {
+  if (isUpdateLocked(m)) return 'update'
+  if (isLicenceLocked(m)) return 'licence'
+  return null
+}
+
+/** Show the lock bubble ("Unlock for $9.50" / "Please update me"): the locked state, or the Feed Window resting while locked. */
+export function showsUnlock(m: Pick<Model, 'state' | 'licence'> & Partial<Pick<Model, 'update'>>): boolean {
   return m.state === 'locked' || (m.state === 'idle' && isLocked(m))
+}
+
+/** Which lock bubble to show (D26 / D29), or null when none is shown. */
+export function lockPanel(m: Pick<Model, 'state' | 'licence'> & Partial<Pick<Model, 'update' | 'lockReason'>>): LockReason | null {
+  if (!showsUnlock(m)) return null
+  if (m.state === 'locked') return m.lockReason ?? lockReasonOf(m) ?? 'licence'
+  return lockReasonOf(m)
+}
+
+/**
+ * The once-per-version "I learned new tricks!" bubble (D29): while he offers options or waits for a
+ * drop, never over the held-files chip, never in a locked/busy/result state. It is informative only
+ * (pointer-events: none) and never blocks a drop or a conversion.
+ */
+export function showsUpdateHint(m: Pick<Model, 'state' | 'held' | 'updateHint'>): boolean {
+  if (!m.updateHint) return false
+  return m.state === 'appear' || m.state === 'hover' || (m.state === 'feedMe' && m.held === null)
 }
 
 function lock(m: Model, settled: boolean): Model {
@@ -173,7 +232,8 @@ function lock(m: Model, settled: boolean): Model {
     outcome: null,
     outputPaths: [],
     message: null,
-    lockSettled: settled
+    lockSettled: settled,
+    lockReason: lockReasonOf(m) ?? 'licence'
   }
 }
 
@@ -335,7 +395,7 @@ export function reducer(m: Model, a: Action): Model {
         m.state === 'cancel' ||
         m.state === 'locked'
       if (!canEngage) return m
-      const base: Model = { ...rest(m), session: m.session + 1, dragCount: a.probe.count }
+      const base: Model = { ...rest(m), session: m.session + 1, dragCount: a.probe.count, updateHint: m.update?.hint === true }
       // D26: without a licence every path leads to the unlock bubble (blocked files included).
       if (isLocked(base)) return lock(base, false)
       const cat = categoryForProbe(a.probe)
@@ -452,17 +512,22 @@ export function reducer(m: Model, a: Action): Model {
       if (m.state !== 'leave') return m
       return rest(m)
 
-    case 'LICENCE': {
-      const next = { ...m, licence: a.view }
-      // Unlocked while the unlock bubble is shown (activated in Settings): he goes away happy.
-      if (m.state === 'locked' && !isLocked(next)) return m.host === 'feed' ? rest(next) : leave(next)
-      return next
+    case 'LICENCE':
+    case 'UPDATE': {
+      const next: Model = a.type === 'LICENCE' ? { ...m, licence: a.view } : { ...m, update: a.view }
+      if (m.state !== 'locked') return next
+      // Unlocked while the lock bubble is shown (activated in Settings, or a manifest lowered the
+      // minimum): he goes away happy. Otherwise show the bubble for what still locks him.
+      if (!isLocked(next)) return m.host === 'feed' ? rest(next) : leave(next)
+      return { ...next, lockReason: lockReasonOf(next) ?? next.lockReason }
     }
 
-    case 'LOCKED':
+    case 'LOCKED': {
       if (!m.job || m.job.id !== a.jobId || !isBusy(m)) return m
-      // The renderer asks main for the fresh licence state right after (useUncleSession).
-      return lock(m, true)
+      // The renderer asks main for the fresh licence / update state right after (useUncleSession).
+      const locked = lock(m, true)
+      return a.reason ? { ...locked, lockReason: a.reason } : locked
+    }
   }
   return m
 }

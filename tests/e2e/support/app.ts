@@ -44,6 +44,9 @@ function appEnv(e2e: boolean, extra: Record<string, string>): Record<string, str
   delete env['LUD_E2E']
   delete env['LUD_E2E_LICENSE']
   delete env['LUD_E2E_DODO_URL']
+  // D29: no update manifest by default (the app then points at an unroutable address: no update state).
+  // Update specs pass { LUD_E2E_UPDATE_URL: <loopback mock> }.
+  delete env['LUD_E2E_UPDATE_URL']
   if (e2e) env['LUD_E2E'] = '1'
   // D26: E2E runs start licensed by default (no network), so the conversion specs keep converting.
   // Licensing specs pass { LUD_E2E_LICENSE: 'none' } (and LUD_E2E_DODO_URL for the mock Dodo server).

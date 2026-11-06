@@ -4,13 +4,14 @@ import { type CSSProperties, memo, type ReactNode, type RefObject, useCallback, 
 import { DEFAULT_CHARACTER, isCharacterId } from '../../shared/characters'
 import { LICENCE_PRICE, lockedExplanation, type LicenceStatus, unlockTitle } from '../../shared/licence'
 import type { ConversionOption, DroppedItem, OptionId } from '../../shared/types'
-import { chewCaption, isLocked, type Model, showsUnlock, speech, uncleMoodAttr, visibleOptions } from '../overlay/state'
+import { chewCaption, isLicenceLocked, lockPanel, type Model, showsUpdateHint, speech, uncleMoodAttr, visibleOptions } from '../overlay/state'
 import { heldChipTop, placeHint, ringLayout } from './geometry'
 import { baseName, LINES, shortName } from './text'
 import { Character } from './character/Character'
 import type { Mood } from './uncle/pose'
 import { HEAD_CENTER, VIEWBOX } from './uncle/UncleSvg'
 import { INTERACTIVE_ATTR, type RingGeometry, type UncleSession } from './useUncleSession'
+import { UpdateHint, UpdatePanel } from './UpdateBubbles'
 
 /** Space kept free at the window edges for hints, cards and captions. */
 export const EDGE_MARGIN = 8
@@ -437,7 +438,9 @@ export function Stage({ s, testId, uncleWidth, ring, reducedMotion, idleExtra, s
   const out = model.outputPaths[0] ?? ''
   const firstItem = model.items[0]
   const hidden = model.state === 'hidden'
-  const unlock = showsUnlock(model)
+  // D26 / D29: which lock bubble ("Unlock for $9.50" / "Please update me"), if any.
+  const panel = lockPanel(model)
+  const unlock = panel !== null
   const caption = chewCaption(model)
   const cardRef = useRef<HTMLElement | null>(null)
   const captionRef = useRef<HTMLDivElement | null>(null)
@@ -455,7 +458,9 @@ export function Stage({ s, testId, uncleWidth, ring, reducedMotion, idleExtra, s
       data-plain={plain ? 'true' : 'false'}
       data-character={character}
       data-uncle-mood={uncleMoodAttr(model)}
-      data-licensed={isLocked(model) ? 'false' : 'true'}
+      data-licensed={isLicenceLocked(model) ? 'false' : 'true'}
+      data-lock-reason={panel ?? 'none'}
+      data-update-status={model.update?.status ?? 'unknown'}
       data-stage-scale={ring.scale}
       style={{ '--uncle-scale': scale } as CSSProperties}
     >
@@ -598,7 +603,23 @@ export function Stage({ s, testId, uncleWidth, ring, reducedMotion, idleExtra, s
           </div>
         )}
 
-        {unlock && (
+        {panel === 'update' && (
+          <UpdatePanel
+            key={`update-${model.session}`}
+            host={model.host}
+            latest={model.update?.latestVersion ?? null}
+            radius={unlockDistance(ring.radius, plain ? 0 : uncleWidth)}
+            headTopY={headTop.y}
+            closable={model.state === 'locked'}
+            onDownload={s.downloadUpdate}
+            onClose={s.dismiss}
+            onOver={s.setOverInteractive}
+          />
+        )}
+
+        {showsUpdateHint(model) && <UpdateHint key={`hint-${model.session}`} top={heldChipTop(ring.radius, HELD_CLEARANCE)} />}
+
+        {panel === 'licence' && (
           <UnlockPanel
             key={`unlock-${model.session}`}
             status={model.licence?.status ?? 'unlicensed'}

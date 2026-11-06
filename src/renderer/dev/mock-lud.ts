@@ -6,6 +6,36 @@ import type { DroppedItem, JobEvent, JobRequest, OptionId, PlatformStatus, Setti
 import { DEFAULT_SETTINGS } from '../../shared/types'
 import { isCharacterId } from '../../shared/characters'
 import { LICENCE_MESSAGES, maskLicenceKey, type LicenceActionResult, type LicenceErrorCode, type LicenceStatus, type LicenceView } from '../../shared/licence'
+import type { UpdateView } from '../../shared/update'
+
+/** D29 harness states: up to date, soft update (fresh or put off with "Later"), forced update, never checked. */
+export type MockUpdate = 'current' | 'available' | 'dismissed' | 'required' | 'unknown'
+
+export function mockUpdateView(kind: MockUpdate): UpdateView {
+  const base: UpdateView = {
+    status: 'current',
+    currentVersion: '0.1.0',
+    latestVersion: '0.1.0',
+    releasedAt: '2026-11-02',
+    notes: [],
+    dismissed: false,
+    hint: false,
+    lastCheckedAt: '2026-11-06T09:30:00.000Z'
+  }
+  const notes = ['New: convert HEIC photos to JPG in one gulp.', 'New: Remove BG cut-outs are cleaner around hair.', 'Fixed: the Uncle no longer hiccups on very long file names.']
+  switch (kind) {
+    case 'unknown':
+      return { ...base, latestVersion: null, releasedAt: null, lastCheckedAt: null }
+    case 'current':
+      return base
+    case 'available':
+      return { ...base, status: 'available', latestVersion: '0.2.0', releasedAt: '2026-11-10', notes, hint: true }
+    case 'dismissed':
+      return { ...base, status: 'available', latestVersion: '0.2.0', releasedAt: '2026-11-10', notes, dismissed: true }
+    case 'required':
+      return { ...base, status: 'required', latestVersion: '0.2.0', releasedAt: '2026-11-10', notes }
+  }
+}
 
 /** Like main's settings store: an unknown character id is ignored (keeps the current one). */
 function applyPatch(settings: Settings, patch: Partial<Settings>): void {
@@ -68,6 +98,8 @@ export interface MockOptions {
   baseDir?: string
   /** Licence status (D26); default 'active'. */
   licence?: LicenceStatus
+  /** Update notice state (D29); default 'current'. */
+  update?: MockUpdate
 }
 
 const MOCK_KEY = 'LD7Q-29XK-PM3A-1A2B'
@@ -119,6 +151,9 @@ export interface MockControl {
   /** D26: switch the mock licence (broadcasts onLicenceChanged like main). */
   setLicence(status: LicenceStatus): void
   licence(): LicenceView
+  /** D29: switch the mock update state (broadcasts onUpdateChanged like main). */
+  setUpdate(kind: MockUpdate): void
+  update(): UpdateView
   /** Last value set through setOverlayClickThrough (D20); reset to false by arm(), like main does. */
   clickThrough(): boolean
 }
@@ -178,6 +213,12 @@ export function createMockLud(opts: MockOptions = {}): MockControl {
     licence = makeView(status)
     licenceCh.emit({ ...licence })
   }
+  const updateCh = new Channel<UpdateView>()
+  let update = mockUpdateView(opts.update ?? 'current')
+  const setUpdate = (kind: MockUpdate) => {
+    update = mockUpdateView(kind)
+    updateCh.emit({ ...update })
+  }
   const calls: MockControl['calls'] = []
   const jobs: JobRequest[] = []
   let mode = opts.jobs ?? 'manual'
@@ -219,6 +260,7 @@ export function createMockLud(opts: MockOptions = {}): MockControl {
     },
     startJob: async (req) => {
       log('startJob', req)
+      if (update.status === 'required') return { started: false, reason: 'UPDATE_REQUIRED' }
       if (licence.status !== 'active') return { started: false, reason: 'LICENCE_REQUIRED' }
       jobs.push(req)
       if (mode === 'auto') runAuto(req)
@@ -272,6 +314,26 @@ export function createMockLud(opts: MockOptions = {}): MockControl {
     openLicenceLink: async (link) => void log('openLicenceLink', link),
     openActivation: async () => void log('openActivation'),
     onLicenceChanged: (cb) => licenceCh.on(cb),
+    getUpdate: async () => ({ ...update }),
+    checkForUpdates: async () => {
+      log('checkForUpdates')
+      await new Promise((r) => setTimeout(r, 450))
+      return { ok: true, view: { ...update } }
+    },
+    dismissUpdate: async () => {
+      log('dismissUpdate')
+      if (update.status === 'available') setUpdate('dismissed')
+      return { ...update }
+    },
+    openUpdateDownload: async () => void log('openUpdateDownload'),
+    updateHintSeen: async () => {
+      log('updateHintSeen')
+      if (update.hint) {
+        update = { ...update, hint: false }
+        updateCh.emit({ ...update })
+      }
+    },
+    onUpdateChanged: (cb) => updateCh.on(cb),
     onJobEvent: (cb) => job.on(cb),
     onOverlayArm: (cb) => armCh.on(cb),
     onOverlayDisarm: (cb) => disarmCh.on(() => cb()),
@@ -308,6 +370,8 @@ export function createMockLud(opts: MockOptions = {}): MockControl {
     },
     clickThrough: () => clickThrough,
     setLicence,
-    licence: () => ({ ...licence })
+    licence: () => ({ ...licence }),
+    setUpdate,
+    update: () => ({ ...update })
   }
 }

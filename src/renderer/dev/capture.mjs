@@ -516,6 +516,84 @@ const scenarios = {
     await shot(page, 'licence-settings-08-deactivate-confirm')
     await ctx.close()
   },
+  // ——— updates (D29): soft hint, forced-update bubble, Settings banner/card ———
+  async 'update-overlay'() {
+    for (const [name, update, files, drop] of [
+      ['update-overlay-01-soft-hint', 'available', [PNG], false],
+      ['update-overlay-02-soft-hint-video', 'available', [MP4], false],
+      ['update-overlay-03-force', 'required', [PNG], true],
+      ['update-overlay-04-force-dragging', 'required', [WAV], false]
+    ]) {
+      const { page, ctx, errors } = await open({ view: 'overlay', update })
+      const c = await center(page)
+      await enterAt(page, c.x, c.y + 40, files)
+      if (drop) await dropAt(page, c.x, c.y + 40, files)
+      await sleep(800)
+      await expectState(page, update === 'required' ? 'locked' : 'appear')
+      if (drop) {
+        const b = await page.getByTestId('update-download').boundingBox()
+        if (b) await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2)
+        await sleep(350)
+      }
+      await shot(page, name)
+      if (errors.some((e) => !e.includes('favicon'))) throw new Error(errors.join('; '))
+      await ctx.close()
+    }
+    const { page, ctx } = await open({ view: 'overlay', update: 'required', plain: '1' })
+    const c = await center(page)
+    await enterAt(page, c.x, c.y, [PNG])
+    await sleep(700)
+    await shot(page, 'update-overlay-05-force-plain')
+    await ctx.close()
+  },
+  async 'update-feed'() {
+    for (const [name, update, size] of [
+      ['update-feed-01-force', 'required', { width: 440, height: 600 }],
+      ['update-feed-02-force-small', 'required', { width: 340, height: 420 }]
+    ]) {
+      const { page, ctx, errors } = await open({ view: 'feed', update }, size)
+      await sleep(700)
+      await shot(page, name)
+      if (errors.some((e) => !e.includes('favicon'))) throw new Error(errors.join('; '))
+      await ctx.close()
+    }
+    // Soft update: the Feed Window announces it when a file is dragged over.
+    const { page, ctx } = await open({ view: 'feed', update: 'available' }, { width: 440, height: 600 })
+    const c = await center(page)
+    await enterAt(page, c.x, c.y, [PNG])
+    await sleep(700)
+    await shot(page, 'update-feed-03-soft-hint')
+    await ctx.close()
+  },
+  async 'update-settings'() {
+    for (const [name, update, licence] of [
+      ['update-settings-01-up-to-date', 'current', 'active'],
+      ['update-settings-02-soft', 'available', 'active'],
+      ['update-settings-03-soft-later', 'dismissed', 'active'],
+      ['update-settings-04-force', 'required', 'active'],
+      ['update-settings-05-force-unlicensed', 'required', 'unlicensed']
+    ]) {
+      const { page, ctx, errors } = await open({ view: 'settings', platform: 'darwin', licence, update }, { width: 560, height: 900 })
+      await page.waitForSelector('[data-testid="settings-root"][data-loaded="true"]')
+      await sleep(450)
+      await save(await page.screenshot({ fullPage: true }), name)
+      if (errors.some((e) => !e.includes('favicon'))) throw new Error(errors.join('; '))
+      await ctx.close()
+    }
+    // "Check for updates" in progress, then "Later" on the soft banner.
+    const { page, ctx } = await open({ view: 'settings', platform: 'win32', update: 'available' }, { width: 560, height: 900 })
+    await page.waitForSelector('[data-testid="settings-root"][data-loaded="true"]')
+    await page.getByTestId('update-card').scrollIntoViewIfNeeded()
+    await page.getByTestId('update-check').click()
+    await sleep(120)
+    await shot(page, 'update-settings-06-checking')
+    await sleep(600)
+    await page.getByTestId('update-later').click()
+    await sleep(300)
+    await page.evaluate(() => window.scrollTo(0, 0))
+    await shot(page, 'update-settings-07-after-later')
+    await ctx.close()
+  },
   async 'hero'() {
     // README hero: drag → appear → head follows the file → eat → chew → spit (~5–6 s, flat bg, ≤ 480 px).
     const ffmpeg = process.env.LUD_FFMPEG_PATH ?? 'ffmpeg'

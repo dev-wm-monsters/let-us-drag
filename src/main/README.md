@@ -56,6 +56,55 @@ Owner: Backend dev, Platform (docs/PLAN.md section 7). The preload lives in `src
 - **Development builds** (unpackaged) get a tray item "Reset licence (development)" that forgets the licence locally.
 - **Real Dodo check:** `node scripts/dodo-smoke.mjs <test licence key>` (activate → validate → deactivate on the test host).
 
+## Updates (TPM D29)
+
+Soft and force update **notices**, no auto-install (no Apple Developer ID yet), the same flow on macOS, Windows and Linux.
+Code: `src/main/update/*` (config, manifest, semver, logic, store, checker, manager, session), contract `src/shared/update.ts`,
+UI `src/renderer/settings/UpdateCard.tsx`, `src/renderer/common/UpdateBubbles.tsx`, lock reason in `src/renderer/overlay/state.ts`.
+
+- **Manifest.** `UPDATE_MANIFEST_URL` (build env, electron-vite `define`; default `https://letsdrag.wakeupmonster.com/update.json`;
+  anything set must be a plain https URL or the build fails). Format: `docs/update.json.example`. `latest` is required,
+  `minimum` optional (`minimum` > `latest` rejects the manifest); `releasedAt` (`YYYY-MM-DD`), `notes` (≤ 8 lines of plain
+  text, ≤ 160 chars each) and `downloads` (`mac-arm64`, `mac-x64`, `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `page`)
+  are optional and cleaned up, never fatal. Unknown fields are ignored. Body ≤ 64 KiB. Versions are semver (pre-releases
+  compare as semver says: `0.1.0-beta.8` < `0.1.0`).
+- **Download links.** Only `https://letsdrag.wakeupmonster.com/…` (default port, no credentials) is accepted; anything else is
+  dropped and "Download" opens the manifest's `page`, else `https://letsdrag.wakeupmonster.com/#download`. Main picks the link
+  for this OS + CPU and opens it with `shell.openExternal`; the renderer never names a URL (`openUpdateDownload()` has no argument).
+- **Soft** (this < `latest`, ≥ `minimum`): tray item "Update available (v…)…" (opens Settings), Settings banner (notes,
+  **Download**, **Later**), and once per version the Uncle's note "I learned new tricks! Update in Settings." (pointer-events
+  none, never blocks a drop; counts as seen after 1.2 s on screen). **Later** hides the banner and the note for that version.
+- **Force** (this < `minimum`): `IPC.startJob` answers `{ started: false, reason: 'UPDATE_REQUIRED' }` before the licence gate
+  and starts nothing (so no Remove BG model download), `app.ts` refuses too; the overlay / Feed Window show the `locked` state
+  with `data-lock-reason="update"` ("Please update me" + **Download**; × / Esc close him); Settings shows a red banner.
+- **When.** First check 20–60 s after start-up (never during start-up itself: the second documented D22 exception, after the
+  licence re-check), then every 6 h while running, and after `powerMonitor` `resume` when more than 6 h passed since the last
+  attempt; Settings → **Check for updates** checks at once. Timeout 10 s. Any failure (offline, timeout, redirect, non-2xx,
+  bad JSON, invalid manifest) is silent and keeps the previous state: a failed check never blocks.
+- **Network / privacy.** One plain `GET` of the manifest URL, from main, through the in-memory session `lud-update` (only the
+  manifest's origin is reachable; `redirect: 'error'`; generic `User-Agent: LetsDrag/<version>`; no `Accept-Language`, no
+  cookies, no query string, no IDs).
+- **Storage.** `userData/update-state.json` (not settings.json): the last valid manifest (so a forced update survives an
+  offline restart), `dismissedVersion` ("Later"), `hintShownVersion`. Corrupt or invalid → nothing known → never blocks.
+  No manifest ever fetched → not blocked. A newer manifest that lowers `minimum` unblocks.
+- **Team builds** (`LUD_LICENSING=off`) behave the same.
+- **E2E** (`LUD_E2E=1` and unpackaged only): `LUD_E2E_UPDATE_URL=http://127.0.0.1:<port>/update.json` (loopback only;
+  otherwise an unroutable address, so the default fixture has no update state), 1.5 s timeout, `__ludTest.update()`,
+  `updateCheckNow()`, `updateResume()`; "Download" goes to the `openedUrls()` recorder.
+- **Note:** a hidden overlay may receive the `updateChanged` broadcast only once main shows its sensor; the forced state is
+  still enforced by main (`UPDATE_REQUIRED` → the renderer locks with the update bubble).
+
+### How to publish an update
+
+1. Bump `version` in `package.json` (e.g. `0.2.0`) and commit.
+2. Build the installers (CI package workflow, or `npm run dist:mac` / `dist:win` / `dist:linux`).
+3. Upload them to the website under `https://letsdrag.wakeupmonster.com/downloads/` (one file per OS/CPU).
+4. Edit `update.json` on the website (start from `docs/update.json.example`): set the `downloads` links and `notes`, then
+   - **soft update:** raise `latest` to the new version (leave `minimum` where it is);
+   - **force update:** also raise `minimum` (every older version stops converting until it is updated). Use sparingly.
+5. Check: `curl -s https://letsdrag.wakeupmonster.com/update.json | python3 -m json.tool`, then in an older build press
+   Settings → **Check for updates**. Undo a mistaken force update by lowering `minimum` again (apps unblock at their next check).
+
 ## Overlay lifecycle
 
 1. Trigger arms. The overlay is placed under the cursor (560x560, clamped to that display's work area),

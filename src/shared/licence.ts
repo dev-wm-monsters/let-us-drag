@@ -59,8 +59,11 @@ export type LicenceActionResult =
 export type LicenceLink = 'checkout' | 'pricing' | 'terms' | 'refund' | 'privacy'
 export const LICENCE_LINKS: readonly LicenceLink[] = ['checkout', 'pricing', 'terms', 'refund', 'privacy']
 
-/** Result of `startJob`: main refuses conversions without an active licence (D26). */
-export type StartJobResult = { started: true } | { started: false; reason: 'LICENCE_REQUIRED' }
+/**
+ * Result of `startJob`: main refuses conversions without an active licence (D26), and while this
+ * version is below the update manifest's minimum (UPDATE_REQUIRED, D29; checked first).
+ */
+export type StartJobResult = { started: true } | { started: false; reason: 'LICENCE_REQUIRED' | 'UPDATE_REQUIRED' }
 
 export const LICENCE_MESSAGES = {
   activated: `Activated on this computer. Your licence works on ${LICENCE_SEATS} computers.`,

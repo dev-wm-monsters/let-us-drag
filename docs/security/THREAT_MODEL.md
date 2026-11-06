@@ -231,6 +231,20 @@ keyring the licence file is plain JSON. That is an accepted trade-off at $9.50 (
 | Test bypass reaching users | `LUD_E2E_LICENSE` / `LUD_E2E_DODO_URL` are read only when `LUD_E2E=1` **and** `!app.isPackaged` (D12/D18); the mock URL must be loopback; the E2E seed is in memory only. The engine worker never sees `LUD_*` in packaged builds anyway. The "Reset licence (development)" tray item exists only in unpackaged builds. |
 | Man-in-the-middle | HTTPS to `test.` / `live.dodopayments.com` with Chromium's certificate verification; redirects are refused (`redirect: 'error'`). |
 
+### 5.15 Update notices (TPM D29) — owner: Platform (main) + Frontend (UI)
+
+There is no auto-update: the app only reads a JSON manifest and opens a website link in the default browser; the user
+downloads and installs by hand. **Trust root: the website host `letsdrag.wakeupmonster.com` (and its TLS certificate).**
+
+| Threat | Mitigation |
+|---|---|
+| Manifest tampering in transit | HTTPS only (the build refuses a non-https `UPDATE_MANIFEST_URL`), no redirects, a session that can reach only the manifest's origin. |
+| Malicious manifest points users at a malicious installer | Download links are accepted only as `https://letsdrag.wakeupmonster.com/…` (default port, no credentials), checked again when used; anything else falls back to the download page. The renderer never supplies a URL. A compromised website could still serve a bad installer, exactly as for a first install: the website is the trust root (OS code signing / notarisation, once available, is the next layer). |
+| Malicious manifest blocks conversions (a huge `minimum`) | Same trust root. Limited to "Please update me"; undone by publishing a lower `minimum`. A locally edited `update-state.json` only affects that user. Invalid, oversized (> 64 KiB) or inconsistent manifests are ignored and keep the previous state; a failed check never blocks. |
+| Content injection through notes | Notes are plain text (control characters stripped, ≤ 8 × 160 chars), rendered by React as text, never as HTML. |
+| Privacy | One plain GET: no query string, no body, no IDs, no cookies, generic `User-Agent: LetsDrag/<version>`, no `Accept-Language`. The website sees the IP address and the app version, as for any download. |
+| Test override reaching users | `LUD_E2E_UPDATE_URL` is read only when `LUD_E2E=1` **and** `!app.isPackaged`, and must be loopback. |
+
 ## 6. HTML→PDF and "local only" guarantee: network policy (summary)
 
 The app makes **no** network requests at runtime except the user-initiated model download and the licence calls to
@@ -244,6 +258,7 @@ Dodo (TPM D26: activate / deactivate when the user asks; a silent background re-
 5. Engine Node code: the only `fetch`/`https` usage is the model downloader (grep gate). (SEC-151)
 6. No telemetry, no crash upload: `crashReporter` not started, or started with `uploadToServer: false`; no analytics SDKs. (SEC-152)
 7. Licence calls (D26): main process only, through the `lud-licence` in-memory session that can reach only the configured Dodo origin (§5.14). The default session keeps blocking every remote request from our windows.
+8. Update manifest (D29): one GET every 6 h (first 20–60 s after start-up, never during start-up itself), main process only, through the `lud-update` in-memory session that can reach only the manifest's origin (§5.15).
 
 ## 7. Privacy invariants for the global hook (MUST, release blockers)
 

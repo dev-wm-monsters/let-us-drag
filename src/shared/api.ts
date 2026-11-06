@@ -1,6 +1,7 @@
 // IPC channel names and the preload API (window.lud). Contract owner: TPM.
 import type { LicenceActionResult, LicenceLink, LicenceView, StartJobResult } from './licence'
 import type { TestDropPayload } from './test-hooks'
+import type { UpdateCheckResult, UpdateView } from './update'
 import type { DroppedItem, JobEvent, JobRequest, OptionId, PlatformStatus, Settings } from './types'
 
 export const IPC = {
@@ -25,6 +26,13 @@ export const IPC = {
   deactivateLicence: 'lud:deactivate-licence', // () => LicenceActionResult           (settings only)
   openLicenceLink: 'lud:open-licence-link', // (link: LicenceLink) => void  opens checkout / website in the default browser
   openActivation: 'lud:open-activation', // () => void  "I have a key": opens Settings → Activate
+  // --- updates (TPM D29) begin: renderers see an UpdateView only; URLs and the network stay in main
+  getUpdate: 'lud:get-update', // () => UpdateView
+  checkForUpdates: 'lud:check-for-updates', // () => UpdateCheckResult   (settings only)
+  dismissUpdate: 'lud:dismiss-update', // () => UpdateView  "Later" for this version   (settings only)
+  openUpdateDownload: 'lud:open-update-download', // () => void  opens this computer's download in the default browser
+  updateHintSeen: 'lud:update-hint-seen', // () => void  the Uncle announced the soft update (once per version)
+  // --- updates (TPM D29) end
   // main → renderer (send)
   jobEvent: 'lud:job-event', // JobEvent
   overlayArm: 'lud:overlay-arm', // (info: OverlayArmInfo)
@@ -32,7 +40,8 @@ export const IPC = {
   cursor: 'lud:cursor', // (p: {x:number,y:number}) cursor in overlay-window coordinates (for eye tracking)
   settingsChanged: 'lud:settings-changed', // (s: Settings)
   platformStatusChanged: 'lud:platform-status-changed', // (s: PlatformStatus) e.g. after macOS Accessibility is granted
-  licenceChanged: 'lud:licence-changed' // (v: LicenceView)
+  licenceChanged: 'lud:licence-changed', // (v: LicenceView)
+  updateChanged: 'lud:update-changed' // (v: UpdateView)  D29
 } as const
 
 export interface OverlayArmInfo {
@@ -46,7 +55,10 @@ export interface LudApi {
   /** Resolve absolute paths for dropped File objects (Electron webUtils). */
   pathsForFiles(files: File[]): string[]
   describePaths(paths: string[]): Promise<DroppedItem[]>
-  /** Resolves `{ started: false, reason: 'LICENCE_REQUIRED' }` when main refuses (no active licence, D26). */
+  /**
+   * Resolves `{ started: false, reason: 'LICENCE_REQUIRED' }` when main refuses (no active licence, D26),
+   * `reason: 'UPDATE_REQUIRED'` while a forced update is pending (D29).
+   */
   startJob(req: JobRequest): Promise<StartJobResult>
   cancelJob(jobId: string): Promise<void>
   revealPath(path: string): Promise<void>
@@ -79,6 +91,19 @@ export interface LudApi {
   /** "I have a key": open Settings with the Activate field. */
   openActivation(): Promise<void>
   onLicenceChanged(cb: (v: LicenceView) => void): () => void
+  // --- updates (TPM D29) begin
+  /** Update notice state (soft / force / up to date). */
+  getUpdate(): Promise<UpdateView>
+  /** Settings → "Check for updates" (`ok: false` when the check failed; the state is kept). */
+  checkForUpdates(): Promise<UpdateCheckResult>
+  /** Settings → "Later": hide the banner and the Uncle's bubble for this version. */
+  dismissUpdate(): Promise<UpdateView>
+  /** Open the download for this computer (main picks the allow-listed URL) in the default browser. */
+  openUpdateDownload(): Promise<void>
+  /** The Uncle showed the "I learned new tricks!" bubble (once per version). */
+  updateHintSeen(): Promise<void>
+  onUpdateChanged(cb: (v: UpdateView) => void): () => void
+  // --- updates (TPM D29) end
   /**
    * E2E only (LUD_E2E=1): simulated drops sent by the test hooks (src/shared/test-hooks.ts).
    * In normal runs this never calls back and returns a no-op unsubscribe.

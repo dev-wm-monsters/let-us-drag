@@ -11,6 +11,7 @@
 import { z } from 'zod'
 import { TEST_FEED_DROP_CHANNEL, type LudTestHooks, type TestDropPayload } from '../shared/test-hooks'
 import type { LicenceView } from '../shared/licence'
+import type { UpdateView } from '../shared/update'
 import type { JobEvent, OptionId } from '../shared/types'
 import { optionIdSchema, parseOrThrow, pathListSchema } from './ipc-validation'
 import { withTimeout } from './serial-queue'
@@ -38,6 +39,12 @@ export interface TestHookDeps {
     recheckNow(): Promise<string | null>
     resume(): void
     openedUrls(): string[]
+  }
+  /** D29 (optional so older test setups stay valid; app.ts always passes it). */
+  update?: {
+    view(): UpdateView
+    checkNow(): Promise<boolean>
+    resume(): void
   }
 }
 
@@ -91,6 +98,18 @@ export function createTestHooks(deps: TestHookDeps): LudTestHooks {
     },
     openedUrls() {
       return deps.licence.openedUrls()
+    },
+    // --- updates (D29)
+    update() {
+      if (!deps.update) throw new Error('update hooks not wired')
+      return deps.update.view()
+    },
+    async updateCheckNow() {
+      if (!deps.update) throw new Error('update hooks not wired')
+      return deps.update.checkNow()
+    },
+    async updateResume() {
+      deps.update?.resume()
     }
   }
 }

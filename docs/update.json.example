@@ -1,0 +1,16 @@
+{
+  "latest": "0.2.0",
+  "minimum": "0.1.0",
+  "releasedAt": "2026-11-10",
+  "notes": [
+    "New: the Uncle converts HEIC photos to JPG.",
+    "Fixed: very long file names no longer make him hiccup."
+  ],
+  "downloads": {
+    "mac-arm64": "https://letsdrag.wakeupmonster.com/downloads/LetsDrag-0.2.0-mac-arm64.dmg",
+    "mac-x64": "https://letsdrag.wakeupmonster.com/downloads/LetsDrag-0.2.0-mac-x64.dmg",
+    "win-x64": "https://letsdrag.wakeupmonster.com/downloads/LetsDrag-0.2.0-win-x64.exe",
+    "linux-x64": "https://letsdrag.wakeupmonster.com/downloads/LetsDrag-0.2.0-linux-x64.AppImage",
+    "page": "https://letsdrag.wakeupmonster.com/#download"
+  }
+}

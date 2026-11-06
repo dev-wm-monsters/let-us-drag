@@ -12,6 +12,8 @@ import { Character } from '../common/character/Character'
 import { usePrefersReducedMotion } from '../common/useUncleSession'
 import { gestureMessage, type Platform, triggerKeyLabels } from './labels'
 import { LicenceCard } from './LicenceCard'
+import type { UpdateView } from '../../shared/update'
+import { UpdateBanner, UpdateCard } from './UpdateCard'
 
 interface ToggleProps {
   k: 'sounds' | 'hungryMode' | 'plainMode' | 'launchAtLogin'
@@ -77,6 +79,7 @@ export function SettingsApp() {
   const [loaded, setLoaded] = useState(false)
   const [asking, setAsking] = useState(false)
   const [licence, setLicence] = useState<LicenceView | null>(null)
+  const [update, setUpdate] = useState<UpdateView | null>(null) // D29
   const reduced = usePrefersReducedMotion()
   const lookRef = useRef<Point | null>(null)
   const sounds = useMemo(() => createSoundPlayer({ enabled: true }), [])
@@ -98,6 +101,11 @@ export function SettingsApp() {
       if (alive && v) setLicence(v)
     })
     const offLicence = subscribe('onLicenceChanged', (v) => setLicence(v))
+    // --- updates (D29)
+    void call('getUpdate', null as unknown as UpdateView).then((v) => {
+      if (alive && v) setUpdate(v)
+    })
+    const offUpdate = subscribe('onUpdateChanged', (v) => setUpdate(v))
     const off = subscribe('onSettingsChanged', (s) => setSettings(s))
     const onFocus = () => void refreshStatus()
     window.addEventListener('focus', onFocus)
@@ -109,6 +117,7 @@ export function SettingsApp() {
       alive = false
       off()
       offLicence()
+      offUpdate()
       window.removeEventListener('focus', onFocus)
       window.removeEventListener('mousemove', onMove)
     }
@@ -148,6 +157,8 @@ export function SettingsApp() {
           <p>Drag a file, hold {labels[settings.triggerKey]}, and feed it to the Uncle.</p>
         </div>
       </header>
+
+      <UpdateBanner view={update} onView={setUpdate} />
 
       <LicenceCard view={licence} onView={setLicence} />
 
@@ -274,6 +285,8 @@ export function SettingsApp() {
           onChange={onToggle}
         />
       </section>
+      <UpdateCard view={update} onView={setUpdate} />
+
       <section className="set-card set-privacy" data-testid="privacy">
         <h2>Privacy</h2>
         <p className="set-small">
@@ -282,6 +295,10 @@ export function SettingsApp() {
         <p className="set-small" data-testid="privacy-licence">
           Activating needs the internet once. Only the licence key, an anonymous device ID and a device label are sent. After that the
           app re-checks the licence now and then in the background, and it never locks just because you're offline.
+        </p>
+        <p className="set-small" data-testid="privacy-updates">
+          To tell you about updates, the app downloads a small file from our website every few hours. Nothing about you or your
+          files is sent, and nothing is installed without you.
         </p>
       </section>
       <footer className="set-foot">Local only · v0.1 · © Wakeup Monster LLP</footer>

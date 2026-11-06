@@ -201,6 +201,32 @@ computer or a VM. The builds from CI are test-mode builds unless the repository 
     device label are sent…". Footer: "Local only · v0.1 · © Wakeup Monster LLP". In the Dodo dashboard the activation is
     named like `macOS · Apple silicon · 3f9a2c` / `Windows 11 · x64 · 3f9a2c` (never your computer or user name).
 
+## U. Update notices (TPM D29, do it on both computers)
+
+You need access to `update.json` on the website (or a staging copy: build with `UPDATE_MANIFEST_URL=https://…/update.json`).
+The app checks 20–60 s after it starts and every 6 hours; Settings → **Check for updates** checks at once.
+
+1. [ ] `update.json` says `"latest"` = this version. Settings → Updates → **Check for updates**. Expect: "You're up to date
+   (v0.1.0).", no banner, no tray item.
+2. [ ] Raise `"latest"` (e.g. `0.2.0`, keep `"minimum"`), press **Check for updates**. Expect: a yellow **Update available: v0.2.0**
+   banner at the top of Settings with the notes, **Download v0.2.0** and **Later**; the tray menu starts with
+   **Update available (v0.2.0)…** (opens Settings). Conversions still work.
+3. [ ] Shift-drag a file. Expect: the options as usual plus a small note under them, "I learned new tricks! Update in
+   Settings."; dropping on an option still converts. Next Shift-drag: no note (once per version).
+4. [ ] **Download v0.2.0**. Expect: the default browser downloads the installer for **this** computer (Apple silicon / Intel
+   Mac `.dmg`, Windows `.exe`, Linux `.AppImage`), never a window inside the app.
+5. [ ] **Later**. Expect: the banner goes; Updates says "v0.2.0 is available." with a small **Download**. Quit and start again:
+   still no banner. Publish `0.3.0`: the banner (and the note) come back.
+6. [ ] Raise `"minimum"` to the new version, check again. Expect: a red **Update required** banner (no Later), tray
+   **Update required (v…)…**; Shift-drag → one big bubble **Please update me** + **Download**, nothing converts (Remove BG
+   too: no model download); **×** / **Esc** close him; the Feed Window rests on the same bubble.
+7. [ ] Still forced: Wi-Fi **off**, quit and start. Expect: still **Please update me** (it remembers). Wi-Fi on, lower
+   `"minimum"` again, **Check for updates**: conversions work again.
+8. [ ] Break the file (bad JSON), or take the website offline, check again. Expect: "Couldn't reach our website. Try again
+   later." under the button; nothing else changes and nothing is blocked.
+9. [ ] Settings → Privacy mentions the update check ("downloads a small file from our website every few hours. Nothing about
+   you or your files is sent…").
+
 ---
 
 ## C. When something goes wrong

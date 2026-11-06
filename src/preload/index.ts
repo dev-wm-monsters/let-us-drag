@@ -11,6 +11,7 @@ import { IPC, type LudApi, type LudTestApi, type OverlayArmInfo } from '../share
 import { DEBUG_DRAG_CHANNEL, DEBUG_RENDERER_ARG } from '../shared/debug'
 import { TEST_CANCEL_CHANNEL, TEST_DROP_CHANNEL, TEST_FEED_DROP_CHANNEL, type TestDropPayload } from '../shared/test-hooks'
 import type { LicenceView } from '../shared/licence'
+import type { UpdateView } from '../shared/update'
 import type { JobEvent, PlatformStatus, Settings } from '../shared/types'
 
 const E2E = process.argv.includes('--lud-e2e')
@@ -54,6 +55,14 @@ const api: LudApi & LudTestApi = {
   openLicenceLink: (link) => ipcRenderer.invoke(IPC.openLicenceLink, link),
   openActivation: () => ipcRenderer.invoke(IPC.openActivation),
   onLicenceChanged: (cb) => subscribe<LicenceView>(IPC.licenceChanged, cb),
+  // --- updates (TPM D29) begin
+  getUpdate: () => ipcRenderer.invoke(IPC.getUpdate),
+  checkForUpdates: () => ipcRenderer.invoke(IPC.checkForUpdates),
+  dismissUpdate: () => ipcRenderer.invoke(IPC.dismissUpdate),
+  openUpdateDownload: () => ipcRenderer.invoke(IPC.openUpdateDownload),
+  updateHintSeen: () => ipcRenderer.invoke(IPC.updateHintSeen),
+  onUpdateChanged: (cb) => subscribe<UpdateView>(IPC.updateChanged, cb),
+  // --- updates (TPM D29) end
   onTestDrop: (cb) => (E2E ? subscribe<TestDropPayload>(TEST_DROP_CHANNEL, cb) : () => undefined),
   onTestFeedDrop: (cb) => (E2E ? subscribe<TestDropPayload>(TEST_FEED_DROP_CHANNEL, cb) : () => undefined),
   onTestCancel: (cb) => (E2E ? subscribe<void>(TEST_CANCEL_CHANNEL, () => cb()) : () => undefined)

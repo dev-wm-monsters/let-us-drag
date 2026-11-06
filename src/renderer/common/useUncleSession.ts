@@ -2,6 +2,7 @@
 // sounds and look-target tracking. Shared by the overlay and the Feed Window.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { LicenceView } from '../../shared/licence'
+import type { UpdateView } from '../../shared/update'
 import type { OptionId, Settings } from '../../shared/types'
 import type { TestDropPayload } from '../../shared/test-hooks'
 import {
@@ -13,6 +14,7 @@ import {
   isResting,
   type Model,
   reducer,
+  showsUpdateHint,
   TIMING,
   visibleOptions,
   wantsClickThrough,
@@ -39,6 +41,9 @@ export interface RingGeometry {
 }
 
 export const DEFAULT_RING: RingGeometry = { radius: 190, hitRadius: 46, mouthRadius: 100, scale: 1 }
+
+/** D29: the "I learned new tricks!" bubble counts as seen once it stayed this long on screen. */
+export const UPDATE_HINT_SEEN_MS = 1_200
 
 /** Attribute on elements that must receive clicks while the overlay is otherwise click-through (D20). */
 export const INTERACTIVE_ATTR = 'data-lud-interactive'
@@ -84,6 +89,8 @@ export interface UncleSession {
   buy(): void
   /** Unlock bubble (D26): "I have a key" → Settings → Activate, then close the overlay Uncle. */
   haveKey(): void
+  /** Update bubble (D29): open this computer's download in the default browser, then close the overlay Uncle. */
+  downloadUpdate(): void
 }
 
 export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
@@ -336,7 +343,12 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
     void call('getLicence', null as unknown as LicenceView).then((v) => {
       if (alive && v) dispatch({ type: 'LICENCE', view: v })
     })
+    // D29: update notice state (forced update lock, once-per-version bubble).
+    void call('getUpdate', null as unknown as UpdateView).then((v) => {
+      if (alive && v) dispatch({ type: 'UPDATE', view: v })
+    })
     const offs = [
+      subscribe('onUpdateChanged', (v) => dispatch({ type: 'UPDATE', view: v })),
       subscribe('onLicenceChanged', (v) => dispatch({ type: 'LICENCE', view: v })),
       subscribe('onSettingsChanged', (s) => dispatch({ type: 'SETTINGS', settings: s })),
       subscribe('onJobEvent', (ev) => dispatch({ type: 'JOB_EVENT', event: ev })),
@@ -433,12 +445,20 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
           jobStarts.current.set(job.id, started)
           started.then(
             (r) => {
-              // D26: main refused (no active licence). Show the unlock bubble and fetch the fresh state.
+              // Main refused: no active licence (D26) or a forced update (D29). Show the lock bubble and
+              // fetch the fresh state.
               if (r && typeof r === 'object' && r.started === false) {
-                dispatch({ type: 'LOCKED', jobId: job.id })
-                void call('getLicence', null as unknown as LicenceView).then((v) => {
-                  if (v) dispatch({ type: 'LICENCE', view: v })
-                })
+                const update = r.reason === 'UPDATE_REQUIRED'
+                dispatch({ type: 'LOCKED', jobId: job.id, reason: update ? 'update' : 'licence' })
+                if (update) {
+                  void call('getUpdate', null as unknown as UpdateView).then((v) => {
+                    if (v) dispatch({ type: 'UPDATE', view: v })
+                  })
+                } else {
+                  void call('getLicence', null as unknown as LicenceView).then((v) => {
+                    if (v) dispatch({ type: 'LICENCE', view: v })
+                  })
+                }
               }
             },
             () =>
@@ -520,6 +540,14 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
     void call('setOverlayClickThrough', undefined, clickThrough)
   }, [host, clickThrough, state])
 
+  // D29: the soft-update bubble counts as seen (main stores it: once per version) after it stayed a moment.
+  const hintVisible = showsUpdateHint(model)
+  useEffect(() => {
+    if (!hintVisible) return
+    const t = setTimeout(() => void call('updateHintSeen', undefined), UPDATE_HINT_SEEN_MS)
+    return () => clearTimeout(t)
+  }, [hintVisible, session])
+
   // Look target follows hover changes too.
   useEffect(() => {
     updateLook()
@@ -546,7 +574,12 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
     void call('openActivation', undefined)
     if (host === 'overlay') dispatch({ type: 'ESC' })
   }, [dispatch, host])
+  const downloadUpdate = useCallback(() => {
+    void call('openUpdateDownload', undefined)
+    if (host === 'overlay') dispatch({ type: 'ESC' })
+  }, [dispatch, host])
   return {
+    downloadUpdate,
     model,
     dispatch,
     lookRef,

@@ -7,6 +7,7 @@ import { ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
 import { IPC } from '../shared/api'
 import type { LicenceActionResult, LicenceLink, LicenceView, StartJobResult } from '../shared/licence'
 import type { JobRequest, PlatformStatus, Settings } from '../shared/types'
+import type { UpdateCheckResult, UpdateView } from '../shared/update'
 import {
   absolutePathSchema,
   booleanSchema,
@@ -49,6 +50,16 @@ export interface IpcDeps {
     deactivate(): Promise<LicenceActionResult>
     openLink(link: LicenceLink): Promise<void>
     openActivation(): Promise<unknown>
+  }
+  /** Update notices (D29). Optional so older test setups stay valid; app.ts always passes it. */
+  update?: {
+    /** Force update pending: conversions (and the Remove BG model download) are refused. */
+    isBlocked(): boolean
+    view(): UpdateView
+    check(): Promise<UpdateCheckResult>
+    dismiss(): Promise<UpdateView>
+    openDownload(): Promise<void>
+    hintSeen(): Promise<void>
   }
 }
 
@@ -99,6 +110,8 @@ export function registerIpc(deps: IpcDeps): () => void {
     const req = await validateJobRequest(raw)
     const page = deps.pageOfWebContents(e.sender.id)
     if (!page) throw new UntrustedSenderError()
+    // D29: a forced update blocks conversions in main too (checked before the licence: updating comes first).
+    if (deps.update?.isBlocked()) return { started: false, reason: 'UPDATE_REQUIRED' }
     // D26: the paywall is enforced here too, not only in the UI. No job, no engine, no model download.
     if (!deps.licence.isUnlocked()) return { started: false, reason: 'LICENCE_REQUIRED' }
     deps.startJob(req, { page, webContentsId: e.sender.id })
@@ -146,6 +159,21 @@ export function registerIpc(deps: IpcDeps): () => void {
   handle(IPC.openActivation, async () => {
     await deps.licence.openActivation()
   })
+
+  // --- updates (D29) begin: no arguments on any of these channels
+  const update = deps.update
+  if (update) {
+    handle(IPC.getUpdate, () => update.view())
+    handle(IPC.checkForUpdates, () => update.check())
+    handle(IPC.dismissUpdate, () => update.dismiss())
+    handle(IPC.openUpdateDownload, async () => {
+      await update.openDownload()
+    })
+    handle(IPC.updateHintSeen, async () => {
+      await update.hintSeen()
+    })
+  }
+  // --- updates (D29) end
 
   return () => {
     for (const c of channels) ipcMain.removeHandler(c)

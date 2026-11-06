@@ -1,6 +1,6 @@
 // Visual QA harness entry: renders the real overlay / feed / settings UI in plain Chromium with a
 // mocked window.lud. Open via `node src/renderer/dev/serve.mjs` →
-//   http://127.0.0.1:5199/dev/harness.html?view=overlay|feed|settings[&character=sumo-san&plain=1&hungry=1&platform=darwin&reason=mac-permission&firstRun=1&jobs=auto&bg=flat&licence=unlicensed|disabled|reactivate|active]
+//   http://127.0.0.1:5199/dev/harness.html?view=overlay|feed|settings[&character=sumo-san&plain=1&hungry=1&platform=darwin&reason=mac-permission&firstRun=1&jobs=auto&bg=flat&licence=unlicensed|disabled|reactivate|active&update=current|available|dismissed|required|unknown]
 // Drive it from Playwright through window.__harness (see src/renderer/dev/capture.mjs).
 import { type CharacterId, isCharacterId } from '../../shared/characters'
 import type { PlatformStatus, Settings } from '../../shared/types'
@@ -52,6 +52,9 @@ const mock = createMockLud({
   jobs: (q.get('jobs') as 'auto' | 'manual') ?? 'manual',
   ...(licenceParam === 'unlicensed' || licenceParam === 'disabled' || licenceParam === 'reactivate' || licenceParam === 'active'
     ? { licence: licenceParam }
+    : {}),
+  ...(['current', 'available', 'dismissed', 'required', 'unknown'].includes(q.get('update') ?? '')
+    ? { update: q.get('update') as 'current' | 'available' | 'dismissed' | 'required' | 'unknown' }
     : {})
 })
 ;(window as unknown as { lud: unknown }).lud = mock.api

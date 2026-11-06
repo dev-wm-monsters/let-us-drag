@@ -1,6 +1,7 @@
 // E2E test-hook contract (Playwright `_electron`). Contract owner: TPM.
 // Active ONLY when the app is started with env LUD_E2E=1; otherwise never installed.
 import type { LicenceView } from './licence'
+import type { UpdateView } from './update'
 import type { JobEvent, OptionId } from './types'
 
 /**
@@ -51,6 +52,14 @@ export interface LudTestHooks {
    * replaced by this recorder in E2E runs, so no browser starts).
    */
   openedUrls(): string[]
+  // --- updates (D29) begin
+  /** ADDITIVE (D29): the update notice state main holds (what renderers get from getUpdate). */
+  update(): UpdateView
+  /** ADDITIVE (D29): run the update check now, through the same code path as its timer. True = a valid manifest arrived. */
+  updateCheckNow(): Promise<boolean>
+  /** ADDITIVE (D29): what powerMonitor 'resume' does for updates (re-check when 6 h are over). */
+  updateResume(): Promise<void>
+  // --- updates (D29) end
 }
 
 /**
@@ -63,6 +72,13 @@ export interface LudTestHooks {
  */
 export const E2E_LICENCE_ENV = 'LUD_E2E_LICENSE' as const
 export const E2E_DODO_URL_ENV = 'LUD_E2E_DODO_URL' as const
+
+/**
+ * E2E-only update manifest URL (D29), honoured ONLY when LUD_E2E=1 and the app is not packaged:
+ * LUD_E2E_UPDATE_URL=http://127.0.0.1:<port>/update.json (loopback only). Without it the checker
+ * points at an unroutable local address, so E2E runs start with no update state and never reach the website.
+ */
+export const E2E_UPDATE_URL_ENV = 'LUD_E2E_UPDATE_URL' as const
 
 /** IPC channel used by main to deliver a simulated drop to the overlay renderer (E2E only). */
 export const TEST_DROP_CHANNEL = 'lud:test-drop' as const
