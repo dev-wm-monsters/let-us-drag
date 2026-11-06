@@ -71,9 +71,10 @@ export function LicenceCard({ view, onView }: { view: LicenceView | null; onView
 
   const buy = () => void call('openLicenceLink', undefined, 'checkout')
 
-  // Team / demo build (LUD_LICENSING=off): nothing to activate, no licence calls.
-  if (view?.teamBuild) {
-    return (
+  // Team / demo build (LUD_LICENSING=off): no licence card at all (clean Settings for demos/videos).
+  if (view?.teamBuild) return null
+
+  return (
       <section className="set-card set-licence is-active" data-testid="licence-card" data-licence-status="team" aria-labelledby="licence-title">
         <div className="set-licence-head">
           <h2 id="licence-title">Licence</h2>
