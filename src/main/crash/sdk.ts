@@ -5,13 +5,14 @@
 // What it captures: main-process uncaught exceptions / unhandled rejections, renderer errors
 // (forwarded by the renderer SDK over classic IPC, see src/renderer/common/crash.ts), engine
 // utility-process errors (forwarded over a MessagePort, see src/engine/crash.ts), and native crashes
-// (Crashpad minidumps) of the main, renderer, GPU and utility processes, uploaded on the next start
-// or right after a child process crashed.
+// of renderer, GPU and utility processes as a small "process gone" event (process type + reason:
+// crashed / oom / abnormal exit). No Crashpad minidumps: they are raw memory that may hold file
+// names and cannot be scrubbed (website promise), so they are never collected or uploaded.
 //
 // What it never does: release health / sessions, tracing, profiling, logs, metrics, screenshots,
 // console or network breadcrumbs, request data, local variables, source context, IP inference.
 // Every event is scrubbed (./scrub.ts) in beforeSend AND again in the transport, which also drops
-// every envelope item that is not an event or a minidump (the SDK forwards some renderer envelopes
+// every envelope item that is not an event (the SDK forwards some renderer envelopes
 // straight to the transport, bypassing beforeSend). The transport talks to the DSN's ingest origin
 // only, through a dedicated in-memory session that cancels any other request.
 
@@ -96,7 +97,7 @@ function makeTransport(opts: SentryInitOptions): TransportFactory {
         const kept = (items as EnvelopeItem[])
           .filter((item) => allowedEnvelopeItem(item[0] as { type?: unknown; attachment_type?: unknown }))
           .map((item) => (item[0].type === 'event' ? ([item[0], scrubEvent(item[1] as EventLike, opts.scrub)] as unknown as EnvelopeItem) : item))
-        // A minidump without its event, a session, a span…: nothing worth sending.
+        // A session, a span, a minidump…: nothing worth sending.
         if (!kept.some((item) => item[0].type === 'event')) return Promise.resolve({})
         const cleanHeaders = scrubValue(headers, opts.scrub) as Envelope[0]
         return base.send([cleanHeaders, kept] as unknown as Envelope)
@@ -118,11 +119,14 @@ export function initSentry(opts: SentryInitOptions): SentryHandle {
     getSessions: () => [],
     defaultIntegrations: false,
     integrations: [
-      // Native crashes (Crashpad) of main, renderer, GPU and utility processes.
-      Sentry.sentryMinidumpIntegration({ maxMinidumpsPerSession: 5 }),
       Sentry.electronContextIntegration(),
       Sentry.electronBreadcrumbsIntegration({ autoUpdater: false, captureWindowTitles: false }),
-      Sentry.childProcessIntegration(),
+      // Native crashes without minidumps: an event (type + reason) when a renderer, the GPU process or
+      // the engine dies abnormally. 'killed' is left out: we kill the engine on purpose (cancel, watchdog).
+      Sentry.childProcessIntegration({
+        breadcrumbs: ['crashed', 'oom', 'abnormal-exit', 'launch-failed', 'integrity-failure', 'killed'],
+        events: ['crashed', 'oom', 'abnormal-exit', 'launch-failed', 'integrity-failure']
+      }),
       Sentry.onUncaughtExceptionIntegration(),
       Sentry.onUnhandledRejectionIntegration(),
       Sentry.eventFiltersIntegration(),
@@ -157,7 +161,7 @@ export function initSentry(opts: SentryInitOptions): SentryHandle {
     beforeSend(event, hint) {
       if (!opts.consent()) return null
       // Only native crash dumps may travel with an event (never a scope attachment from a renderer).
-      if (hint.attachments) hint.attachments = hint.attachments.filter((a) => a.attachmentType === 'event.minidump')
+      if (hint.attachments) hint.attachments = []
       return scrubEvent(event as unknown as EventLike, opts.scrub) as unknown as typeof event
     },
     beforeBreadcrumb: (crumb) => scrubBreadcrumb(crumb as unknown as BreadcrumbLike, opts.scrub) as unknown as typeof crumb | null,

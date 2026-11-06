@@ -305,8 +305,11 @@ export function scrubEvent<T extends EventLike>(event: T, ctx: ScrubContext): T 
   return scrubbed as T
 }
 
-/** Envelope item types that may be sent: events and native crash dumps. Nothing else (no sessions, spans, logs…). */
+/**
+ * Envelope item types that may be sent: events only. Nothing else (no sessions, spans, logs, and no
+ * native crash dumps: a minidump is raw process memory that may hold file names and cannot be
+ * scrubbed, so native crashes are reported as a small "process gone" event instead, see sdk.ts).
+ */
 export function allowedEnvelopeItem(headers: { type?: unknown; attachment_type?: unknown }): boolean {
-  if (headers.type === 'event') return true
-  return headers.type === 'attachment' && headers.attachment_type === 'event.minidump'
+  return headers.type === 'event'
 }

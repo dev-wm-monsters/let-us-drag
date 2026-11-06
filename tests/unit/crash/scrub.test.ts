@@ -187,9 +187,9 @@ describe('scrubBreadcrumb', () => {
 })
 
 describe('allowedEnvelopeItem', () => {
-  it('lets only events and minidumps through', () => {
+  it('lets only events through (no minidumps: raw memory cannot be scrubbed)', () => {
     expect(allowedEnvelopeItem({ type: 'event' })).toBe(true)
-    expect(allowedEnvelopeItem({ type: 'attachment', attachment_type: 'event.minidump' })).toBe(true)
+    expect(allowedEnvelopeItem({ type: 'attachment', attachment_type: 'event.minidump' })).toBe(false)
     for (const type of ['session', 'sessions', 'transaction', 'span', 'log', 'trace_metric', 'profile', 'profile_chunk', 'replay_event', 'feedback', 'client_report', 'check_in']) {
       expect(allowedEnvelopeItem({ type })).toBe(false)
     }
