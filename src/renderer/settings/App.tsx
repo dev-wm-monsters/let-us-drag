@@ -301,7 +301,7 @@ export function SettingsApp() {
           files is sent, and nothing is installed without you.
         </p>
       </section>
-      <footer className="set-foot">Local only · v0.1 · © Wakeup Monster LLP</footer>
+      <footer className="set-foot">Local only{update ? ` · v${update.currentVersion}` : ''} · © Wakeup Monster LLP</footer>
     </div>
   )
 }

@@ -160,7 +160,8 @@ export class UpdateManager {
       outcome = { kind: 'error', reason: 'network' }
       this.log(`update: check failed (${String(err)})`)
     }
-    if (this.started) this.schedule(this.timings.intervalMs)
+    // A failed check (e.g. offline at start-up) retries after 30 min; a good one waits the full 6 h.
+    if (this.started) this.schedule(outcome.kind === 'ok' ? this.timings.intervalMs : this.timings.retryMs)
     if (outcome.kind !== 'ok') {
       this.log(`update: check failed (${outcome.reason}${outcome.status ? ` ${outcome.status}` : ''}); keeping the previous state`)
       return false

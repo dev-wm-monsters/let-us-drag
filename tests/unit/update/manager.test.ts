@@ -271,6 +271,17 @@ describe('UpdateManager', () => {
     expect(third.m.view().status).toBe('available')
   })
 
+  it('a failed background check retries after 30 min, a good one waits 6 h', async () => {
+    const { m, timers } = makeManager({ replies: ['throw', ok({ latest: '0.2.0' })] })
+    await m.init()
+    m.start()
+    timers.fireLast()
+    await vi.waitFor(() => expect(timers.active().map((t) => t.ms)).toEqual([30 * 60 * 1000]))
+    timers.fireLast()
+    await vi.waitFor(() => expect(m.view().status).toBe('available'))
+    expect(timers.active().map((t) => t.ms)).toEqual([6 * H])
+  })
+
   it('failed checks never block and never clear a known soft update', async () => {
     const { m } = makeManager({ replies: ['throw', 'hang', { status: 503, body: '' }, ok({ latest: 'oops' })] })
     await m.init()

@@ -58,6 +58,8 @@ export interface UpdateTimings {
   firstMaxMs: number
   /** Then every intervalMs while running; after waking from sleep when more than that has passed. */
   intervalMs: number
+  /** After a failed check (offline, 5xx, bad JSON): try again sooner than the full interval. */
+  retryMs: number
   /** Delay after a resume (the network usually needs a moment after waking). */
   resumeMinMs: number
   resumeMaxMs: number
@@ -67,6 +69,7 @@ export const DEFAULT_UPDATE_TIMINGS: UpdateTimings = {
   firstMinMs: 20_000,
   firstMaxMs: 60_000,
   intervalMs: 6 * 60 * 60 * 1000,
+  retryMs: 30 * 60 * 1000,
   resumeMinMs: 20_000,
   resumeMaxMs: 60_000
 }
