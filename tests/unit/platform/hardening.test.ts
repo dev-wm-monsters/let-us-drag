@@ -87,7 +87,8 @@ describe('IPC policy (SEC-11, SEC-12)', () => {
       IPC.checkForUpdates,
       IPC.dismissUpdate,
       IPC.openUpdateDownload,
-      IPC.updateHintSeen
+      IPC.updateHintSeen,
+      IPC.openReportProblem
     ]
     expect(Object.keys(IPC_ALLOWLIST).sort()).toEqual([...invokeChannels].sort())
   })

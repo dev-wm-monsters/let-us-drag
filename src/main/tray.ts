@@ -19,6 +19,8 @@ export interface TrayDeps {
   resetLicence?(): void
   /** D29: "Update available (v…)…" → Settings, where the Updates banner is. */
   openUpdate?(): void
+  /** Development builds only (D28): send one test event through the crash reporter. */
+  sendTestCrashReport?(): void
   log?: (message: string) => void
 }
 
@@ -46,7 +48,10 @@ export function trayMenuTemplate(state: TrayState, deps: Omit<TrayDeps, 'platfor
   const update: MenuItemConstructorOptions[] = state.update
     ? [{ label: state.update, click: () => deps.openUpdate?.() }, { type: 'separator' }]
     : []
-  const dev: MenuItemConstructorOptions[] = deps.resetLicence ? [{ label: 'Reset licence (development)', click: () => deps.resetLicence?.() }] : []
+  const dev: MenuItemConstructorOptions[] = [
+    ...(deps.resetLicence ? [{ label: 'Reset licence (development)', click: () => deps.resetLicence?.() }] : []),
+    ...(deps.sendTestCrashReport ? [{ label: 'Send test crash report (development)', click: () => deps.sendTestCrashReport?.() }] : [])
+  ]
   return [
     ...update,
     ...licence,

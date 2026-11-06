@@ -80,6 +80,32 @@ jobs:
         run: |
           echo "Dodo licensing: $DODO_ENV / $DODO_PRODUCT_ID, licensing=$LUD_LICENSING" | tee ci-logs/licensing.log
           set -o pipefail && npm run build 2>&1 | tee ci-logs/build.log
+      # --- crash reporting source maps (TPM D28) ---------------------------------------------------
+      # The build writes hidden source maps. With the SENTRY_AUTH_TOKEN secret, inject debug IDs and
+      # upload them (sentry-cli, pinned); without it the upload is skipped. Either way the maps are
+      # deleted before packaging (electron-builder.yml also excludes **/*.map; QA PKG-08 checks it).
+      - name: Sentry source maps available?
+        id: sentry
+        shell: bash
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        run: echo "upload=$([ -n "$SENTRY_AUTH_TOKEN" ] && echo yes || echo no)" >> "$GITHUB_OUTPUT"
+      - name: Upload source maps to Sentry
+        if: steps.sentry.outputs.upload == 'yes'
+        shell: bash
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: wakeup-monster
+          SENTRY_PROJECT: lets-drag
+        run: |
+          release="lets-drag@$(node -p "require('./package.json').version")"
+          set -o pipefail
+          { npx --yes @sentry/cli@3.8.2 sourcemaps inject out
+            npx --yes @sentry/cli@3.8.2 sourcemaps upload --release "$release" out; } 2>&1 | tee ci-logs/sentry-sourcemaps.log
+      - name: Remove source maps
+        shell: bash
+        run: find out -name '*.map' -type f -delete && ! find out -name '*.map' | grep -q .
+      # --- end crash reporting source maps ------------------------------------------------------------
       - name: Package
         shell: bash
         run: set -o pipefail && npx electron-builder ${{ matrix.builder }} --publish never 2>&1 | tee ci-logs/package.log

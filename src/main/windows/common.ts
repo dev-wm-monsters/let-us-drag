@@ -12,6 +12,8 @@ export interface WindowContext {
   e2e: boolean
   /** Called for every created window so IPC can trust its webContents (and only for `page`). */
   register(win: BrowserWindow, page: RendererPage): void
+  /** D28: flags every app window gets (CRASH_REPORTS_ARG when crash reporting is possible in this run). */
+  rendererArgs?: readonly string[]
 }
 
 export function createAppWindow(
@@ -28,7 +30,7 @@ export function createAppWindow(
       ...extraPrefs,
       preload: preloadPath(ctx.layout),
       // ctx.e2e is false in packaged builds (e2e-mode.ts), so this flag never reaches production.
-      additionalArguments: [...(ctx.e2e && !ctx.layout.isPackaged ? [E2E_RENDERER_ARG] : []), ...rendererArgs],
+      additionalArguments: [...(ctx.e2e && !ctx.layout.isPackaged ? [E2E_RENDERER_ARG] : []), ...(ctx.rendererArgs ?? []), ...rendererArgs],
       devTools: !ctx.layout.isPackaged
     })
   })

@@ -104,6 +104,38 @@ UI `src/renderer/settings/UpdateCard.tsx`, `src/renderer/common/UpdateBubbles.ts
    - **force update:** also raise `minimum` (every older version stops converting until it is updated). Use sparingly.
 5. Check: `curl -s https://letsdrag.wakeupmonster.com/update.json | python3 -m json.tool`, then in an older build press
    Settings → **Check for updates**. Undo a mistaken force update by lowering `minimum` again (apps unblock at their next check).
+## Crash reporting (TPM D28)
+
+- **Code.** `crash/config.ts` (pure: DSN, when reporting is possible, tags, release, mailto URL), `crash/scrub.ts` (pure:
+  path / file-name / key scrubbing and the event allow-list), `crash/reporting.ts` (controller: lazy SDK start, live
+  consent, renderer / engine flags, `sentry-test.flag`), `crash/sdk.ts` (the only module that imports
+  `@sentry/electron/main`; loaded with a dynamic import). Renderer: `src/renderer/common/crash.ts` (first import of each
+  page). Engine: `src/engine/crash.ts`. Preload: exposes the SDK's IPC bridge only with `--lud-crash-reports`.
+- **When.** `SENTRY_DSN` build `define` (default: the project DSN; empty → off). Packaged builds only. Unpackaged runs
+  never report, except `LUD_E2E=1` + `LUD_E2E_SENTRY_URL=http://127.0.0.1:<port>` (E2E mock, environment `e2e`) and
+  `LUD_SENTRY_DEV=1` (developers, real DSN, environment `development`). Then only while the `crashReports` setting is on:
+  off at launch → the SDK is not loaded; on later → it starts live; off later → `beforeSend` and the transport drop
+  everything. Renderers get `--lud-crash-reports` whenever reporting is possible; the engine only while the SDK runs at
+  fork time (its SDK needs main's MessagePort), so turning the setting on covers the engine from its next start.
+- **What.** Uncaught exceptions / unhandled rejections in main, renderers and the engine; Crashpad minidumps of every
+  process (uploaded right after a child process crash, or at the next start after a main crash). No sessions, tracing,
+  logs, metrics, screenshots, console / network breadcrumbs, local variables or source lines. Every event is scrubbed and
+  reduced to an allow-list in `beforeSend` and again in the transport (which also keeps only `event` and
+  `event.minidump` items). See `docs/security/THREAT_MODEL.md` §5.15 for the full list.
+- **Network.** Main only, `session.fromPartition('lud-crash')` (in memory), request filter: the DSN's ingest origin only;
+  generic `User-Agent`, no cookies. No request at launch unless a minidump from a previous crash is waiting. No offline
+  queue (an event that cannot be sent is lost).
+- **Test events.** Tray "Send test crash report (development)" (unpackaged builds only; sends only with `LUD_SENTRY_DEV=1`,
+  otherwise it logs why not). Packaged: create an empty `sentry-test.flag` in userData; the next launch deletes it and
+  sends one event "Let's Drag! test crash report (sentry-test.flag)" (if the setting is on).
+- **Report a problem.** Settings-only IPC `openReportProblem` (no argument); main opens
+  `mailto:support@wakeupmonster.com` with the version and OS (E2E: recorded in `__ludTest.openedUrls()`).
+- **Source maps.** Every bundle gets a hidden source map; CI uploads them with `sentry-cli` only when the
+  `SENTRY_AUTH_TOKEN` secret exists and deletes them before packaging; `electron-builder.yml` excludes `**/*.map`.
+- **Packaging.** The SDK runs from `node_modules` (`dependencies`). `electron-builder.yml` leaves out
+  `@sentry/bundler-plugins`, the `sentry` CLI (FSL licence) and `oxc-parser`, which `@sentry/node` 11 only lists as
+  dependencies for its bundler plugins. (Bundling the SDK instead was tried: Rolldown shares chunks between the main
+  and engine entries and panicked on manual chunking.)
 
 ## Overlay lifecycle
 

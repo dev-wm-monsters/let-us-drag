@@ -47,6 +47,10 @@ function appEnv(e2e: boolean, extra: Record<string, string>): Record<string, str
   // D29: no update manifest by default (the app then points at an unroutable address: no update state).
   // Update specs pass { LUD_E2E_UPDATE_URL: <loopback mock> }.
   delete env['LUD_E2E_UPDATE_URL']
+  // D28: crash reporting stays off unless a spec points it at the mock ingest server.
+  delete env['LUD_E2E_SENTRY_URL']
+  delete env['LUD_SENTRY_DEV']
+  delete env['LUD_E2E_ENGINE_ERROR']
   if (e2e) env['LUD_E2E'] = '1'
   // D26: E2E runs start licensed by default (no network), so the conversion specs keep converting.
   // Licensing specs pass { LUD_E2E_LICENSE: 'none' } (and LUD_E2E_DODO_URL for the mock Dodo server).

@@ -28,6 +28,7 @@ type InvokeChannel =
   | typeof IPC.dismissUpdate
   | typeof IPC.openUpdateDownload
   | typeof IPC.updateHintSeen
+  | typeof IPC.openReportProblem
 
 const ALL: readonly RendererPage[] = ['overlay', 'feed', 'settings']
 const CONVERTERS: readonly RendererPage[] = ['overlay', 'feed']
@@ -67,7 +68,8 @@ export const IPC_ALLOWLIST: Readonly<Record<InvokeChannel, readonly RendererPage
   [IPC.checkForUpdates]: ['settings'],
   [IPC.dismissUpdate]: ['settings'],
   [IPC.openUpdateDownload]: ALL,
-  [IPC.updateHintSeen]: CONVERTERS
+  [IPC.updateHintSeen]: CONVERTERS,
+  [IPC.openReportProblem]: ['settings'] // D28
 }
 
 export function isAllowedChannel(channel: string, page: RendererPage): boolean {

@@ -7,7 +7,9 @@
 // onTestDrop / onTestFeedDrop / onTestCancel are no-ops and those channels are never listened to.
 
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
+import { hookupIpc as hookupSentryIpc } from '@sentry/electron/preload-namespaced'
 import { IPC, type LudApi, type LudTestApi, type OverlayArmInfo } from '../shared/api'
+import { CRASH_REPORTS_ARG, SENTRY_IPC_NAMESPACE } from '../shared/crash'
 import { DEBUG_DRAG_CHANNEL, DEBUG_RENDERER_ARG } from '../shared/debug'
 import { TEST_CANCEL_CHANNEL, TEST_DROP_CHANNEL, TEST_FEED_DROP_CHANNEL, type TestDropPayload } from '../shared/test-hooks'
 import type { LicenceView } from '../shared/licence'
@@ -63,12 +65,20 @@ const api: LudApi & LudTestApi = {
   updateHintSeen: () => ipcRenderer.invoke(IPC.updateHintSeen),
   onUpdateChanged: (cb) => subscribe<UpdateView>(IPC.updateChanged, cb),
   // --- updates (TPM D29) end
+  openReportProblem: () => ipcRenderer.invoke(IPC.openReportProblem), // D28
   onTestDrop: (cb) => (E2E ? subscribe<TestDropPayload>(TEST_DROP_CHANNEL, cb) : () => undefined),
   onTestFeedDrop: (cb) => (E2E ? subscribe<TestDropPayload>(TEST_FEED_DROP_CHANNEL, cb) : () => undefined),
   onTestCancel: (cb) => (E2E ? subscribe<void>(TEST_CANCEL_CHANNEL, () => cb()) : () => undefined)
 }
 
 contextBridge.exposeInMainWorld('lud', api)
+
+// ——— crash reporting (TPM D28) ———
+// Only when main started this window with CRASH_REPORTS_ARG (crash reporting possible in this run):
+// expose the Sentry SDK's renderer → main IPC bridge (window.__SENTRY_IPC__, send-only channels
+// `sentry-ipc.*`). The renderer SDK (src/renderer/common/crash.ts) uses it; it never sends anything
+// to the network itself. Main scrubs, filters and decides (src/main/crash/).
+if (process.argv.includes(CRASH_REPORTS_ARG)) hookupSentryIpc(SENTRY_IPC_NAMESPACE)
 
 // ——— field diagnostics: report the window's HTML5 drag events to main (debug runs only) ———
 // Only dataTransfer.types, item kinds/MIME types, file count, effects and whether the page
