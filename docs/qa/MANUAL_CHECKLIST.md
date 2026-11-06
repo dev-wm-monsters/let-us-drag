@@ -203,6 +203,34 @@ computer or a VM. The builds from CI are test-mode builds unless the repository 
 
 ---
 
+## S. Crash reports (TPM D28, one computer is enough)
+
+You need access to the Sentry project **wakeup-monster / lets-drag** (Issues). Crash reports are sent only by
+**installed (packaged)** builds, only while Settings → Privacy → **Send crash reports** is on (default), and only when
+something breaks.
+
+1. [ ] Settings → Privacy shows **Send crash reports** (on) with "If something breaks, send an anonymous report (no files,
+   no file names) so we can fix it." and a **Report a problem** button.
+2. [ ] **Test event from an installed build.** Quit the app. In the settings folder (see C) create an **empty file named
+   `sentry-test.flag`** (macOS Terminal: `touch ~/Library/Application\ Support/Let\'s\ Drag\!/sentry-test.flag`; Windows:
+   in `%APPDATA%\Let's Drag!` → New → Text Document, rename it to `sentry-test.flag` without `.txt`). Start the app.
+   Expect: the file is gone right away, and within a minute Sentry → Issues shows **"Error: Let's Drag! test crash report
+   (sentry-test.flag)"**, environment `production`, release `lets-drag@<version>`, tags `os`, `arch`, `app.version`,
+   `character`, `channel` (`user`, or `team` in a team build) and `dodo_env`. Open the event: no user name, no computer
+   name, no IP address, no file or folder names anywhere (breadcrumbs included).
+3. [ ] Turn **Send crash reports** off, quit, create `sentry-test.flag` again, start. Expect: nothing new in Sentry and the
+   flag file stays (nothing was sent). Turn the setting back on and restart: now the test event arrives.
+4. [ ] **Report a problem**: your mail app opens a new e-mail to support@wakeupmonster.com with "App version" and "OS"
+   filled in and nothing attached.
+5. [ ] Network (optional, Little Snitch / Windows firewall log): starting the app and using it normally makes **no**
+   connection to `*.sentry.io`; only step 2 (and a real crash) does.
+
+Developers (unpackaged build, `npm run build && npx electron .`): crash reports are off unless you start it with
+`LUD_SENTRY_DEV=1`; then the tray item **Send test crash report (development)** sends one event with environment
+`development` (without the variable it only logs why nothing was sent).
+
+---
+
 ## C. When something goes wrong
 
 **Logs.** The app writes no log files on its own. To capture one, quit the app (tray/menu bar → Quit), then start it from a terminal, repeat the problem, quit, and attach the file:

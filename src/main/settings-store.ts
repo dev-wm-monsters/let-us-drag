@@ -54,7 +54,8 @@ const fieldSchemas = {
   plainMode: z.boolean(),
   launchAtLogin: z.boolean(),
   firstRunDone: z.boolean(),
-  character: characterSchema
+  character: characterSchema,
+  crashReports: z.boolean() // D28
 } as const satisfies Record<keyof Settings, z.ZodType>
 
 /** A patch sent by a renderer: any subset of fields, nothing else. */

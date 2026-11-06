@@ -18,6 +18,13 @@ files:
   - '!node_modules/onnxruntime-node/script/**'
   - '!node_modules/adm-zip/**'
   - '!node_modules/global-agent/**'
+  # D28: the Sentry SDK runs from node_modules; its bundler plugins (with the Sentry CLI, FSL licence,
+  # and the native oxc-parser) are build tools that @sentry/node only lists as a dependency.
+  - '!node_modules/@sentry/bundler-plugins/**'
+  - '!node_modules/sentry/**'
+  - '!node_modules/oxc-parser/**'
+  - '!node_modules/@oxc-parser/**'
+  - '!node_modules/@oxc-project/**'
   # @napi-rs/canvas cannot run inside Electron (V8 memory cage); PDF pages render in a Chromium window instead.
   - '!node_modules/@napi-rs/**'
   # musl variants are never used by Electron's glibc builds.

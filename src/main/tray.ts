@@ -17,6 +17,8 @@ export interface TrayDeps {
   openActivation(): void
   /** Development builds only: forget the licence locally. */
   resetLicence?(): void
+  /** Development builds only (D28): send one test event through the crash reporter. */
+  sendTestCrashReport?(): void
   log?: (message: string) => void
 }
 
@@ -38,7 +40,10 @@ export function trayMenuTemplate(state: TrayState, deps: Omit<TrayDeps, 'platfor
         { label: 'Activate…', click: () => deps.openActivation() },
         { type: 'separator' }
       ]
-  const dev: MenuItemConstructorOptions[] = deps.resetLicence ? [{ label: 'Reset licence (development)', click: () => deps.resetLicence?.() }] : []
+  const dev: MenuItemConstructorOptions[] = [
+    ...(deps.resetLicence ? [{ label: 'Reset licence (development)', click: () => deps.resetLicence?.() }] : []),
+    ...(deps.sendTestCrashReport ? [{ label: 'Send test crash report (development)', click: () => deps.sendTestCrashReport?.() }] : [])
+  ]
   return [
     ...licence,
     { label: 'Open Feed Window', click: () => deps.openFeedWindow() },

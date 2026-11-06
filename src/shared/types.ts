@@ -119,6 +119,8 @@ export interface Settings {
   firstRunDone: boolean
   /** Which character appears (see src/shared/characters.ts). */
   character: CharacterId
+  /** D28: send anonymous crash / error reports (Sentry). Default on; older settings files → true. */
+  crashReports: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -128,7 +130,8 @@ export const DEFAULT_SETTINGS: Settings = {
   plainMode: false,
   launchAtLogin: false,
   firstRunDone: false,
-  character: DEFAULT_CHARACTER
+  character: DEFAULT_CHARACTER,
+  crashReports: true
 }
 
 /** Platform capability report shown in settings / used to pick fallbacks. */

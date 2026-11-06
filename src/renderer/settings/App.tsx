@@ -14,7 +14,7 @@ import { gestureMessage, type Platform, triggerKeyLabels } from './labels'
 import { LicenceCard } from './LicenceCard'
 
 interface ToggleProps {
-  k: 'sounds' | 'hungryMode' | 'plainMode' | 'launchAtLogin'
+  k: 'sounds' | 'hungryMode' | 'plainMode' | 'launchAtLogin' | 'crashReports'
   label: string
   desc: string
   value: boolean
@@ -277,12 +277,34 @@ export function SettingsApp() {
       <section className="set-card set-privacy" data-testid="privacy">
         <h2>Privacy</h2>
         <p className="set-small">
-          Your files never leave your computer: every conversion runs locally. No analytics, no telemetry.
+          Your files never leave your computer: every conversion runs locally. No analytics, no usage tracking.
         </p>
         <p className="set-small" data-testid="privacy-licence">
           Activating needs the internet once. Only the licence key, an anonymous device ID and a device label are sent. After that the
           app re-checks the licence now and then in the background, and it never locks just because you're offline.
         </p>
+        {/* D28: crash reports (Sentry), on by default, applies immediately. */}
+        <Toggle
+          k="crashReports"
+          label="Send crash reports"
+          desc="If something breaks, send an anonymous report (no files, no file names) so we can fix it."
+          value={settings.crashReports}
+          onChange={onToggle}
+        />
+        <div className="set-row set-row-plain">
+          <span className="set-text">
+            <strong>Something not working?</strong>
+            <small>Opens an e-mail to us with the app version and your OS filled in. Nothing else is attached.</small>
+          </span>
+          <button
+            type="button"
+            className="lud-btn lud-btn-ghost"
+            data-testid="report-problem"
+            onClick={() => void call('openReportProblem', undefined)}
+          >
+            Report a problem
+          </button>
+        </div>
       </section>
       <footer className="set-foot">Local only · v0.1 · © Wakeup Monster LLP</footer>
     </div>

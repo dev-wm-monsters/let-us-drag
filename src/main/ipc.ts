@@ -50,6 +50,8 @@ export interface IpcDeps {
     openLink(link: LicenceLink): Promise<void>
     openActivation(): Promise<unknown>
   }
+  /** D28: open the "Report a problem" e-mail (URL fixed in main). */
+  openReportProblem?(): Promise<void>
 }
 
 export class UntrustedSenderError extends Error {
@@ -145,6 +147,10 @@ export function registerIpc(deps: IpcDeps): () => void {
   })
   handle(IPC.openActivation, async () => {
     await deps.licence.openActivation()
+  })
+  // D28: no argument; the mailto URL is built in main (the renderer never passes a URL).
+  handle(IPC.openReportProblem, async () => {
+    await deps.openReportProblem?.()
   })
 
   return () => {

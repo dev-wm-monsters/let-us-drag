@@ -23,6 +23,7 @@ type InvokeChannel =
   | typeof IPC.deactivateLicence
   | typeof IPC.openLicenceLink
   | typeof IPC.openActivation
+  | typeof IPC.openReportProblem
 
 const ALL: readonly RendererPage[] = ['overlay', 'feed', 'settings']
 const CONVERTERS: readonly RendererPage[] = ['overlay', 'feed']
@@ -55,7 +56,8 @@ export const IPC_ALLOWLIST: Readonly<Record<InvokeChannel, readonly RendererPage
   [IPC.activateLicence]: ['settings'],
   [IPC.deactivateLicence]: ['settings'],
   [IPC.openLicenceLink]: ALL,
-  [IPC.openActivation]: CONVERTERS
+  [IPC.openActivation]: CONVERTERS,
+  [IPC.openReportProblem]: ['settings'] // D28
 }
 
 export function isAllowedChannel(channel: string, page: RendererPage): boolean {

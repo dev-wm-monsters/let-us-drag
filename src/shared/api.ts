@@ -25,6 +25,8 @@ export const IPC = {
   deactivateLicence: 'lud:deactivate-licence', // () => LicenceActionResult           (settings only)
   openLicenceLink: 'lud:open-licence-link', // (link: LicenceLink) => void  opens checkout / website in the default browser
   openActivation: 'lud:open-activation', // () => void  "I have a key": opens Settings → Activate
+  // crash reporting (TPM D28)
+  openReportProblem: 'lud:open-report-problem', // () => void  Settings "Report a problem": mailto with version + OS (main builds the URL)
   // main → renderer (send)
   jobEvent: 'lud:job-event', // JobEvent
   overlayArm: 'lud:overlay-arm', // (info: OverlayArmInfo)
@@ -79,6 +81,8 @@ export interface LudApi {
   /** "I have a key": open Settings with the Activate field. */
   openActivation(): Promise<void>
   onLicenceChanged(cb: (v: LicenceView) => void): () => void
+  /** D28: Settings → "Report a problem" (opens a prefilled e-mail; no logs attached). Optional for older mocks. */
+  openReportProblem?(): Promise<void>
   /**
    * E2E only (LUD_E2E=1): simulated drops sent by the test hooks (src/shared/test-hooks.ts).
    * In normal runs this never calls back and returns a no-op unsubscribe.

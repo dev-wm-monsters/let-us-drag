@@ -34,6 +34,7 @@ Status as of `develop@c2c4bfa` (2026-10-21, final security review, `docs/securit
 | R-6 | Decide about mirroring the Remove-BG model (section 9). Today it is downloaded from upstream and **not** redistributed. | The license of the pretrained weights is not stated upstream. | Product owner (TPM decision D10) | open (the code still lists our own `models-v1` release URL as a second source; it must stay unpublished until this is decided) |
 | R-7 | Windows: exclude `DirectML.dll`, `dxcompiler.dll`, `dxil.dll`, or include Microsoft's redistribution terms. | Their terms are not in this file **[unverified]**; the app uses only the CPU execution provider. | TPM + Engine | open |
 | R-8 | FFmpeg patent notice: the shipped FFmpeg builds contain H.264/H.265 (x264, x265, OpenH264) and other patent-encumbered codecs. Copyright licences (GPL, BSD) do not grant patent rights; Cisco's OpenH264 patent coverage applies only to the binaries Cisco itself distributes, not to OpenH264 compiled into another program. | Legal risk assessment for a public, possibly commercial distribution (not a copyright-licence violation). | Product owner | open (decision) |
+| R-9 | Regenerate the npm table of section 11 from a packaged build after adding the Sentry SDK (TPM D28, section 10a). | The generated table predates `@sentry/electron` 8.3.0 and its runtime dependencies. | TPM (`docs/security/tools/gen-npm-notices.mjs`) | open |
 
 The recommended `electron-builder.yml` snippet for R-7 is in `docs/security/REVIEW.md` (phase 2, section 6.2).
 
@@ -423,6 +424,21 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+---
+
+## 10a. Sentry SDK (crash reporting, TPM D28)
+
+Crash reports use the **Sentry JavaScript SDK for Electron** (`@sentry/electron` 8.3.0, MIT License, Copyright (c) 2018
+Functional Software, Inc. dba Sentry; Copyright (c) 2017 Tim Fish). It runs from `node_modules` inside `app.asar`
+together with its runtime dependencies `@sentry/core`, `@sentry/node`, `@sentry/browser`, `@sentry/browser-utils`,
+`@sentry/opentelemetry`, `@sentry/server-utils`, `@sentry/server-runtime-injection`, `@sentry/replay`,
+`@sentry/replay-canvas`, `@sentry/feedback` (11.8.0) and `@sentry/conventions` (0.27.0), all **MIT**, and
+`@opentelemetry/api` 1.10.0 (**Apache-2.0**); the renderer bundles also contain the browser SDK code (MIT). Each package's
+licence file ships in its folder. **Not shipped** (excluded in `electron-builder.yml`): `@sentry/bundler-plugins`, the
+`sentry` CLI package (FSL-1.1-Apache-2.0) and `oxc-parser` with its native bindings, which `@sentry/node` lists only for
+its build-time bundler plugins. The CI source-map upload uses `@sentry/cli` 3.8.2 (FSL-1.1-MIT) at build time only (not shipped).
+Until the generated table below is refreshed (R-9), this paragraph is the notice for these packages.
 
 ---
 

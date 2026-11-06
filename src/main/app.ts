@@ -2,8 +2,8 @@
 // and the single-instance lock is held (see index.ts).
 
 import { app, BrowserWindow, ipcMain, Menu, powerMonitor, safeStorage, screen, session, shell, utilityProcess } from 'electron'
-import { readFileSync } from 'node:fs'
-import { release } from 'node:os'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { homedir, release } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { IPC } from '../shared/api'
 import { DEBUG_DRAG_CHANNEL, DEBUG_REPORT_MAX } from '../shared/debug'
@@ -11,6 +11,8 @@ import { TEST_CANCEL_CHANNEL, type TestDropPayload } from '../shared/test-hooks'
 import type { JobEvent, JobRequest, PlatformStatus, Settings } from '../shared/types'
 import { OVERRIDES_FILE_NAME, parseOverlayOverrides, type ParsedOverrides } from './debug-overrides'
 import { launchCommand, linuxAutostartPath, loginItemSettings, setLinuxAutostart } from './autostart'
+import { buildSentryDsn, crashReportingMode, osDisplayName, reportProblemUrl, SENTRY_TEST_FLAG_FILE } from './crash/config'
+import { CrashReporting } from './crash/reporting'
 import { EngineHost, type WorkerLike } from './engine-host'
 import { HtmlToPdf } from './html-to-pdf'
 import { parseOrThrow } from './ipc-validation'
@@ -59,9 +61,10 @@ export interface RunningApp {
   openSettingsWindow(): Promise<unknown>
 }
 
-function forkEngine(modulePath: string, env: Record<string, string> | undefined): WorkerLike {
+function forkEngine(modulePath: string, env: Record<string, string> | undefined, args: string[] = []): WorkerLike {
   // env undefined → inherit process.env (unpackaged); packaged → no LUD_* keys (F-16, D18).
-  const child = utilityProcess.fork(modulePath, [], env ? { serviceName: "Let's Drag! engine", env } : { serviceName: "Let's Drag! engine" })
+  // args: CRASH_REPORTS_ARG when the crash reporter runs (D28).
+  const child = utilityProcess.fork(modulePath, args, env ? { serviceName: "Let's Drag! engine", env } : { serviceName: "Let's Drag! engine" })
   return {
     postMessage: (m) => child.postMessage(m),
     on(event: 'message' | 'exit', listener: ((m: unknown) => void) | ((code: number) => void)) {
@@ -119,6 +122,38 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
   await settings.load()
   if (quitting) return stub
 
+  // --- crash reporting (TPM D28) -------------------------------------------------------------
+  // Possible only in packaged builds with a DSN (unpackaged: only with LUD_E2E_SENTRY_URL in E2E or
+  // LUD_SENTRY_DEV=1, see crash/config.ts). The SDK starts only while Settings → "Send crash reports"
+  // is on (live); nothing is sent at launch, only when there is an error or crash to report.
+  const crash = new CrashReporting({
+    mode: crashReportingMode({ isPackaged: app.isPackaged, e2e, env: process.env, buildDsn: buildSentryDsn() }),
+    consent: () => settings.get().crashReports,
+    load: () => import('./crash/sdk'),
+    tagInput: {
+      version: app.getVersion(),
+      platform,
+      arch: process.arch,
+      character: settings.get().character,
+      licensingEnabled: buildLicensingEnabled(),
+      dodoEnv: buildLicenceConfig().environment
+    },
+    scrub: { appRoots: [app.getAppPath(), process.resourcesPath], homeDir: homedir() },
+    os: { name: osDisplayName(platform), version: process.getSystemVersion() },
+    testFlag: {
+      exists: () => existsSync(join(userData, SENTRY_TEST_FLAG_FILE)),
+      remove: () => rmSync(join(userData, SENTRY_TEST_FLAG_FILE), { force: true })
+    },
+    log
+  })
+  await crash.start()
+  settings.onChange((next: Settings, prev: Settings) => {
+    if (next.crashReports !== prev.crashReports) void crash.setConsent(next.crashReports)
+    if (next.character !== prev.character) crash.setCharacter(next.character)
+  })
+  // --- end crash reporting -------------------------------------------------------------------
+  if (quitting) return stub
+
   // --- licence (TPM D26) --------------------------------------------------------------------
   // Network: only the three public Dodo licence endpoints, from main (never a renderer), and never
   // during start-up itself (the background re-check runs after a random delay; D22 exception).
@@ -167,6 +202,7 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
   const ctx: WindowContext = {
     layout,
     e2e,
+    rendererArgs: crash.rendererArgs(), // D28
     register(win: BrowserWindow, page: RendererPage) {
       const id = win.webContents.id
       ownWebContents.set(id, page)
@@ -216,7 +252,7 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
   const workerPath = workerOverride && isAbsolute(workerOverride) ? workerOverride : engineWorkerPath(layout)
   const engine = new EngineHost({
     // Computed per fork so a restarted worker gets the same filtered environment.
-    fork: () => forkEngine(workerPath, engineWorkerEnv(process.env, app.isPackaged)),
+    fork: () => forkEngine(workerPath, engineWorkerEnv(process.env, app.isPackaged), crash.engineArgs()),
     options: { cacheDir: join(userData, 'models'), resourcesDir: resourcesDir(layout) },
     htmlToPdf: (html) => pdf.convert(html),
     renderPdfPages: (bytes, options, signal) => pdfPages.render(bytes, options, signal),
@@ -280,6 +316,8 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
     openActivation: () => void settingsWin.open(),
     // Hidden developer action (unpackaged builds only): forget the licence locally, no network.
     ...(app.isPackaged ? {} : { resetLicence: () => void licence.resetLocal() }),
+    // D28, unpackaged only: one test event (sent only with LUD_SENTRY_DEV=1 / the E2E mock; else logged).
+    ...(app.isPackaged ? {} : { sendTestCrashReport: () => void crash.sendTestEvent('tray') }),
     log
   })
   cleanups.push(() => permission.stopPolling(), () => gesture.stop())
@@ -325,6 +363,16 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
     )
   }
 
+  // --- "Report a problem" (TPM D28): a fixed mailto URL built here; E2E records it instead ---
+  const openReportProblem = async (): Promise<void> => {
+    const url = reportProblemUrl({ version: app.getVersion(), platform, osRelease: process.getSystemVersion(), arch: process.arch })
+    if (e2eLicence) {
+      openedUrls.push(url)
+      return
+    }
+    await shell.openExternal(url)
+  }
+
   // --- IPC --------------------------------------------------------------------------------
   registerIpc({
     layout,
@@ -350,7 +398,8 @@ export async function startApp(opts: AppOptions): Promise<RunningApp> {
       deactivate: () => licence.deactivate(),
       openLink: openLicenceLink,
       openActivation: () => settingsWin.open()
-    }
+    },
+    openReportProblem
   })
 
   // --- E2E hooks --------------------------------------------------------------------------

@@ -3,6 +3,7 @@
 // (no 'electron' import). The htmlToPdf adapter is forwarded to the host, which renders with
 // Chromium, and awaited with a timeout.
 import type { EngineAdapters, EngineOptions, HostToWorker, WorkerToHost } from './api'
+import { startEngineCrashReporting } from './crash'
 import { createEngine } from './index'
 import { createWorkerHandler, type WorkerPort } from './worker-protocol'
 
@@ -19,4 +20,7 @@ if (parentPort) {
     onMessage: (cb: (msg: HostToWorker) => void) => parentPort.on('message', (e) => cb(e.data as HostToWorker))
   }
   createWorkerHandler(port, (adapters: EngineAdapters, options: EngineOptions) => createEngine(adapters, options))
+  // D28: after the protocol handler, so no host message is missed while the SDK loads (the SDK's
+  // own handshake message carries no `type` and is ignored by the handler).
+  startEngineCrashReporting(process.argv, process.env).catch(() => undefined)
 }

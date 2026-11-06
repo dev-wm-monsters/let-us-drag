@@ -25,14 +25,29 @@ const rawLicensing = (process.env['LUD_LICENSING'] ?? '').trim()
 if (rawLicensing !== '' && rawLicensing !== 'on' && rawLicensing !== 'off') throw new Error(`LUD_LICENSING must be "on" or "off", got "${rawLicensing}"`)
 const licensing = rawLicensing === 'off' ? 'off' : 'on'
 
+// --- crash reporting (TPM D28) -------------------------------------------------------------------
+/** SENTRY_DSN (public, not a secret). Unset → the project DSN; set to an empty string → no crash reporting. */
+const DEFAULT_SENTRY_DSN = 'https://a2dd68eda7b45b6b81a8592402434940@o4512383055626240.ingest.us.sentry.io/4512383176867840'
+const sentryDsn = (process.env['SENTRY_DSN'] ?? DEFAULT_SENTRY_DSN).trim()
+if (sentryDsn !== '' && !/^https:\/\/[0-9a-f]{16,64}@[A-Za-z0-9.-]+\/\d+$/.test(sentryDsn)) throw new Error(`SENTRY_DSN is not a Sentry DSN: "${sentryDsn}"`)
+/**
+ * Hidden source maps (no sourceMappingURL comment) for every bundle, so CI can upload them to Sentry
+ * (.github/workflows/package.yml). They are never packaged: electron-builder.yml excludes **\/*.map
+ * and the workflow deletes them after the upload.
+ */
+const sourcemap = 'hidden' as const
+// --- end crash reporting ---------------------------------------------------------------------------
+
 export default defineConfig({
   main: {
     define: {
       __DODO_ENV__: JSON.stringify(dodo.dodoEnv),
       __DODO_PRODUCT_ID__: JSON.stringify(dodo.productId),
-      __LUD_LICENSING__: JSON.stringify(licensing)
+      __LUD_LICENSING__: JSON.stringify(licensing),
+      __SENTRY_DSN__: JSON.stringify(sentryDsn) // D28
     },
     build: {
+      sourcemap, // D28
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'src/main/index.ts'),
@@ -45,6 +60,7 @@ export default defineConfig({
     build: {
       // Sandboxed preload: bundle everything into one CommonJS file.
       externalizeDeps: false,
+      sourcemap, // D28
       rollupOptions: {
         input: { index: resolve(__dirname, 'src/preload/index.ts') },
         output: { format: 'cjs', entryFileNames: '[name].cjs' }
@@ -55,6 +71,7 @@ export default defineConfig({
     root: resolve(__dirname, 'src/renderer'),
     plugins: [react(), characterSvgPlugin()],
     build: {
+      sourcemap, // D28
       rollupOptions: {
         input: {
           overlay: resolve(__dirname, 'src/renderer/overlay/index.html'),
