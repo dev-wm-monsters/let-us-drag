@@ -70,7 +70,7 @@ function cleanNotes(raw: unknown): string[] {
   for (const n of raw) {
     if (typeof n !== 'string') continue
     // Plain text, one line: control characters and runs of whitespace become one space.
-    const t = n.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e]+/g, ' ').replace(/\s+/g, ' ').trim()
+    const t = n.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]+/g, ' ').replace(/\s+/g, ' ').trim()
     if (!t) continue
     out.push(t.length > MAX_NOTE_CHARS ? `${t.slice(0, MAX_NOTE_CHARS - 1).trimEnd()}…` : t)
     if (out.length >= MAX_NOTES) break

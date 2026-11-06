@@ -1,8 +1,8 @@
 // Engine (utility process) crash reporting (TPM D28). Only when main started us with
 // CRASH_REPORTS_ARG, i.e. main's crash reporter runs and holds the other end: the SDK hands every
 // event to main over a MessagePort (it never uses the network), and main scrubs, filters and sends
-// it, or drops it when the user turned crash reports off. Native crashes of this process are
-// Crashpad minidumps, handled entirely by main.
+// it, or drops it when the user turned crash reports off. A native crash of this process is reported
+// by main as a small "process gone" event (no minidumps, TPM D28).
 //
 // Captured: uncaught exceptions and unhandled rejections. No breadcrumbs (console output and
 // ffmpeg command lines name the user's files), no local variables, no source context.

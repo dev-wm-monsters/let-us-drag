@@ -10,7 +10,8 @@
 //   1. file:// URLs are decoded to paths first, then treated like paths;
 //   2. paths inside the app (app.getAppPath(), process.resourcesPath) become `app:///<relative>`
 //      (our own code: kept, so stack traces stay useful);
-//   3. a quoted string that starts with a path is replaced as a whole (paths with spaces);
+//   3. a quoted string that starts with a path, or is a user file name, is replaced as a whole
+//      (paths and names with spaces or apostrophes); a decoded file:// URL likewise;
 //   4. the home directory becomes `~` and anything under it `~/<path>`;
 //   5. any other absolute path (POSIX, Windows drive, UNC) becomes `<path>`;
 //   6. a remaining word that ends in a user file extension (photo.png, Grüße.HEIC) becomes `<file>`;
@@ -49,12 +50,19 @@ const EXT_ALT = [...new Set(USER_EXTENSIONS)].sort((a, b) => b.length - a.length
 const TAIL = String.raw`(?:${SEGMENT}(?: ${SEGMENT})*(?=${SEP})${SEP})*(?:${SEGMENT}(?: ${SEGMENT})*?\.(?:${EXT_ALT})(?![\w])|${SEGMENT})?`
 
 const FILE_URL_RE = /\bfile:\/\/(?:[^\s'"\x60<>()]|'(?=[\w%]))*/gi
-const QUOTED_RE = /(['"\x60])([^'"\x60\n]{1,2048})\1/g
+/**
+ * A quoted string: the opening quote is not preceded by a letter or digit and the closing one is not
+ * followed by one, so an apostrophe inside a word (Can't, Mom's Wedding, O'Brien) neither opens nor
+ * closes a quote and a quoted path with an apostrophe in a folder name is still replaced as a whole.
+ */
+const QUOTED_RE = /(?<![\p{L}\p{N}_])(['"\x60])([^\n]{1,2048}?)\1(?![\p{L}\p{N}_])/gu
 const PATH_START_RE = new RegExp(String.raw`^(?:~(?:${SEP}|$)|/|[A-Za-z]:${SEP}|\\\\)`)
 const UNC_RE = new RegExp(String.raw`(?<![\w:\\/])(?:\\\\{1,2}|//)${SEGMENT}${SEP}${TAIL}`, 'g')
 const DRIVE_RE = new RegExp(String.raw`(?<![\w])[A-Za-z]:${SEP}${TAIL}`, 'g')
 const POSIX_RE = new RegExp(String.raw`(?<![\w.:/\\~<>@-])/(?=[^\s/\\])${TAIL}`, 'g')
 const TILDE_RE = new RegExp(String.raw`(?<![\w])~${SEP}(?=[^\s<\\/])${TAIL}`, 'g')
+/** A whole quoted string that is a user file name (it may contain spaces): "Holiday Photo 2024.png". */
+const QUOTED_FILE_NAME_RE = new RegExp(String.raw`^(?!app:///)[^\n]*\.(?:${EXT_ALT})$`, 'i')
 /** Group 1: one of our app:/// paths (kept); otherwise a bare user file name. */
 const FILE_NAME_RE = new RegExp(String.raw`(app:///[^\s'"\x60<>()]*)|(?<![\w.<>-])${SEGMENT}\.(?:${EXT_ALT})(?![\w])`, 'gi')
 /** Licence keys (dash-separated alphanumeric groups with a digit) and UUIDs, e.g. ABCD-1234-EFGH-5678. */
@@ -119,8 +127,9 @@ function scrubPaths(s: string, c: CompiledContext): string {
   for (const re of c.appRes) out = out.replace(re, (_m, rest: string) => `app://${rest.replace(/\\+/g, '/') || '/'}`)
   // A quoted path is replaced as a whole (it may contain spaces). Quoted app:// paths are ours.
   out = out.replace(QUOTED_RE, (m, q: string, inner: string) => {
-    if (!PATH_START_RE.test(inner) && !(c.homeRe && startsWithRoot(inner, c.homeRe))) return m
-    return `${q}${placeholderFor(inner, c)}${q}`
+    if (PATH_START_RE.test(inner) || (c.homeRe && startsWithRoot(inner, c.homeRe))) return `${q}${placeholderFor(inner, c)}${q}`
+    if (QUOTED_FILE_NAME_RE.test(inner)) return `${q}${FILE_PLACEHOLDER}${q}`
+    return m
   })
   if (c.homeRe) out = out.replace(c.homeRe, (_m, rest: string) => (rest ? `${HOME_PLACEHOLDER}/${PATH_PLACEHOLDER}` : HOME_PLACEHOLDER))
   out = out.replace(TILDE_RE, `${HOME_PLACEHOLDER}/${PATH_PLACEHOLDER}`)
@@ -146,11 +155,21 @@ function placeholderFor(path: string, c: CompiledContext): string {
   return PATH_PLACEHOLDER
 }
 
+function scrubFileUrl(url: string, c: CompiledContext): string {
+  const path = decodeFileUrl(url)
+  if (path === PATH_PLACEHOLDER) return path
+  // Our own files (stack frames of renderer bundles): app:///<relative>, as for plain paths.
+  if (c.appRes.some((re) => startsWithRoot(path, re))) return scrubPaths(path, c)
+  return placeholderFor(path, c)
+}
+
 /** Scrub one string (see the rules at the top of this file). */
 export function scrubText(input: string, ctx: ScrubContext): string {
   if (input === '') return input
   const c = compile(ctx)
-  let out = input.replace(FILE_URL_RE, (url) => decodeFileUrl(url))
+  // A decoded file:// URL is replaced as a whole: decoding may add spaces (%20) that would otherwise
+  // end the path early and leave the rest of a folder name in the text.
+  let out = input.replace(FILE_URL_RE, (url) => scrubFileUrl(url, c))
   out = scrubPaths(out, c)
   out = out.replace(FILE_NAME_RE, (m, own: string | undefined) => own ?? FILE_PLACEHOLDER)
   out = out.replace(KEY_RE, ID_PLACEHOLDER)

@@ -196,3 +196,31 @@ describe('allowedEnvelopeItem', () => {
     expect(allowedEnvelopeItem({ type: 'attachment', attachment_type: 'event.attachment' })).toBe(false)
   })
 })
+
+// QA review (sentry-updates): leaks found by probing scrubText with real-world error shapes.
+describe('scrubText: review findings', () => {
+  it('a quoted path with an apostrophe in a folder name is replaced as a whole', () => {
+    expect(scrubText("ENOENT: no such file or directory, open '/Users/jane/Mom's Wedding/IMG 1.jpg'", mac)).toBe(
+      "ENOENT: no such file or directory, open '~/<path>'"
+    )
+    expect(scrubText("open '/Users/bob/Bob's Files/x.png' failed", mac)).toBe("open '<path>' failed")
+    expect(scrubText("EPERM: rename 'C:\\Users\\Bob\\x.tmp' -> 'D:\\O'Brien Photos\\a b.docx'", win)).toBe("EPERM: rename '<path>' -> '<path>'")
+    // An apostrophe inside a word never opens a quote.
+    expect(scrubText("Can't open '/Users/bob/a b/c.png'", mac)).toBe("Can't open '<path>'")
+  })
+  it('a file:// URL is replaced as a whole after decoding (%20 must not split it)', () => {
+    expect(scrubText('file:///Users/bob/My%20Secret%20Folder', mac)).toBe('<path>')
+    expect(scrubText('load file:///Users/jane/Desktop/Secret%20Plans now', mac)).toBe('load ~/<path> now')
+    expect(scrubText('file:///D:/Family%20Photos/Summer%20Trip', win)).toBe('<path>')
+    expect(scrubText("at file:///Applications/Let's%20Drag!.app/Contents/Resources/app.asar/out/renderer/assets/a.js:10:5", mac)).toBe(
+      'at app:///out/renderer/assets/a.js:10:5'
+    )
+  })
+  it('a quoted file name with spaces is replaced as a whole (ipc-validation.ts messages)', () => {
+    expect(scrubText('Can\'t find "Holiday Photo 2024.png". It may have been moved or deleted.', mac)).toBe(
+      'Can\'t find "<file>". It may have been moved or deleted.'
+    )
+    expect(scrubText('"Résumé final v2.DOCX" is not a regular file.', mac)).toBe('"<file>" is not a regular file.')
+    expect(scrubText("module 'app:///out/main/index.js' and 'index.js'", mac)).toBe("module 'app:///out/main/index.js' and 'index.js'")
+  })
+})

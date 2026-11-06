@@ -56,7 +56,7 @@ How claims are marked:
  crash reports (D28, packaged builds, setting "Send crash reports", only when an error / crash happens):
    renderer SDK ──IPC (sentry-ipc.*, preload bridge)──┐
    engine SDK ──MessagePort──────────────────────────┤──► main: beforeSend (consent + allow-list + scrub)
-   Crashpad minidumps (main/renderer/GPU/utility) ───┘        │ transport: consent, events + minidumps only, scrub again
+   "process gone" (renderer/GPU/engine, no minidump) ┘        │ transport: consent, events only, scrub again
                                                               ▼
                                    `lud-crash` session (only the DSN ingest origin) ──HTTPS──► Sentry
 ```
@@ -225,19 +225,21 @@ See [CHECKLIST.md §H and §K](CHECKLIST.md) (baseline findings F-01..F-14). Key
 What leaves the computer, and only when an error or crash happens in a packaged build with "Send crash reports" on: the
 exception type and message, stack frames (our code as `app:///…`), the SDK's process / crash kind, the allowed tags
 (app version, OS, arch, character, build channel, Dodo environment), OS / Electron / Chrome / Node versions, Electron
-breadcrumbs (window / app events; console and network breadcrumbs are dropped), and for native crashes the Crashpad
-minidump. Release `lets-drag@<version>`, environment `production`.
+breadcrumbs (window / app events; console and network breadcrumbs are dropped), and for a native crash of a renderer,
+the GPU process or the engine a small "process gone" event (process type + exit reason). **No minidumps**: there is no
+`crashReporter.start` and no `sentryMinidumpIntegration`, so a native crash of the main process itself is not reported.
+Release `lets-drag@<version>`, environment `production`.
 
 | Threat | Mitigation |
 |---|---|
 | User file names / folders / user name in a report (website promise) | `src/main/crash/scrub.ts` (unit-tested for macOS, Windows, Linux, UNC, `file://`, Unicode, spaces): home → `~`, other absolute paths → `<path>`, user file names → `<file>`, our install dir → `app:///…`. Applied to every string of the event in `beforeSend` and again in the transport (renderer envelopes can bypass `beforeSend` inside the SDK). The engine SDK records no breadcrumbs (ffmpeg command lines name files); renderer SDKs record none either. |
-| Secrets / identifiers in a report | Allow-listed event fields, contexts and tags only; no `user` (only `ip_address: null`), `request`, `extra`, `modules`, `server_name`, culture / timezone, device memory, cookies or headers (`dataCollection` all off, `infer_ip: never`). Licence-key / UUID-like tokens → `<id>` (install ID). Never attached: debug log, settings, licence data, job inputs / outputs; only `event.minidump` attachments pass. |
-| Telemetry beyond crashes | No sessions / release health, tracing, profiling, logs, metrics, screenshots, client reports: the integrations are not installed and the transport drops every envelope item that is not an event or a minidump. Nothing is sent at launch unless a crash of the previous run left a minidump. |
+| Secrets / identifiers in a report | Allow-listed event fields, contexts and tags only; no `user` (only `ip_address: null`), `request`, `extra`, `modules`, `server_name`, culture / timezone, device memory, cookies or headers (`dataCollection` all off, `infer_ip: never`). Licence-key / UUID-like tokens → `<id>` (install ID). Never attached: debug log, settings, licence data, job inputs / outputs; no attachment of any kind passes (`hint.attachments` is emptied in `beforeSend`, the transport keeps `event` items only). |
+| Telemetry beyond crashes | No sessions / release health, tracing, profiling, logs, metrics, screenshots, client reports: the integrations are not installed and the transport drops every envelope item that is not an event. Nothing is sent at launch; no offline queue is written to disk (custom transport). |
 | A page posts to Sentry / reaches the network | Renderers have no network (default session blocks remote requests, CSP `connect-src 'self'`); their SDK talks to main over send-only IPC channels (`sentry-ipc.*`) that our preload exposes **only** to our own windows started with `--lud-crash-reports`. The SDK's custom-protocol mode (reachable from any page, e.g. the PDF helper windows) is not used. A compromised renderer can at most submit fake error events, which main scrubs and filters like any other. |
 | Crash transport used to reach other hosts | Main-only transport over `session.fromPartition('lud-crash')` (in-memory) whose `onBeforeRequest` cancels any URL whose origin is not the DSN's ingest origin; generic `User-Agent`, `credentials: 'omit'`. |
 | User opts out | `crashReports: false` → SDK not loaded at launch; switching it off later drops everything immediately (checked per event in `beforeSend` and in the transport). |
 | Test switches reaching users | `LUD_E2E_SENTRY_URL` (loopback http only) needs `LUD_E2E=1` and an unpackaged app; `LUD_SENTRY_DEV=1` is ignored by packaged builds; the engine never sees `LUD_*` in packaged builds (D18). `sentry-test.flag` sends one clearly-labelled test event and is deleted first. |
-| Minidump contents | Crashpad minidumps hold raw stack memory of the crashed thread(s) and the module list; they cannot be scrubbed and may contain fragments of in-memory data (e.g. a path being processed). Accepted (§8); Sentry processes them server-side (symbolication) and should be configured not to store the raw files (project setting "Store Native Crash Reports" off). |
+| Native crash contents | No minidumps are collected or sent (raw memory cannot be scrubbed). A native crash becomes a "process gone" event whose message is only `'<process type>' process exited with '<reason>'`; its breadcrumb data (type, reason, exit code, service name) is scrubbed like everything else. |
 
 ### 5.14 Licensing (Dodo Payments, TPM D26) — owner: Platform (main) + Frontend (UI)
 
@@ -267,7 +269,7 @@ downloads and installs by hand. **Trust root: the website host `letsdrag.wakeupm
 | Manifest tampering in transit | HTTPS only (the build refuses a non-https `UPDATE_MANIFEST_URL`), no redirects, a session that can reach only the manifest's origin. |
 | Malicious manifest points users at a malicious installer | Download links are accepted only as `https://letsdrag.wakeupmonster.com/…` (default port, no credentials), checked again when used; anything else falls back to the download page. The renderer never supplies a URL. A compromised website could still serve a bad installer, exactly as for a first install: the website is the trust root (OS code signing / notarisation, once available, is the next layer). |
 | Malicious manifest blocks conversions (a huge `minimum`) | Same trust root. Limited to "Please update me"; undone by publishing a lower `minimum`. A locally edited `update-state.json` only affects that user. Invalid, oversized (> 64 KiB) or inconsistent manifests are ignored and keep the previous state; a failed check never blocks. |
-| Content injection through notes | Notes are plain text (control characters stripped, ≤ 8 × 160 chars), rendered by React as text, never as HTML. |
+| Content injection through notes | Notes are plain text (control and bidi characters stripped, ≤ 8 × 160 chars), rendered by React as text, never as HTML. |
 | Privacy | One plain GET: no query string, no body, no IDs, no cookies, generic `User-Agent: LetsDrag/<version>`, no `Accept-Language`. The website sees the IP address and the app version, as for any download. |
 | Test override reaching users | `LUD_E2E_UPDATE_URL` is read only when `LUD_E2E=1` **and** `!app.isPackaged`, and must be loopback. |
 
@@ -282,10 +284,10 @@ Dodo (TPM D26: activate / deactivate when the user asks; a silent background re-
 3. ffmpeg: `-protocol_whitelist file` (§5.5). (SEC-61)
 4. pdf.js: no remote cmaps/fonts (§5.6). (SEC-71)
 5. Engine Node code: the only `fetch`/`https` usage is the model downloader (grep gate). (SEC-151)
-6. No telemetry, no analytics SDKs (SEC-152). Crash reports (D28) are the documented exception: `crashReporter` runs with `uploadToServer: false` (the Sentry SDK reads the minidumps and uploads them itself), only in packaged builds, only while "Send crash reports" is on, only when an error or crash happened (§5.15).
+6. No telemetry, no analytics SDKs (SEC-152). Crash reports (D28) are the documented exception: only in packaged builds, only while "Send crash reports" is on, only when an error or crash happened; no `crashReporter`, no minidumps (§5.15).
 7. Licence calls (D26): main process only, through the `lud-licence` in-memory session that can reach only the configured Dodo origin (§5.14). The default session keeps blocking every remote request from our windows.
-8. Update manifest (D29): one GET every 6 h (first 20–60 s after start-up, never during start-up itself), main process only, through the `lud-update` in-memory session that can reach only the manifest's origin (§5.15).
-9. Crash reports (D28): main process only, through the `lud-crash` in-memory session that can reach only the DSN's ingest origin (§5.15). Nothing at launch unless a minidump from a previous crash is waiting.
+8. Update manifest (D29): one GET every 6 h (first 20–60 s after start-up, never during start-up itself), main process only, through the `lud-update` in-memory session that can reach only the manifest's origin (§5.16).
+9. Crash reports (D28): main process only, through the `lud-crash` in-memory session that can reach only the DSN's ingest origin (§5.15). Nothing at launch.
 
 ## 7. Privacy invariants for the global hook (MUST, release blockers)
 
@@ -302,7 +304,7 @@ Dodo (TPM D26: activate / deactivate when the user asks; a silent background re-
 - A compromised renderer can still ask main to convert any user-readable file the IPC accepts, and write new (never overwriting) files next to it. Main cannot independently verify that a path came from a real drop. Impact: limited to creating new files. Accepted, because renderers load no remote content.
 - Converted outputs (CSV from XLSX, HTML from MD) can carry active content that other programs act on (formula injection, links). Documented.
 - Same-user malware can tamper with our unpacked native modules or userData. Out of scope, apart from the fuses (SEC-17) and model re-hashing (SEC-121).
-- Crash reports (D28): minidumps carry unscrubbable raw memory of the crashed process; the scrubber is heuristic (a file name without a known extension, or a word of a path with spaces outside quotes, can survive in a free-text message). Mitigated by the allow-list, the opt-out, and Sentry-side data scrubbing / no raw minidump storage (§5.15).
+- Crash reports (D28): the scrubber is heuristic. Quoted paths and quoted file names (also with spaces or apostrophes) and `file://` URLs are replaced as a whole, but in free text a file or folder name without a known extension, or the words after a space in an *unquoted* path (`/Volumes/USB Stick` → `<path> Stick`), can survive. Our own error messages and Node's fs errors quote paths and file names. Mitigated by the allow-list, the opt-out, and Sentry-side data scrubbing (§5.15). A native crash of the main process is not reported (no minidumps).
 - Licensing (D26) is casual-sharing protection only: patching `app.asar`, rebuilding from source, or editing the 0600 fallback file on Linux without a keyring unlocks the app. Accepted at $9.50 (§5.14).
 
 ## 9. Dependency audit and licensing (baseline at e9fae72)

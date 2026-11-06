@@ -114,6 +114,11 @@ describe('manifest validation', () => {
     expect(parseManifest({ latest: '0.2.0', notes: 'not a list' })!.notes).toEqual([])
   })
 
+  it('strips every bidi control, including the isolates (U+2066–2069) and the BOM (review)', () => {
+    const m = parseManifest({ latest: '0.2.0', notes: ['Fixed ⁧gnirts⁩ and ⁦x⁨y﻿ end'] })!
+    expect(m.notes[0]).toBe('Fixed gnirts and x y end')
+  })
+
   it('parses JSON text (with a BOM) and refuses bad JSON or an oversized body', () => {
     expect(parseManifestText('﻿' + JSON.stringify(GOOD))?.latest).toBe('0.2.0')
     expect(parseManifestText('{ nope')).toBeNull()

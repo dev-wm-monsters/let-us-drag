@@ -160,7 +160,7 @@ export function initSentry(opts: SentryInitOptions): SentryHandle {
     },
     beforeSend(event, hint) {
       if (!opts.consent()) return null
-      // Only native crash dumps may travel with an event (never a scope attachment from a renderer).
+      // No attachment ever travels with an event (no minidumps, no scope attachment from a renderer).
       if (hint.attachments) hint.attachments = []
       return scrubEvent(event as unknown as EventLike, opts.scrub) as unknown as typeof event
     },

@@ -231,6 +231,9 @@ The app checks 20–60 s after it starts and every 6 hours; Settings → **Check
 
 ## S. Crash reports (TPM D28, one computer is enough)
 
+Short owner version of S and U (test crash in Sentry, soft / forced update via the website's `update.json`):
+`docs/qa/TEST_SENTRY_AND_UPDATES.md`.
+
 You need access to the Sentry project **wakeup-monster / lets-drag** (Issues). Crash reports are sent only by
 **installed (packaged)** builds, only while Settings → Privacy → **Send crash reports** is on (default), and only when
 something breaks.
@@ -239,7 +242,8 @@ something breaks.
    no file names) so we can fix it." and a **Report a problem** button.
 2. [ ] **Test event from an installed build.** Quit the app. In the settings folder (see C) create an **empty file named
    `sentry-test.flag`** (macOS Terminal: `touch ~/Library/Application\ Support/Let\'s\ Drag\!/sentry-test.flag`; Windows:
-   in `%APPDATA%\Let's Drag!` → New → Text Document, rename it to `sentry-test.flag` without `.txt`). Start the app.
+   PowerShell `New-Item "$env:APPDATA\Let's Drag!\sentry-test.flag" -ItemType File`; Explorer's New → Text Document
+   keeps a hidden `.txt`, which does not work). Start the app (online: a test event that cannot be sent is not retried).
    Expect: the file is gone right away, and within a minute Sentry → Issues shows **"Error: Let's Drag! test crash report
    (sentry-test.flag)"**, environment `production`, release `lets-drag@<version>`, tags `os`, `arch`, `app.version`,
    `character`, `channel` (`user`, or `team` in a team build) and `dodo_env`. Open the event: no user name, no computer

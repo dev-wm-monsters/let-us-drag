@@ -117,13 +117,15 @@ UI `src/renderer/settings/UpdateCard.tsx`, `src/renderer/common/UpdateBubbles.ts
   off at launch → the SDK is not loaded; on later → it starts live; off later → `beforeSend` and the transport drop
   everything. Renderers get `--lud-crash-reports` whenever reporting is possible; the engine only while the SDK runs at
   fork time (its SDK needs main's MessagePort), so turning the setting on covers the engine from its next start.
-- **What.** Uncaught exceptions / unhandled rejections in main, renderers and the engine; Crashpad minidumps of every
-  process (uploaded right after a child process crash, or at the next start after a main crash). No sessions, tracing,
+- **What.** Uncaught exceptions / unhandled rejections in main, renderers and the engine. Native crashes of a renderer,
+  the GPU process or the engine become a small "process gone" event (process type + reason, `childProcessIntegration`).
+  **No minidumps** (raw memory cannot be scrubbed): no `crashReporter.start`, no `sentryMinidumpIntegration`, so a
+  native crash of main itself is not reported. No sessions, tracing,
   logs, metrics, screenshots, console / network breadcrumbs, local variables or source lines. Every event is scrubbed and
-  reduced to an allow-list in `beforeSend` and again in the transport (which also keeps only `event` and
-  `event.minidump` items). See `docs/security/THREAT_MODEL.md` §5.15 for the full list.
+  reduced to an allow-list in `beforeSend` and again in the transport (which also keeps only `event` items:
+  no attachments). See `docs/security/THREAT_MODEL.md` §5.15 for the full list.
 - **Network.** Main only, `session.fromPartition('lud-crash')` (in memory), request filter: the DSN's ingest origin only;
-  generic `User-Agent`, no cookies. No request at launch unless a minidump from a previous crash is waiting. No offline
+  generic `User-Agent`, no cookies. No request at launch. No offline
   queue (an event that cannot be sent is lost).
 - **Test events.** Tray "Send test crash report (development)" (unpackaged builds only; sends only with `LUD_SENTRY_DEV=1`,
   otherwise it logs why not). Packaged: create an empty `sentry-test.flag` in userData; the next launch deletes it and
