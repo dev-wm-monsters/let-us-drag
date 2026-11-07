@@ -71,7 +71,7 @@ describe('SVG: rasterizing is time-limited', () => {
 describe('PDF Split: output size is capped', () => {
   async function sharedImagePdf(path: string, pages: number): Promise<number> {
     const { PDFDocument } = await import('pdf-lib')
-    const png = await sharp({ create: { width: 300, height: 300, channels: 3, noise: { type: 'gaussian', mean: 128, sigma: 60 } } }).png().toBuffer()
+    const png = await sharp({ create: { width: 300, height: 300, channels: 3, background: '#000000', noise: { type: 'gaussian', mean: 128, sigma: 60 } } }).png().toBuffer()
     const doc = await PDFDocument.create()
     const img = await doc.embedPng(png)
     for (let i = 0; i < pages; i++) doc.addPage([300, 300]).drawImage(img, { x: 0, y: 0, width: 300, height: 300 })
