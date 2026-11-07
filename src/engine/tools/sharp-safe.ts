@@ -16,9 +16,9 @@
 // any buffer that is not a sniffed raster image, so no other code path can reach librsvg.
 import sharp from 'sharp'
 import type { Sharp, SharpOptions } from 'sharp'
-import { MAX_INPUT_PIXELS } from '../limits'
+import { MAX_INPUT_PIXELS, SVG_RASTER_TIMEOUT_SECONDS } from '../limits'
 import { EngineError, errMessage, invalidInput } from '../errors'
-import { sniffImage } from '../sniff'
+import { sniffImage, type ImageKind } from '../sniff'
 
 export const ALLOWED_LOADERS: readonly string[] = [
   'VipsForeignLoadPngFile',
@@ -54,10 +54,17 @@ export const SHARP_INPUT: Readonly<Pick<SharpOptions, 'failOn' | 'limitInputPixe
   limitInputPixels: MAX_INPUT_PIXELS
 })
 
+/** Sniffed kinds a buffer may have when it is handed to sharp (each has an unblocked buffer loader). */
+const NATIVE_BUFFER_KINDS: ReadonlySet<ImageKind> = new Set<ImageKind>(['png', 'jpeg', 'gif', 'webp', 'tiff', 'heif'])
+
 /** sharp() with the hardened input options merged in. */
 export function safeSharp(input: string | Buffer | Uint8Array, options: SharpOptions = {}): Sharp {
-  // Buffers must be sniffed raster images: SVG markup only ever goes through rasterizeSvgBuffer().
-  if (typeof input !== 'string' && !sniffImage(input.subarray(0, 64))) {
+  // Buffers must be sniffed raster images that libvips decodes natively: SVG markup only ever goes
+  // through rasterizeSvgBuffer(). BMP / ICO are excluded: libvips has no loader for them, and its
+  // SVG sniffer accepts a buffer that starts with "BM" and has "<svg" further on (it then reaches
+  // librsvg unsanitized), so a "BM…" buffer must never get here.
+  const kind = typeof input === 'string' ? undefined : sniffImage(input.subarray(0, 64))
+  if (typeof input !== 'string' && (kind === undefined || !NATIVE_BUFFER_KINDS.has(kind))) {
     throw invalidInput("I couldn't read this image. It may be damaged, or it isn't really an image.", 'safeSharp: buffer is not a known raster format')
   }
   return sharp(input, { ...options, ...SHARP_INPUT })
@@ -67,13 +74,25 @@ export function safeSharp(input: string | Buffer | Uint8Array, options: SharpOpt
  * Rasterize SANITIZED SVG markup (from ./svg.ts renderSvgMarkup, which sets the pixel size) to a
  * PNG (alpha kept) or a JPG (on white) file.
  */
-export async function rasterizeSvgBuffer(markup: Buffer, format: 'png' | 'jpg', outPath: string): Promise<void> {
+export async function rasterizeSvgBuffer(
+  markup: Buffer,
+  format: 'png' | 'jpg',
+  outPath: string,
+  timeoutSeconds: number = SVG_RASTER_TIMEOUT_SECONDS
+): Promise<void> {
   if (sniffImage(markup.subarray(0, 64))) throw new EngineError('INTERNAL', undefined, 'rasterizeSvgBuffer: not SVG markup')
   try {
     // density 72 = one SVG px per output pixel (renderSvgMarkup already set width/height).
     const img = sharp(markup, { ...SHARP_INPUT, density: 72 })
-    await (format === 'png' ? img.png() : img.flatten({ background: '#ffffff' }).jpeg({ quality: 90, mozjpeg: true })).toFile(outPath)
+    // libvips renders the SVG tile by tile and librsvg redoes every filter for each tile, so a small
+    // file full of heavy filters can take hours. The timeout is checked between tiles (the engine-host
+    // watchdog still covers a single endless tile).
+    const out = format === 'png' ? img.png() : img.flatten({ background: '#ffffff' }).jpeg({ quality: 90, mozjpeg: true })
+    await out.timeout({ seconds: timeoutSeconds }).toFile(outPath)
   } catch (err) {
+    if (/^timeout:/m.test(errMessage(err))) {
+      throw invalidInput('This SVG is too complicated to draw (it took far too long), so I gave up.', err)
+    }
     throw sharpError(err, 'SVG picture')
   }
 }

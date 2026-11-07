@@ -8,11 +8,11 @@
 //  - pdfjs decides "am I Node?" once at import time and answers "no" in a utilityProcess
 //    (process.type === 'utility'), then expects a DOM. We import it while presenting Node mode
 //    and with @napi-rs/canvas blocked, which is enough for text extraction.
-import { readFile } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { basename, posix, win32 } from 'node:path'
 import type { EngineAdapters, PdfRenderOptions } from '../api'
 import { EngineError, aboutFile, errMessage, invalidInput, throwIfAborted } from '../errors'
-import { MAX_PDF_IMAGE_PIXELS, MAX_PDF_PAGES } from '../limits'
+import { MAX_PDF_IMAGE_PIXELS, MAX_PDF_PAGES, MAX_PDF_SPLIT_BYTES } from '../limits'
 import { isPdfHead } from '../sniff'
 import { packageDir } from '../resolve'
 import { isPng } from './ico'
@@ -339,9 +339,15 @@ export function splitPageSuffix(index: number, total: number): string {
 export async function splitPdf(
   path: string,
   signal: AbortSignal,
-  onPage: (index: number, total: number, bytes: Uint8Array) => Promise<void>
+  onPage: (index: number, total: number, bytes: Uint8Array) => Promise<void>,
+  maxTotalBytes?: number
 ): Promise<number> {
   const { PDFDocument } = await import('pdf-lib')
+  const { size } = await stat(path)
+  // Every page copies the resources it uses, so pages that share one big image or font would
+  // write it again and again (a 100 MB PDF of 1000 such pages → 100 GB). Cap the total output.
+  const budget = maxTotalBytes ?? Math.max(MAX_PDF_SPLIT_BYTES, size * 4)
+  let written = 0
   const src = await loadForEdit(path, 'split')
   const total = src.getPageCount()
   if (total === 0) throw invalidInput('This PDF has no pages.')
@@ -356,7 +362,12 @@ export async function splitPdf(
       throw invalidInput(`I couldn't copy page ${i + 1} of this PDF. It may be damaged.`, err)
     })
     out.addPage(page)
-    await onPage(i + 1, total, await out.save())
+    const bytes = await out.save()
+    written += bytes.byteLength
+    if (written > budget) {
+      throw invalidInput('Split into pages, this PDF would take up far more space than the PDF itself (its pages share big pictures or fonts), so I stopped.')
+    }
+    await onPage(i + 1, total, bytes)
   }
   return total
 }

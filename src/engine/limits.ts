@@ -30,6 +30,8 @@ export const MAX_HEIC_BYTES = 256 * MB
 
 /** SVG inputs are read, parsed and re-serialized in memory (D30). */
 export const MAX_SVG_BYTES = 16 * MB
+/** SVG → PNG/JPG: librsvg time limit (checked by libvips between tiles). */
+export const SVG_RASTER_TIMEOUT_SECONDS = 120
 
 /** Data → PDF tables (D30): rows over all sheets, columns per sheet, characters per cell. */
 export const MAX_PDF_TABLE_ROWS = 20_000
@@ -45,6 +47,8 @@ export const MAX_INPUT_PIXELS = 268_402_689
 /** PDF: pages rasterised per job and the largest embedded image pdf.js decodes (pixels). */
 export const MAX_PDF_PAGES = 1000
 export const MAX_PDF_IMAGE_PIXELS = 100_000_000
+/** PDF Split: total bytes written, at least this (or 4 × the input size when that is more). */
+export const MAX_PDF_SPLIT_BYTES = 2 * GB
 
 /** Unzip (SEC-103). */
 export const MAX_ZIP_ENTRIES = 10_000
