@@ -5,7 +5,8 @@ import { isUnlocked, type LicenceView } from '../../shared/licence'
 import { isUpdateRequired, type UpdateView } from '../../shared/update'
 import type { ConversionOption, DragProbe, DroppedItem, JobError, JobEvent, OptionId, Settings } from '../../shared/types'
 import { DEFAULT_SETTINGS } from '../../shared/types'
-import { isHamster, isStruggle, itemsAreBlocked, optionsForItems, optionsForProbe, categoryForProbe } from '../common/drag'
+import { isHamster, isStruggle, itemsAreBlocked, optionsForItems, optionsForProbe, categoryForProbe, probeIsGuess } from '../common/drag'
+import { clampPage, isNav, NAV_ID, ringCapacity, ringPage, type RingPage, type RingTarget, slotOf } from '../common/paging'
 import { friendlyError, LINES, stageCaption } from '../common/text'
 
 export type UncleState =
@@ -50,7 +51,17 @@ export interface Model {
   settings: Settings
   /** Options currently offered (shown in appear/hover, and in feedMe once items are held). */
   options: ConversionOption[]
-  hovered: OptionId | null
+  /** Option (or the More / Back bubble, NAV_ID) under the pointer / keyboard focus. */
+  hovered: RingTarget | null
+  /** Page of the options ring shown (D31: more options than one ring holds). */
+  page: number
+  /**
+   * The page was just turned by resting on More / Back during a drag: the pointer has to leave that
+   * bubble before it can turn the page again (no endless flipping while it stays put).
+   */
+  navLatched: boolean
+  /** The drag's file types could not be told (or are mixed): the ring is only a guess (ZIP), D31. */
+  dragGuess: boolean
   /** Items dropped on the mouth, waiting for the user to click an option (feedMe). */
   held: DroppedItem[] | null
   /** A drop was received and paths are being resolved (protects against a racing disarm). */
@@ -90,7 +101,10 @@ export type Action =
   | { type: 'ARM'; settings?: Settings }
   | { type: 'SETTINGS'; settings: Settings }
   | { type: 'ENGAGE'; probe: DragProbe }
-  | { type: 'HOVER'; optionId: OptionId | null }
+  /** Pointer / focus over an option or the More / Back bubble (NAV_ID), or over nothing. */
+  | { type: 'HOVER'; optionId: RingTarget | null }
+  /** Turn the options ring's page (D31): to `page`, or to where the More / Back bubble points. */
+  | { type: 'PAGE'; page?: number }
   | { type: 'DROP_START' }
   | { type: 'DROP_FAILED'; message: string }
   | { type: 'DROP_RESOLVED'; items: DroppedItem[]; target: DropTarget; jobId: string }
@@ -143,6 +157,9 @@ export function initialModel(
     settings,
     options: [],
     hovered: null,
+    page: 0,
+    navLatched: false,
+    dragGuess: false,
     held: null,
     dropping: false,
     dragCount: 0,
@@ -257,6 +274,16 @@ export function visibleOptions(m: Model): ConversionOption[] {
   return []
 }
 
+/** The page of the options ring on screen (D31): its options and the More / Back bubble, if any. */
+export function currentRing(m: Model): RingPage {
+  return ringPage(visibleOptions(m), m.page, ringCapacity(), showsGuess(m))
+}
+
+/** During a drag whose file types are unknown or mixed he offers only a guess (ZIP) and says so (D31). */
+export function showsGuess(m: Pick<Model, 'state' | 'dragGuess'>): boolean {
+  return m.dragGuess && (m.state === 'appear' || m.state === 'hover')
+}
+
 /**
  * The overlay must take focus and keys: only while items are held in feedMe (D20). Result cards and
  * the cancel button work by click without focus (QA3-07), see wantsClickThrough.
@@ -305,6 +332,9 @@ export function uncleMoodAttr(m: Pick<Model, 'hamster' | 'struggle'>): 'hamster'
 export function speech(m: Model): string | null {
   if (showsUnlock(m)) return null
   switch (m.state) {
+    case 'appear':
+    case 'hover':
+      return m.dragGuess ? LINES.feedMeOrZip : null
     case 'feedMe':
       return m.held ? LINES.pickOne : LINES.feedMe
     case 'refuse':
@@ -401,19 +431,38 @@ export function reducer(m: Model, a: Action): Model {
       const cat = categoryForProbe(a.probe)
       if (cat === 'blocked') return refuse(base)
       const options = optionsForProbe(a.probe)
+      // Unknown / mixed types offer ZIP (D31); feedMe without bubbles only if nothing at all fits.
       if (options.length === 0) return { ...base, state: 'feedMe' }
-      return { ...base, state: 'appear', options }
+      return { ...base, state: 'appear', options, dragGuess: probeIsGuess(a.probe) }
     }
 
     case 'HOVER': {
-      const id = a.optionId && visibleOptions(m).some((o) => o.id === a.optionId) ? a.optionId : null
+      // Only what this page shows can be hovered (an option, or the More / Back bubble).
+      const id = a.optionId && slotOf(currentRing(m), a.optionId) >= 0 ? a.optionId : null
+      // Leaving More / Back re-arms it (see navLatched).
+      const navLatched = m.navLatched && isNav(id)
       if (m.state === 'appear' || m.state === 'hover') {
         const state: UncleState = id ? 'hover' : 'appear'
-        if (state === m.state && id === m.hovered) return m
-        return { ...m, state, hovered: id }
+        if (state === m.state && id === m.hovered && navLatched === m.navLatched) return m
+        return { ...m, state, hovered: id, navLatched }
       }
-      if (m.state === 'feedMe' && m.held) return id === m.hovered ? m : { ...m, hovered: id }
+      if (m.state === 'feedMe' && m.held) return id === m.hovered && navLatched === m.navLatched ? m : { ...m, hovered: id, navLatched }
       return m
+    }
+
+    case 'PAGE': {
+      const offering = m.state === 'appear' || m.state === 'hover' || (m.state === 'feedMe' && m.held !== null)
+      if (!offering) return m
+      const ring = currentRing(m)
+      if (!ring.nav) return m
+      const page = clampPage(a.page ?? ring.nav.to, m.options.length, ringCapacity())
+      if (page === m.page) return m
+      // More / Back keeps its spot, so a pointer resting on it stays on it (latched until it leaves);
+      // an option of the old page is gone.
+      const onNav = isNav(m.hovered)
+      const hovered = onNav ? NAV_ID : null
+      const state: UncleState = m.state === 'feedMe' ? 'feedMe' : hovered ? 'hover' : 'appear'
+      return { ...m, state, page, hovered, navLatched: onNav }
     }
 
     case 'DROP_START':
@@ -442,6 +491,10 @@ export function reducer(m: Model, a: Action): Model {
         items: a.items,
         options,
         hovered: null,
+        // A drop on More / Back (or the mouth) keeps the page the user was on, if it still exists.
+        page: clampPage(m.page, options.length, ringCapacity()),
+        navLatched: false,
+        dragGuess: false,
         dropping: false,
         dragCount: a.items.length
       }

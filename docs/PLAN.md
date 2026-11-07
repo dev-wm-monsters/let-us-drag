@@ -155,9 +155,9 @@ State machine (renderer, pure reducer + effects; unit tested):
 | State | Trigger | Visual |
 |---|---|---|
 | hidden | — | nothing (sensor may be active) |
-| appear | file dragenter | pops in (scale 0.6→1, overshoot), mouth opens, options fan out |
+| appear | file dragenter | pops in (scale 0.6→1, overshoot), mouth opens, options fan out (more than 8: 7 + "More…", paged, D31); unknown/mixed type: one ZIP bubble + "Feed me, or ZIP it!" (D31) |
 | hover(option) | dragover option | eyes + head lean toward option, option enlarges, label shows |
-| feedMe | unknown/mixed type | mouth open, "Feed me!" bubble, center is drop target |
+| feedMe | drop on the mouth (held files: "Pick one!", options clickable); before D31 also unknown/mixed type | mouth open, "Feed me!" bubble, center is drop target |
 | eat | drop on option | file icon flies into mouth, jaw snaps shut, gulp sound |
 | chew(progress) | job running | jaw chews loop, cheeks bulge; progress ring around him; min 700 ms unless Hungry Mode |
 | hamster | batch ≥ 3 files | cheeks extra puffed while chewing |

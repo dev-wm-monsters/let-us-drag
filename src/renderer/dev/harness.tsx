@@ -1,9 +1,11 @@
 // Visual QA harness entry: renders the real overlay / feed / settings UI in plain Chromium with a
 // mocked window.lud. Open via `node src/renderer/dev/serve.mjs` →
-//   http://127.0.0.1:5199/dev/harness.html?view=overlay|feed|settings[&character=sumo-san&plain=1&hungry=1&platform=darwin&reason=mac-permission&firstRun=1&jobs=auto&bg=flat&licence=unlicensed|disabled|reactivate|active&update=current|available|dismissed|required|unknown]
+//   http://127.0.0.1:5199/dev/harness.html?view=overlay|feed|settings[&character=sumo-san&plain=1&hungry=1&platform=darwin&reason=mac-permission&firstRun=1&jobs=auto&bg=flat&licence=unlicensed|disabled|reactivate|active&update=current|available|dismissed|required|unknown&options=12]
+// `options=N` pads every offered option list to N with made-up options (paged ring, D31).
 // Drive it from Playwright through window.__harness (see src/renderer/dev/capture.mjs).
 import { type CharacterId, isCharacterId } from '../../shared/characters'
-import type { PlatformStatus, Settings } from '../../shared/types'
+import type { ConversionOption, OptionId, PlatformStatus, Settings } from '../../shared/types'
+import { setDevOptionsOverride } from '../common/drag'
 import { createMockLud, type MockControl } from './mock-lud'
 
 interface FileSpec {
@@ -17,8 +19,12 @@ export interface Harness extends MockControl {
   drag(phase: 'dragenter' | 'dragover' | 'drop' | 'dragleave', x: number, y: number, files: FileSpec[]): void
   /** Convenience: enter + over at a point. */
   hoverAt(x: number, y: number, files: FileSpec[]): void
-  /** Client position of an option bubble (or null). */
+  /** Client position of an option bubble on the ring page shown (or null, e.g. on another page). */
   optionPoint(id: string): { x: number; y: number } | null
+  /** Client position of the More / Back bubble (or null when the ring has one page), D31. */
+  navPoint(): { x: number; y: number } | null
+  /** Ring page shown and page count (D31), or null without a ring. */
+  ringPage(): { page: number; pages: number } | null
   center(): { x: number; y: number }
   state(): string
   key(key: string): void
@@ -69,6 +75,41 @@ function stageEl(): HTMLElement | null {
   return document.querySelector('[data-uncle-state]')
 }
 
+/** Layout centre (the bubbles' entry/hover transforms are around it, so this is stable). */
+function centerOf(el: Element | null): { x: number; y: number } | null {
+  if (!(el instanceof HTMLElement)) return null
+  const r = el.getBoundingClientRect()
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+}
+
+// D31: pad option lists to `options=N` with made-up options, to show the paged ring before the
+// catalog offers that many. Made-up ids only reach the mock (manual jobs).
+const padTo = Number(q.get('options'))
+if (Number.isInteger(padTo) && padTo > 0) {
+  const extra: [string, string, string][] = [
+    ['dev-heic', 'HEIC', 'Convert to HEIC'],
+    ['dev-tiff', 'TIFF', 'Convert to TIFF'],
+    ['dev-bmp', 'BMP', 'Convert to BMP'],
+    ['dev-jxl', 'JXL', 'Convert to JPEG XL'],
+    ['dev-svg', 'SVG', 'Trace to SVG'],
+    ['dev-resize', 'Resize', 'Make it 50 % smaller'],
+    ['dev-rotate', 'Rotate', 'Turn it 90° clockwise'],
+    ['dev-gray', 'Grayscale', 'Drain the colour'],
+    ['dev-strip', 'Strip', 'Remove hidden metadata'],
+    ['dev-sticker', 'Sticker', 'Cut out and add a white border'],
+    ['dev-favicon', 'Favicon', 'Make a website icon set'],
+    ['dev-thumb', 'Thumb', 'Make a small preview']
+  ]
+  setDevOptionsOverride((options) => {
+    const out: ConversionOption[] = [...options]
+    for (const [id, label, hint] of extra) {
+      if (out.length >= padTo) break
+      out.push({ id: id as OptionId, label, hint, batch: 'each', minInputs: 1 })
+    }
+    return out
+  })
+}
+
 window.__harness = {
   ...mock,
   view,
@@ -87,10 +128,14 @@ window.__harness = {
     this.drag('dragover', x, y, files)
   },
   optionPoint(id) {
-    const el = document.querySelector(`[data-testid="option-${id}"]`)
-    if (!el) return null
-    const r = el.getBoundingClientRect()
-    return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+    return centerOf(document.querySelector(`[data-testid="option-${id}"]`))
+  },
+  navPoint() {
+    return centerOf(document.querySelector('[data-testid="ring-more"]'))
+  },
+  ringPage() {
+    const el = document.querySelector('[data-testid="options-ring"]')
+    return el ? { page: Number(el.getAttribute('data-page')), pages: Number(el.getAttribute('data-pages')) } : null
   },
   center() {
     const r = stageEl()?.getBoundingClientRect()

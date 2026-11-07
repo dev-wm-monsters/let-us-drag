@@ -192,6 +192,210 @@ button {
   }
 }
 
+/* ——— paged ring (D31): "More…" / "Back" and page turns ——— */
+/* A new page spills out of the More / Back bubble (--nx/--ny, set on .lud-ring) … */
+.lud-option.is-page-in {
+  animation: lud-page-in 380ms cubic-bezier(0.2, 1.5, 0.4, 1) both;
+}
+@keyframes lud-page-in {
+  from {
+    transform: translate(var(--nx, 0px), var(--ny, 0px)) scale(0.25);
+    opacity: 0;
+  }
+  to {
+    transform: translate(var(--x), var(--y)) scale(1);
+    opacity: 1;
+  }
+}
+/* … while the old one falls back into it. */
+.lud-option.is-leaving {
+  animation: lud-page-out 220ms cubic-bezier(0.5, 0, 0.8, 0.4) both;
+  pointer-events: none;
+}
+@keyframes lud-page-out {
+  from {
+    transform: translate(var(--x), var(--y)) scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: translate(var(--nx, 0px), var(--ny, 0px)) scale(0.25);
+    opacity: 0;
+  }
+}
+.lud-nav {
+  z-index: 1;
+}
+.lud-nav-bubble {
+  background: var(--paper-2);
+}
+/* Dashed "pocket" ring: reads as "there is more in here", unlike the plain option bubbles. */
+.lud-nav-bubble::after {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  border: 2px dashed color-mix(in srgb, var(--ink) 38%, transparent);
+  pointer-events: none;
+}
+.lud-nav-face {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  animation: lud-nav-flip 340ms cubic-bezier(0.3, 1.6, 0.5, 1) both;
+}
+@keyframes lud-nav-flip {
+  from {
+    transform: rotate(-24deg) scale(0.6);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.lud-nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 15px;
+}
+.lud-nav-icon i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink);
+}
+.lud-nav-icon svg path {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 3.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.lud-nav-label {
+  font-weight: 800;
+  font-size: 15px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+}
+.lud-nav-pages {
+  display: flex;
+  gap: 4px;
+  margin-top: 2px;
+}
+.lud-nav-pages i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ink);
+  background: transparent;
+}
+.lud-nav-pages i.is-on {
+  background: var(--ink);
+}
+.lud-nav.is-hover .lud-nav-label,
+.lud-ring.is-clickable .lud-nav:hover .lud-nav-label,
+.lud-ring.is-clickable .lud-nav:focus-visible .lud-nav-label {
+  color: #fff;
+  text-shadow: 1.5px 2px 0 var(--ink);
+}
+.lud-nav.is-hover .lud-nav-icon i,
+.lud-ring.is-clickable .lud-nav:hover .lud-nav-icon i,
+.lud-ring.is-clickable .lud-nav:focus-visible .lud-nav-icon i,
+.lud-nav.is-hover .lud-nav-pages i.is-on,
+.lud-ring.is-clickable .lud-nav:hover .lud-nav-pages i.is-on {
+  background: #fff;
+  box-shadow: 1px 1.5px 0 var(--ink);
+}
+.lud-nav.is-hover .lud-nav-icon svg path,
+.lud-ring.is-clickable .lud-nav:hover .lud-nav-icon svg path,
+.lud-ring.is-clickable .lud-nav:focus-visible .lud-nav-icon svg path {
+  stroke: #fff;
+}
+.lud-nav.is-hover .lud-nav-icon svg,
+.lud-ring.is-clickable .lud-nav:hover .lud-nav-icon svg,
+.lud-ring.is-clickable .lud-nav:focus-visible .lud-nav-icon svg {
+  filter: drop-shadow(1px 1.5px 0 var(--ink));
+}
+.lud-nav.is-hover .lud-nav-bubble::after,
+.lud-ring.is-clickable .lud-nav:hover .lud-nav-bubble::after {
+  border-color: color-mix(in srgb, #fff 70%, transparent);
+}
+/* "+5" sticker: how many options wait on the next pages. */
+.lud-nav-badge {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  min-width: 32px;
+  height: 25px;
+  padding: 0 6px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--orange);
+  border: 3px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+  color: #fff;
+  font-weight: 900;
+  font-size: 13px;
+  line-height: 1;
+  text-shadow: 1px 1.5px 0 var(--ink);
+  transform: rotate(10deg);
+  animation: lud-badge-pop 420ms 200ms cubic-bezier(0.3, 1.8, 0.5, 1) both;
+  pointer-events: none;
+}
+.lud-nav.is-hover .lud-nav-badge,
+.lud-ring.is-clickable .lud-nav:hover .lud-nav-badge,
+.lud-ring.is-clickable .lud-nav:focus-visible .lud-nav-badge {
+  transform: translate(7px, -6px) rotate(14deg);
+}
+.lud-nav-badge {
+  transition: transform 160ms cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+/* Animates `scale` only, so the hover `transform` above still applies. */
+@keyframes lud-badge-pop {
+  from {
+    scale: 0;
+  }
+  to {
+    scale: 1;
+  }
+}
+/* Drag mode: resting on More / Back fills this ring, then the page turns (PAGE_DWELL_MS = 400 ms). */
+.lud-nav-dwell {
+  position: absolute;
+  inset: -14px;
+  width: calc(100% + 28px);
+  height: calc(100% + 28px);
+  transform: rotate(-90deg);
+  overflow: visible;
+  pointer-events: none;
+}
+/* A cream arc with an ink outline: readable on any desktop wallpaper. */
+.lud-nav-dwell circle {
+  fill: none;
+  stroke-linecap: round;
+  stroke-dasharray: 100 100;
+  stroke-dashoffset: 100;
+  animation: lud-dwell 400ms linear forwards;
+}
+.lud-nav-dwell-ink {
+  stroke: var(--ink);
+  stroke-width: 11;
+}
+.lud-nav-dwell-fill {
+  stroke: var(--cream);
+  stroke-width: 5;
+}
+@keyframes lud-dwell {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
 /* ——— progress ring ——— */
 .lud-progress {
   position: absolute;
@@ -676,6 +880,37 @@ button {
 }
 .lud-stage.is-reduced .lud-option {
   animation: lud-fade 200ms ease-out both;
+}
+/* Paged ring (D31) without movement: pages swap with a fade, the dwell ring fades in instead of filling. */
+.lud-stage.is-reduced .lud-option.is-leaving {
+  display: none;
+}
+.lud-stage.is-reduced .lud-nav-face,
+.lud-stage.is-reduced .lud-nav-badge {
+  animation: lud-fade 200ms ease-out both;
+}
+.lud-stage.is-reduced .lud-nav.is-hover .lud-nav-badge {
+  transform: rotate(10deg);
+}
+.lud-stage.is-reduced .lud-nav-dwell circle {
+  stroke-dashoffset: 0;
+  animation: lud-fade 400ms linear both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lud-option.is-page-in {
+    animation: lud-fade 200ms ease-out both;
+  }
+  .lud-option.is-leaving {
+    display: none;
+  }
+  .lud-nav-face,
+  .lud-nav-badge {
+    animation: lud-fade 200ms ease-out both;
+  }
+  .lud-nav-dwell circle {
+    stroke-dashoffset: 0;
+    animation: lud-fade 400ms linear both;
+  }
 }
 @keyframes lud-fade {
   from {

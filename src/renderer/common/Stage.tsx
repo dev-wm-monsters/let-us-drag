@@ -1,11 +1,23 @@
 // The stage: Uncle (or Plain Mode target) + options ring + progress ring + speech + result cards.
 // Shared by the overlay window and the Feed Window. Pure presentation driven by the session model.
-import { type CSSProperties, memo, type ReactNode, type RefObject, useCallback, useLayoutEffect, useMemo, useRef } from 'react'
+import { type CSSProperties, memo, type ReactNode, type RefObject, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { DEFAULT_CHARACTER, isCharacterId } from '../../shared/characters'
 import { LICENCE_PRICE, lockedExplanation, type LicenceStatus, unlockTitle } from '../../shared/licence'
 import type { ConversionOption, DroppedItem, OptionId } from '../../shared/types'
-import { chewCaption, isLicenceLocked, lockPanel, type Model, showsUpdateHint, speech, uncleMoodAttr, visibleOptions } from '../overlay/state'
-import { heldChipTop, placeHint, ringLayout } from './geometry'
+import {
+  chewCaption,
+  currentRing,
+  isLicenceLocked,
+  lockPanel,
+  type Model,
+  showsGuess,
+  showsUpdateHint,
+  speech,
+  uncleMoodAttr,
+  visibleOptions
+} from '../overlay/state'
+import { heldChipTop, placeHint, type Point } from './geometry'
+import { isNav, NAV_ID, pageLayout, type RingPage, type RingTarget, slotOf } from './paging'
 import { baseName, LINES, shortName } from './text'
 import { Character } from './character/Character'
 import type { Mood } from './uncle/pose'
@@ -218,34 +230,124 @@ function CancelButton({ radius, onCancel, onOver }: { radius: number; onCancel()
 }
 
 interface OptionsRingProps {
-  options: ConversionOption[]
-  hovered: OptionId | null
+  ring: RingPage
+  hovered: RingTarget | null
   radius: number
   clickable: boolean
+  /** During a drag (no clicks): resting on More / Back turns the page; shows the dwell timer. */
+  dwell: boolean
+  /** More / Back may turn the page again (not latched after a turn, see Model.navLatched). */
+  navArmed: boolean
+  /** Lowest y (ring coordinates) a hint may reach: the top of the held-files chip, when it is shown. */
+  hintFloor?: number | undefined
   session: number
+  reducedMotion: boolean
   onChoose(id: OptionId): void
-  onHover(id: OptionId | null): void
+  onHover(id: RingTarget | null): void
+  onTurn(): void
 }
 
-const OptionsRing = memo(function OptionsRing({ options, hovered, radius, clickable, session, onChoose, onHover }: OptionsRingProps) {
-  const slots = useMemo(() => ringLayout(options.length, radius), [options.length, radius])
-  const hoverIndex = hovered ? options.findIndex((o) => o.id === hovered) : -1
+/** How long the bubbles of the previous page take to fall back into More / Back (D31). */
+const PAGE_OUT_MS = 220
+
+interface LeavingBubble {
+  option: ConversionOption
+  x: number
+  y: number
+  accent: string
+}
+
+/** Accent of a slot on a page: distinct within a page, shifted per page so a new page looks new. */
+function pageAccent(slot: number, page: number): string {
+  return accentFor(slot + page * 3)
+}
+
+const OptionsRing = memo(function OptionsRing({
+  ring,
+  hovered,
+  radius,
+  clickable,
+  dwell,
+  navArmed,
+  hintFloor,
+  session,
+  reducedMotion,
+  onChoose,
+  onHover,
+  onTurn
+}: OptionsRingProps) {
+  const slots = useMemo(() => pageLayout(ring, radius), [ring.slotCount, ring.guess, radius])
+  const navSlot = ring.nav ? slots[ring.nav.slot] : undefined
+
+  // Page turns of this session (the ring is keyed by session): the first page fans out of the Uncle,
+  // later pages spill out of the More / Back bubble while the old page falls back into it.
+  const [turned, setTurned] = useState(false)
+  const shown = useRef(ring)
+  const [leaving, setLeaving] = useState<{ page: number; bubbles: LeavingBubble[] } | null>(null)
+  useLayoutEffect(() => {
+    const prev = shown.current
+    shown.current = ring
+    if (prev.page === ring.page) return
+    setTurned(true)
+    if (reducedMotion) return
+    const all = pageLayout(prev, radius)
+    setLeaving({
+      page: prev.page,
+      bubbles: prev.entries.map((e) => ({ option: e.option, x: all[e.slot]!.x, y: all[e.slot]!.y, accent: pageAccent(e.slot, prev.page) }))
+    })
+    const t = setTimeout(() => setLeaving(null), PAGE_OUT_MS)
+    return () => clearTimeout(t)
+    // Only page turns matter: the options themselves never change within a session.
+  }, [ring.page])
+
+  const hoveredSlot = slotOf(ring, hovered)
+  let hint: string | null = null
+  if (hoveredSlot >= 0 && isNav(hovered) && ring.nav) {
+    hint = ring.nav.kind === 'more' ? LINES.moreHint(ring.nav.count) : LINES.backHint(ring.nav.count)
+  } else if (hoveredSlot >= 0) {
+    hint = ring.entries.find((e) => e.slot === hoveredSlot)?.option.hint ?? null
+  }
+  const visible = useMemo(
+    () => ring.entries.map((e) => slots[e.slot]!).concat(navSlot ? [navSlot] : []),
+    [ring.entries, slots, navSlot]
+  )
+  const others = useMemo(() => visible.filter((s) => s.index !== hoveredSlot), [visible, hoveredSlot])
+  const ringStyle = (navSlot ? { '--nx': `${navSlot.x}px`, '--ny': `${navSlot.y}px` } : {}) as CSSProperties
   return (
-    <div className={`lud-ring${clickable ? ' is-clickable' : ''}`} key={session}>
-      {options.map((o, i) => {
-        const slot = slots[i]!
+    <div
+      className={`lud-ring${clickable ? ' is-clickable' : ''}${ring.pageCount > 1 ? ' is-paged' : ''}`}
+      style={ringStyle}
+      key={session}
+      data-testid="options-ring"
+      data-page={ring.page}
+      data-pages={ring.pageCount}
+    >
+      {leaving?.bubbles.map((b) => (
+        <span
+          key={`out-${leaving.page}-${b.option.id}`}
+          className={`lud-option is-leaving${b.option.label.length > 5 ? ' is-long' : ''}`}
+          style={{ '--x': `${b.x}px`, '--y': `${b.y}px`, '--accent': b.accent } as CSSProperties}
+          aria-hidden
+        >
+          <span className="lud-option-bubble">
+            <span className="lud-option-label">{b.option.label}</span>
+          </span>
+        </span>
+      ))}
+      {ring.entries.map(({ option: o, slot: index }, i) => {
+        const slot = slots[index]!
         const style = {
           '--x': `${slot.x}px`,
           '--y': `${slot.y}px`,
-          '--accent': accentFor(i),
-          animationDelay: `${i * 28}ms`
+          '--accent': pageAccent(index, ring.page),
+          animationDelay: `${turned ? 40 + i * 30 : index * 28}ms`
         } as CSSProperties
         const isHover = hovered === o.id
         return (
           <button
             key={o.id}
             type="button"
-            className={`lud-option${isHover ? ' is-hover' : ''}${o.label.length > 5 ? ' is-long' : ''}`}
+            className={`lud-option${isHover ? ' is-hover' : ''}${o.label.length > 5 ? ' is-long' : ''}${turned ? ' is-page-in' : ''}`}
             style={style}
             data-testid={`option-${o.id}`}
             data-option-id={o.id}
@@ -263,38 +365,136 @@ const OptionsRing = memo(function OptionsRing({ options, hovered, radius, clicka
           </button>
         )
       })}
-      {hoverIndex >= 0 && (
-        <OptionHint key={options[hoverIndex]!.id} text={options[hoverIndex]!.hint} index={hoverIndex} slots={slots} />
+      {ring.nav && navSlot && (
+        <NavBubble
+          ring={ring}
+          x={navSlot.x}
+          y={navSlot.y}
+          delay={ring.nav.slot * 28}
+          hover={isNav(hovered)}
+          clickable={clickable}
+          dwell={dwell && navArmed && isNav(hovered)}
+          onHover={onHover}
+          onTurn={onTurn}
+        />
+      )}
+      {hint !== null && (
+        <OptionHint key={`${ring.page}-${String(hovered)}`} text={hint} at={slots[hoveredSlot]!} others={others} floor={hintFloor} />
       )}
     </div>
   )
 })
 
 /**
- * The hovered option's hint pill, placed next to its bubble so it stays inside the window and covers
- * no other bubble (QA3-03). Measured and placed before paint.
+ * The More / Back bubble (D31): same size and spot on every page, but a different look from the
+ * options (paper, dashed inner ring, dots or an arrow, a "+N" sticker and page dots). During a drag,
+ * resting on it fills a ring around it and turns the page; in feedMe it is a button (click, Tab + Enter).
  */
-function OptionHint({ text, index, slots }: { text: string; index: number; slots: readonly { x: number; y: number }[] }) {
+function NavBubble({
+  ring,
+  x,
+  y,
+  delay,
+  hover,
+  clickable,
+  dwell,
+  onHover,
+  onTurn
+}: {
+  ring: RingPage
+  x: number
+  y: number
+  delay: number
+  hover: boolean
+  clickable: boolean
+  dwell: boolean
+  onHover(id: RingTarget | null): void
+  onTurn(): void
+}) {
+  const nav = ring.nav!
+  const more = nav.kind === 'more'
+  const style = { '--x': `${x}px`, '--y': `${y}px`, '--accent': 'var(--orange)', animationDelay: `${delay}ms` } as CSSProperties
+  return (
+    <button
+      type="button"
+      className={`lud-option lud-nav is-${nav.kind}${hover ? ' is-hover' : ''}${dwell ? ' is-dwell' : ''}`}
+      style={style}
+      data-testid="ring-more"
+      data-nav={nav.kind}
+      tabIndex={clickable ? 0 : -1}
+      aria-label={more ? `More: ${LINES.moreHint(nav.count)}` : `Back: ${LINES.backHint(nav.count)}`}
+      onClick={clickable ? onTurn : undefined}
+      onMouseEnter={clickable ? () => onHover(NAV_ID) : undefined}
+      onMouseLeave={clickable ? () => onHover(null) : undefined}
+      onFocus={clickable ? () => onHover(NAV_ID) : undefined}
+      onBlur={clickable ? () => onHover(null) : undefined}
+      {...{ [INTERACTIVE_ATTR]: '' }}
+    >
+      <span className="lud-option-bubble lud-nav-bubble">
+        {dwell && (
+          <svg className="lud-nav-dwell" key={`dwell-${ring.page}`} viewBox="-50 -50 100 100" aria-hidden>
+            <circle className="lud-nav-dwell-ink" r="47" pathLength="100" />
+            <circle className="lud-nav-dwell-fill" r="47" pathLength="100" />
+          </svg>
+        )}
+        <span className="lud-nav-face" key={`face-${ring.page}`}>
+          <span className="lud-nav-icon" aria-hidden>
+            {more ? (
+              <>
+                <i />
+                <i />
+                <i />
+              </>
+            ) : (
+              <svg viewBox="0 0 24 16" width="22" height="15">
+                <path d="M9 2 L3 8 L9 14 M3.5 8 H21" />
+              </svg>
+            )}
+          </span>
+          <span className="lud-nav-label">{more ? 'More' : 'Back'}</span>
+          <span className="lud-nav-pages" aria-hidden>
+            {Array.from({ length: ring.pageCount }, (_, i) => (
+              <i key={i} className={i === ring.page ? 'is-on' : undefined} />
+            ))}
+          </span>
+        </span>
+      </span>
+      {more && (
+        <span className="lud-nav-badge" key={`badge-${ring.page}`} aria-hidden>
+          +{nav.count}
+        </span>
+      )}
+    </button>
+  )
+}
+
+/**
+ * The hovered bubble's hint pill, placed next to it so it stays inside the window and covers no
+ * other bubble (QA3-03). Measured and placed before paint.
+ */
+function OptionHint({ text, at, others, floor }: { text: string; at: Point; others: readonly Point[]; floor?: number | undefined }) {
   const ref = useRef<HTMLSpanElement | null>(null)
   useLayoutEffect(() => {
     const el = ref.current
-    const slot = slots[index]
-    if (!el || !slot) return
+    if (!el) return
     const size = stageSizeOf(el) ?? { w: 560, h: 560 }
+    const top = -size.h / 2 + EDGE_MARGIN
+    // Never over the held-files chip under the ring (its top is the floor).
+    const bottom = Math.max(top + el.offsetHeight, Math.min(size.h / 2 - EDGE_MARGIN, floor ?? Infinity))
     const p = placeHint({
-      slot,
-      others: slots.filter((_, i) => i !== index),
+      slot: at,
+      others,
       bubbleRadius: BUBBLE_HOVER_R,
       otherRadius: BUBBLE_R,
       size: { w: el.offsetWidth, h: el.offsetHeight },
-      bounds: { x: -size.w / 2 + EDGE_MARGIN, y: -size.h / 2 + EDGE_MARGIN, w: size.w - 2 * EDGE_MARGIN, h: size.h - 2 * EDGE_MARGIN },
+      bounds: { x: -size.w / 2 + EDGE_MARGIN, y: top, w: size.w - 2 * EDGE_MARGIN, h: bottom - top },
       gap: 5
     })
     el.style.left = `${Math.round(p.x)}px`
     el.style.top = `${Math.round(p.y)}px`
     el.dataset.side = p.side
     el.style.visibility = 'visible'
-  }, [text, index, slots])
+  }, [text, at, others, floor])
   return (
     <span ref={ref} className="lud-option-hint" data-testid="hover-hint" style={{ visibility: 'hidden' }} aria-hidden>
       {text}
@@ -409,8 +609,12 @@ export function Stage({ s, testId, uncleWidth, ring, reducedMotion, idleExtra, s
   const plain = model.settings.plainMode
   const character = isCharacterId(model.settings.character) ? model.settings.character : DEFAULT_CHARACTER
   const opts = visibleOptions(model)
+  const guess = showsGuess(model)
+  const ringPage = useMemo(() => currentRing(model), [opts, model.page, guess])
   const clickable = model.state === 'feedMe' && model.held !== null
-  const say = opts.length === 0 ? speech(model) : null
+  const dragging = model.state === 'appear' || model.state === 'hover'
+  // With bubbles he only talks when the drag is a guess ("Feed me, or ZIP it!", D31).
+  const say = opts.length === 0 || guess ? speech(model) : null
   const mouth = uncleOffset(uncleWidth, 0, 82)
   const headTop = uncleOffset(uncleWidth, 0, -150)
   const scale = uncleWidth / VIEWBOX.w
@@ -493,13 +697,19 @@ export function Stage({ s, testId, uncleWidth, ring, reducedMotion, idleExtra, s
 
         {opts.length > 0 && (
           <OptionsRing
-            options={opts}
+            key={model.session}
+            ring={ringPage}
             hovered={model.hovered}
             radius={ring.radius}
             clickable={clickable}
+            dwell={dragging}
+            navArmed={!model.navLatched}
+            hintFloor={clickable && showHeld ? heldChipTop(ring.radius, HELD_CLEARANCE) - 4 : undefined}
             session={model.session}
+            reducedMotion={reducedMotion}
             onChoose={s.choose}
             onHover={s.hoverOption}
+            onTurn={s.turnPage}
           />
         )}
 

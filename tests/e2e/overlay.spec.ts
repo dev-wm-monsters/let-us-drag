@@ -172,17 +172,19 @@ test.describe('overlay', () => {
     await expect.poll(() => hook(app, 'overlayVisible'), { timeout: T.hide }).toBe(false)
   })
 
-  test('E2E-16 macOS: a drop that arrives after the mouse-up still feeds him in feedMe (unknown file type)', async ({ lud }) => {
-    // A file whose type Chromium can't tell during the drag (empty MIME) engages feedMe with no
-    // bubbles: "drop it on me". macOS delivers the global mouse-up (disarm) BEFORE the drop, so the
-    // B-068 grace must cover feedMe too, or he leaves and the drop is lost (product owner, beta.7).
+  test('E2E-16 macOS: a drop that arrives after the mouse-up still feeds him (unknown file type)', async ({ lud }) => {
+    // A file whose type Chromium can't tell during the drag (empty MIME) engages 'appear' with a ZIP
+    // guess bubble (D31; before: feedMe with no bubbles). macOS delivers the global mouse-up (disarm)
+    // BEFORE the drop, so the B-068/B-080 grace must cover it, or he leaves and the drop is lost
+    // (product owner, beta.7). A drop on the mouth then holds the file with its real options.
     const app = await lud.launchReady()
     const input = await makePng(join(lud.workDir, 'notes.png'))
     await hook(app, 'arm')
     await expect.poll(() => hook(app, 'overlayVisible'), { timeout: T.state }).toBe(true)
     const overlay = await waitForPage(app, 'overlay')
     await dispatchFileDragEnter(overlay, '', 'notes.unknown')
-    await expectUncleState(overlay, 'feedMe')
+    await expectUncleState(overlay, 'appear')
+    await expect(overlay.getByTestId('option-zip')).toBeVisible()
     await hook(app, 'disarm')
     await overlay.waitForTimeout(80)
     await hook(app, 'dropFiles', [input], null)

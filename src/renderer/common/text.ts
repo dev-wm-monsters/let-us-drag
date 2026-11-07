@@ -49,7 +49,12 @@ export function stageCaption(stage: string | null | undefined, progress: number,
 
 export const LINES = {
   feedMe: 'Feed me!',
+  /** Drag of unknown / mixed file types (D31): only ZIP is offered until he tastes the files. */
+  feedMeOrZip: 'Feed me, or ZIP it!',
   pickOne: 'Pick one!',
+  /** More / Back bubble hints (D31). */
+  moreHint: (n: number) => `${n} more option${n === 1 ? '' : 's'}`,
+  backHint: (n: number) => `Back to the first ${n}`,
   refuse: 'Nope, not eating that.',
   saved: 'Saved next to original',
   idleFeed: 'Drop a file on me!',

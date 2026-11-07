@@ -126,6 +126,12 @@ async function expectState(page, want) {
   if (got !== want) throw new Error(`expected data-uncle-state=${want}, got ${got}`)
 }
 
+/** Page errors, console errors and failed requests (the dev server has no favicon). */
+function failOnErrors(errors) {
+  const real = errors.filter((e) => !e.includes('favicon.ico'))
+  if (real.length) throw new Error(real.join('\n'))
+}
+
 const scenarios = {
   async 'overlay-01-appear'() {
     const { page, ctx } = await open({ view: 'overlay' })
@@ -181,7 +187,8 @@ const scenarios = {
     const c = await center(page)
     await enterAt(page, c.x + 60, c.y + 120, [MYSTERY])
     await sleep(600)
-    await expectState(page, 'feedMe')
+    // Type unknown during the drag: a ZIP bubble + "Feed me, or ZIP it!" (D31).
+    await expectState(page, 'appear')
     await shot(page, 'overlay-05-feedme')
     await dropAt(page, c.x, c.y + 30, [MYSTERY])
     await sleep(600)
@@ -415,6 +422,151 @@ const scenarios = {
     await sleep(900)
     await shot(page, 'feed-04-spit')
     await ctx.close()
+  },
+  // ——— D31: paged ring ("More…" / "Back") and the ZIP guess for unknown drags ———
+  async 'more-01-drag'() {
+    const { page, ctx, errors } = await open({ view: 'overlay', options: '12' })
+    const c = await center(page)
+    await enterAt(page, c.x, c.y + 40, [PNG])
+    await sleep(700)
+    await expectState(page, 'appear')
+    await shot(page, 'more-01-drag-page1')
+    const n = await H(page, () => window.__harness.navPoint())
+    await overAt(page, n.x + 4, n.y + 3, [PNG])
+    await sleep(230)
+    await shot(page, 'more-02-drag-dwell')
+    await sleep(700)
+    const rp = await H(page, () => window.__harness.ringPage())
+    if (rp?.page !== 1) throw new Error(`expected page 1 after resting on More, got ${JSON.stringify(rp)}`)
+    await shot(page, 'more-03-drag-page2-on-back')
+    const p = await optionPoint(page, 'dev-bmp')
+    await overAt(page, p.x, p.y, [PNG])
+    await sleep(600)
+    await expectState(page, 'hover')
+    await shot(page, 'more-04-drag-page2-hover')
+    // Back again: rest on Back, then hover a page-1 option.
+    await overAt(page, n.x, n.y, [PNG])
+    await sleep(800)
+    const back = await H(page, () => window.__harness.ringPage())
+    if (back?.page !== 0) throw new Error(`expected page 0 after resting on Back, got ${JSON.stringify(back)}`)
+    await shot(page, 'more-05-drag-back-to-page1')
+    failOnErrors(errors)
+    await ctx.close()
+  },
+  async 'more-06-feedme'() {
+    const { page, ctx, errors } = await open({ view: 'overlay', options: '12' })
+    const c = await center(page)
+    await enterAt(page, c.x + 20, c.y + 30, [PNG])
+    await dropAt(page, c.x + 20, c.y + 30, [PNG])
+    await sleep(700)
+    await expectState(page, 'feedMe')
+    const n = await H(page, () => window.__harness.navPoint())
+    await page.mouse.move(n.x, n.y)
+    await sleep(450)
+    await shot(page, 'more-06-feedme-held-more')
+    await page.mouse.click(n.x, n.y)
+    await sleep(600)
+    await shot(page, 'more-07-feedme-held-page2')
+    // Keyboard: More / Back keeps the focus after a click; Shift+Tab goes back to the last option.
+    await page.mouse.move(c.x, c.y)
+    await page.keyboard.press('Shift+Tab')
+    await sleep(350)
+    await shot(page, 'more-08-feedme-held-page2-tab')
+    failOnErrors(errors)
+    await ctx.close()
+  },
+  async 'more-09-feed'() {
+    for (const [name, size] of [
+      ['more-09-feed-440', { width: 440, height: 600 }],
+      ['more-10-feed-small', { width: 340, height: 420 }]
+    ]) {
+      const { page, ctx, errors } = await open({ view: 'feed', options: '12' }, size)
+      const c = await center(page)
+      await enterAt(page, c.x, c.y, [PNG])
+      await dropAt(page, c.x, c.y, [PNG])
+      await sleep(700)
+      await expectState(page, 'feedMe')
+      const n = await H(page, () => window.__harness.navPoint())
+      await page.mouse.move(n.x, n.y)
+      await sleep(450)
+      await shot(page, `${name}-page1`)
+      await page.mouse.click(n.x, n.y)
+      await sleep(600)
+      await shot(page, `${name}-page2`)
+      failOnErrors(errors)
+      await ctx.close()
+    }
+  },
+  async 'more-11-unknown'() {
+    const { page, ctx, errors } = await open({ view: 'overlay' })
+    const c = await center(page)
+    await enterAt(page, c.x + 60, c.y + 120, [{ name: 'logo.svg', type: '' }])
+    await sleep(700)
+    await expectState(page, 'appear')
+    await shot(page, 'more-11-unknown-drag-zip')
+    const z = await optionPoint(page, 'zip')
+    await overAt(page, z.x, z.y, [{ name: 'logo.svg', type: '' }])
+    await sleep(600)
+    await shot(page, 'more-12-unknown-drag-zip-hover')
+    // Mixed known + unknown types: ZIP as well.
+    await H(page, () => window.__harness.disarm())
+    await sleep(1200)
+    await H(page, () => window.__harness.arm())
+    await enterAt(page, c.x + 60, c.y + 120, [PNG, { name: 'report.pages', type: '' }])
+    await sleep(700)
+    await shot(page, 'more-13-mixed-drag-zip')
+    failOnErrors(errors)
+    await ctx.close()
+    const feed = await open({ view: 'feed' }, { width: 440, height: 600 })
+    const fc = await center(feed.page)
+    await enterAt(feed.page, fc.x, fc.y + 60, [{ name: 'logo.svg', type: '' }])
+    await sleep(700)
+    await shot(feed.page, 'more-13b-feed-unknown-drag-zip')
+    failOnErrors(feed.errors)
+    await feed.ctx.close()
+  },
+  async 'more-14-reduced'() {
+    const { page, ctx, errors } = await open({ view: 'overlay', options: '12' }, { reducedMotion: 'reduce' })
+    const c = await center(page)
+    await enterAt(page, c.x, c.y + 40, [PNG])
+    await sleep(500)
+    const n = await H(page, () => window.__harness.navPoint())
+    await overAt(page, n.x, n.y, [PNG])
+    await sleep(200)
+    await shot(page, 'more-14-reduced-dwell')
+    await sleep(500)
+    await shot(page, 'more-15-reduced-page2')
+    failOnErrors(errors)
+    await ctx.close()
+  },
+  async 'more-16-real'() {
+    // The real catalog (D30): a video drag offers 9 options + ZIP, a PNG held in feedMe 9.
+    const { page, ctx, errors } = await open({ view: 'overlay' })
+    const c = await center(page)
+    await enterAt(page, c.x, c.y + 40, [MP4])
+    await sleep(700)
+    await shot(page, 'more-16-real-video-page1')
+    const n = await H(page, () => window.__harness.navPoint())
+    await overAt(page, n.x, n.y, [MP4])
+    await sleep(900)
+    const p = await optionPoint(page, 'compress')
+    await overAt(page, p.x, p.y, [MP4])
+    await sleep(500)
+    await shot(page, 'more-17-real-video-page2')
+    failOnErrors(errors)
+    await ctx.close()
+    const feed = await open({ view: 'feed' }, { width: 380, height: 460 })
+    const fc = await center(feed.page)
+    await enterAt(feed.page, fc.x, fc.y, [PNG])
+    await dropAt(feed.page, fc.x, fc.y, [PNG])
+    await sleep(800)
+    await shot(feed.page, 'more-18-real-feed-png-page1')
+    const fn = await H(feed.page, () => window.__harness.navPoint())
+    await feed.page.mouse.click(fn.x, fn.y)
+    await sleep(700)
+    await shot(feed.page, 'more-19-real-feed-png-page2')
+    failOnErrors(feed.errors)
+    await feed.ctx.close()
   },
   async 'settings'() {
     for (const [name, params] of [

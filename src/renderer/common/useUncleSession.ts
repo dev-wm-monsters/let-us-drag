@@ -7,6 +7,7 @@ import type { OptionId, Settings } from '../../shared/types'
 import type { TestDropPayload } from '../../shared/test-hooks'
 import {
   type Action,
+  currentRing,
   type DropTarget,
   type Host,
   initialModel,
@@ -16,12 +17,12 @@ import {
   reducer,
   showsUpdateHint,
   TIMING,
-  visibleOptions,
   wantsClickThrough,
   wantsInteractive
 } from '../overlay/state'
 import { isFileDrag, probeFromItems } from './drag'
-import { hitTest, type Point, ringLayout } from './geometry'
+import type { Point } from './geometry'
+import { isNav, PAGE_DWELL_MS, type RingTarget, ringTargetAt, targetCenter } from './paging'
 import { call, callStrict, newJobId, pathsForFiles, subscribe } from './lud'
 import { createSoundPlayer, type SoundPlayer } from './sounds'
 import { LINES } from './text'
@@ -71,7 +72,10 @@ export interface UncleSession {
   stageRef: React.RefObject<HTMLDivElement | null>
   sounds: SoundPlayer
   choose(id: OptionId): void
-  hoverOption(id: OptionId | null): void
+  /** Pointer / focus over an option or the More / Back bubble (NAV_ID), or over nothing. */
+  hoverOption(id: RingTarget | null): void
+  /** More / Back clicked (feedMe with held files): turn the ring's page (D31). */
+  turnPage(): void
   reveal(path: string): void
   /**
    * The pointer entered/left an interactive element (cancel button, result card; mark them with
@@ -140,14 +144,12 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
     return () => window.removeEventListener('resize', measure)
   }, [measure])
 
-  const optionCenter = useCallback((id: OptionId): Point | null => {
-    const opts = visibleOptions(modelRef.current)
-    const i = opts.findIndex((o) => o.id === id)
-    if (i < 0) return null
-    const slot = ringLayout(opts.length, ringRef.current.radius)[i]
-    if (!slot) return null
+  /** Client position of a bubble on the page shown (null when it is not on it, D31). */
+  const optionCenter = useCallback((id: RingTarget): Point | null => {
+    const c = targetCenter(currentRing(modelRef.current), id, ringRef.current.radius)
+    if (!c) return null
     const k = ringRef.current.scale
-    return { x: stageCenter.current.x + slot.x * k, y: stageCenter.current.y + slot.y * k }
+    return { x: stageCenter.current.x + c.x * k, y: stageCenter.current.y + c.y * k }
   }, [])
 
   const updateLook = useCallback(() => {
@@ -156,23 +158,20 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
     lookRef.current = hovered ?? cursorRef.current
   }, [optionCenter])
 
-  const targetAt = useCallback((p: Point): DropTarget => {
+  /** What a client point is over on the page shown: an option, More / Back, the mouth or nothing. */
+  const targetAt = useCallback((p: Point): RingTarget | 'mouth' | null => {
     const m = modelRef.current
-    const opts = visibleOptions(m)
-    const slots = ringLayout(opts.length, ringRef.current.radius)
-    const hoveredIndex = m.hovered ? opts.findIndex((o) => o.id === m.hovered) : -1
-    const k = ringRef.current.scale
-    const hit = hitTest({
+    const r = ringRef.current
+    const k = r.scale
+    return ringTargetAt({
       p: { x: (p.x - stageCenter.current.x) / k, y: (p.y - stageCenter.current.y) / k },
-      slots,
-      hitRadius: ringRef.current.hitRadius,
-      hoveredIndex: hoveredIndex >= 0 ? hoveredIndex : null,
-      hysteresis: 12,
-      mouthRadius: ringRef.current.mouthRadius
+      page: currentRing(m),
+      radius: r.radius,
+      hitRadius: r.hitRadius,
+      mouthRadius: r.mouthRadius,
+      hovered: m.hovered,
+      hysteresis: 12
     })
-    if (hit.kind === 'option') return opts[hit.index]?.id ?? null
-    if (hit.kind === 'mouth') return 'mouth'
-    return null
   }, [])
 
   // ——— drop processing (real drops, Feed Window picker and E2E test drops share this) ———
@@ -260,7 +259,9 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
       e.preventDefault()
       if (isBusy(modelRef.current)) return
       const p = { x: e.clientX, y: e.clientY }
-      const target = targetAt(p)
+      const hit = targetAt(p)
+      // A drop on More / Back converts nothing: he holds the files on the page shown (D31).
+      const target: DropTarget = isNav(hit) ? null : hit
       const files = Array.from(dt.files)
       const paths = pathsForFiles(files)
       if (isResting(modelRef.current)) engage(probeFromItems(dt.items))
@@ -328,7 +329,8 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
       if (disarmGrace.current) clearTimeout(disarmGrace.current)
       disarmGrace.current = null
     }
-    // E2E simulated drop: same path as a real drop once the paths are known.
+    // E2E simulated drop: same path as a real drop once the paths are known. The option id decides,
+    // on whichever ring page it is (D31): an option not on the page shown flies in from the centre.
     const testDrop = (p: TestDropPayload) => {
       if (!p || !Array.isArray(p.paths) || isBusy(modelRef.current)) return
       measure()
@@ -365,8 +367,10 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
       subscribe('onOverlayDisarm', () => {
         const wasHidden = modelRef.current.state === 'hidden'
         const m0 = modelRef.current
-        // feedMe without held files ("drop it on me", file type unknown during the drag) needs the
-        // grace too: otherwise he leaves before the late macOS drop lands (product owner, beta.7).
+        // Every state that waits for the drop needs it: appear/hover (known types, and since D31 also
+        // unknown / mixed types, which offer ZIP) and feedMe without held files (left for the case
+        // that no bubble fits at all). Otherwise he leaves before the late macOS drop lands
+        // (product owner, beta.7; B-080).
         const waitsForDrop = m0.state === 'appear' || m0.state === 'hover' || (m0.state === 'feedMe' && !m0.held)
         if (!wasHidden && waitsForDrop) {
           // macOS reports the global mouse-up a few ms BEFORE Chromium delivers the drop. Give the drop
@@ -551,7 +555,22 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
   // Look target follows hover changes too.
   useEffect(() => {
     updateLook()
-  }, [model.hovered, updateLook])
+  }, [model.hovered, model.page, updateLook])
+
+  // D31: during a drag nothing can be clicked, so resting on More / Back for PAGE_DWELL_MS turns the
+  // page. Restarts when the pointer comes back; after a turn the bubble is latched until it leaves.
+  const dwelling = (state === 'appear' || state === 'hover') && isNav(model.hovered) && !model.navLatched
+  useEffect(() => {
+    if (!dwelling) return
+    const t = setTimeout(() => dispatch({ type: 'PAGE' }), PAGE_DWELL_MS)
+    return () => clearTimeout(t)
+  }, [dwelling, session, model.page, dispatch])
+  const lastPage = useRef({ session, page: model.page })
+  useEffect(() => {
+    const prev = lastPage.current
+    lastPage.current = { session, page: model.page }
+    if (prev.session === session && prev.page !== model.page) sounds.play('popIn')
+  }, [session, model.page, sounds])
 
   const choose = useCallback(
     (id: OptionId) => {
@@ -561,7 +580,8 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
     },
     [dispatch, optionCenter]
   )
-  const hoverOption = useCallback((id: OptionId | null) => dispatch({ type: 'HOVER', optionId: id }), [dispatch])
+  const hoverOption = useCallback((id: RingTarget | null) => dispatch({ type: 'HOVER', optionId: id }), [dispatch])
+  const turnPage = useCallback(() => dispatch({ type: 'PAGE' }), [dispatch])
   const reveal = useCallback((path: string) => {
     void call('revealPath', undefined, path)
   }, [])
@@ -588,6 +608,7 @@ export function useUncleSession(host: Host, ring: RingGeometry): UncleSession {
     sounds,
     choose,
     hoverOption,
+    turnPage,
     reveal,
     setOverInteractive,
     feedFiles,

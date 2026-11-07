@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { DroppedItem } from '../../shared/types'
+import type { DroppedItem, OptionId } from '../../shared/types'
 import {
   categoryForProbe,
   isFileDrag,
@@ -8,7 +8,10 @@ import {
   itemsAreBlocked,
   optionsForItems,
   optionsForProbe,
-  probeFromItems
+  probeFromItems,
+  probeExts,
+  probeIsGuess,
+  setDevOptionsOverride
 } from './drag'
 import { baseName, formatBytes, friendlyError, shortName } from './text'
 
@@ -49,13 +52,60 @@ describe('drag helpers', () => {
     expect(categoryForProbe({ mimeTypes: ['application/x-msdownload'], count: 1 })).toBe('blocked')
   })
 
-  it('options for a probe: known category shows its options, unknown/blocked none', () => {
+  it('options for a probe: known category shows its options, unknown/mixed ZIP, blocked none (D31)', () => {
     const ids = optionsForProbe({ mimeTypes: ['image/png'], count: 1 }).map((o) => o.id)
-    expect(ids).toContain('to-png')
+    expect(ids).toContain('to-jpg')
     // D30: more than 8 options are allowed now (renderer "More…" bubble); ZIP comes last
     expect(ids.at(-1)).toBe('zip')
-    expect(optionsForProbe({ mimeTypes: [''], count: 1 })).toEqual([])
+    // D31: extensions told by the MIME types already apply during the drag: no-op PNG → PNG hidden,
+    // extension-only options shown (GIF → MP4, CSV → PDF), exactly like the ring after the drop.
+    expect(ids).not.toContain('to-png')
+    expect(ids).not.toContain('to-mp4')
+    expect(probeExts({ mimeTypes: ['image/png'], count: 1 })).toEqual(['png'])
+    expect(optionsForProbe({ mimeTypes: ['image/gif'], count: 1 }).map((o) => o.id)).toContain('to-mp4')
+    expect(optionsForProbe({ mimeTypes: ['text/csv'], count: 1 }).map((o) => o.id)).toContain('to-pdf')
+    expect(optionsForProbe({ mimeTypes: ['application/json'], count: 1 }).map((o) => o.id)).not.toContain('to-pdf')
+    // An ambiguous MIME type (image/tiff has no unambiguous extension here) → category options only.
+    expect(probeExts({ mimeTypes: ['image/png', 'image/tiff'], count: 2 })).toEqual([])
+    expect(optionsForProbe({ mimeTypes: ['image/png', 'image/tiff'], count: 2 }).map((o) => o.id)).toContain('to-png')
+    expect(optionsForItems([item('a.png')]).map((o) => o.id)).toEqual(ids)
+    expect(probeIsGuess({ mimeTypes: ['image/png'], count: 1 })).toBe(false)
+    // D30: Chromium's image/svg+xml is a known category now (vector), not a guess.
+    expect(optionsForProbe({ mimeTypes: ['image/svg+xml'], count: 1 }).map((o) => o.id)).toEqual(['to-png', 'to-jpg', 'to-pdf', 'zip'])
+    expect(probeIsGuess({ mimeTypes: ['image/svg+xml'], count: 1 })).toBe(false)
+    const zipOnly = [
+      [''], // many documents (and SVG on some systems): Chromium reports no type
+      ['', ''],
+      ['image/png', ''], // some known, some unknown: what fits all cannot be told before the drop
+      ['image/png', 'video/mp4'], // mixed
+      ['image/png', 'image/svg+xml'], // image + vector: mixed
+      ['application/pdf', 'application/zip'],
+      [] // no items readable during the drag
+    ]
+    for (const mimeTypes of zipOnly) {
+      const probe = { mimeTypes, count: mimeTypes.length }
+      expect(optionsForProbe(probe).map((o) => o.id), mimeTypes.join('+')).toEqual(['zip'])
+      expect(probeIsGuess(probe)).toBe(true)
+    }
+    // Blocked anywhere in the selection: nothing (he refuses), also next to unknown types.
     expect(optionsForProbe({ mimeTypes: ['application/x-msdownload'], count: 1 })).toEqual([])
+    expect(optionsForProbe({ mimeTypes: ['', 'application/x-msdownload'], count: 2 })).toEqual([])
+    expect(categoryForProbe({ mimeTypes: ['', 'application/x-msdownload'], count: 2 })).toBe('blocked')
+    // A single archive still offers Unzip, not the ZIP guess.
+    expect(optionsForProbe({ mimeTypes: ['application/zip'], count: 1 }).map((o) => o.id)).toEqual(['unzip'])
+  })
+
+  it('the harness options override pads probe and item options, never blocked ones', () => {
+    const extra = { id: 'dev-x' as OptionId, label: 'X', hint: 'x', batch: 'each' as const, minInputs: 1 }
+    setDevOptionsOverride((options) => [...options, extra])
+    try {
+      expect(optionsForProbe({ mimeTypes: [''], count: 1 }).map((o) => o.id)).toEqual(['zip', 'dev-x'])
+      expect(optionsForItems([item('a.png')]).map((o) => o.id)).toContain('dev-x')
+      expect(optionsForProbe({ mimeTypes: ['application/x-msdownload'], count: 1 })).toEqual([])
+    } finally {
+      setDevOptionsOverride(null)
+    }
+    expect(optionsForProbe({ mimeTypes: [''], count: 1 }).map((o) => o.id)).toEqual(['zip'])
   })
 
   it('options for real items hide no-ops and handle folders/mixed', () => {

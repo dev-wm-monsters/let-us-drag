@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import type { DroppedItem, JobEvent, Settings } from '../../shared/types'
+import { NAV_ID } from '../common/paging'
 import { DEFAULT_SETTINGS } from '../../shared/types'
 import {
   type Action,
@@ -13,6 +14,8 @@ import {
   wantsClickThrough,
   wantsInteractive,
   chewCaption,
+  currentRing,
+  showsGuess,
   type UncleState
 } from './state'
 
@@ -58,14 +61,42 @@ describe('overlay state machine', () => {
     expect(m.session).toBe(1)
   })
 
-  it('unknown or mixed MIME → feedMe with no options until dropped', () => {
-    for (const mimeTypes of [[''], ['image/png', 'video/mp4'], []]) {
+  it('unknown, partly unknown or mixed MIME → appear with a ZIP guess bubble (D31)', () => {
+    for (const mimeTypes of [[''], ['image/png', 'video/mp4'], ['image/png', ''], ['image/png', 'image/svg+xml'], []]) {
       const m = reducer(initialModel('overlay'), { type: 'ENGAGE', probe: { mimeTypes, count: mimeTypes.length } })
-      expect(m.state).toBe('feedMe')
-      expect(visibleOptions(m)).toEqual([])
-      expect(speech(m)).toBe('Feed me!')
+      expect(m.state).toBe('appear')
+      expect(visibleOptions(m).map((o) => o.id)).toEqual(['zip'])
+      expect(m.dragGuess).toBe(true)
+      expect(showsGuess(m)).toBe(true)
+      expect(currentRing(m).guess).toBe(true)
+      expect(speech(m)).toBe('Feed me, or ZIP it!')
       expect(wantsInteractive(m)).toBe(false)
+      // Hovering the ZIP guess keeps him talking; known types never show the guess line.
+      expect(speech(reducer(m, { type: 'HOVER', optionId: 'zip' }))).toBe('Feed me, or ZIP it!')
     }
+    const known = run(initialModel('overlay'), png)
+    expect(known.dragGuess).toBe(false)
+    expect(speech(known)).toBeNull()
+    expect(currentRing(known).guess).toBeUndefined()
+  })
+
+  it('unknown drag: a drop on ZIP zips; a drop on the mouth holds the files with their real options (D31)', () => {
+    const unknown: Action = { type: 'ENGAGE', probe: { mimeTypes: [''], count: 1 } }
+    const zipped = run(initialModel('overlay'), unknown, { type: 'DROP_RESOLVED', items: [item('logo.svg')], target: 'zip', jobId: 'j' })
+    expect(zipped.state).toBe('eat')
+    expect(zipped.job?.optionId).toBe('zip')
+    const held = run(initialModel('overlay'), unknown, { type: 'DROP_RESOLVED', items: [item('photo.png')], target: 'mouth', jobId: 'j' })
+    expect(held.state).toBe('feedMe')
+    expect(held.dragGuess).toBe(false)
+    expect(visibleOptions(held).map((o) => o.id)).toContain('to-jpg')
+    expect(speech(held)).toBe('Pick one!')
+    // A blocked file dropped on the ZIP guess is still refused.
+    const blocked = run(initialModel('overlay'), unknown, { type: 'DROP_RESOLVED', items: [item('setup.exe')], target: 'zip', jobId: 'j' })
+    expect(blocked.state).toBe('refuse')
+    expect(blocked.job).toBeNull()
+    // B-080: the mouse-up before a late drop still dismisses him only without a drop in flight.
+    expect(run(initialModel('overlay'), unknown, { type: 'DISARM' }).state).toBe('leave')
+    expect(run(initialModel('overlay'), unknown, { type: 'DROP_START' }, { type: 'DISARM' }).state).toBe('appear')
   })
 
   it('blocked MIME → refuse', () => {
@@ -468,5 +499,105 @@ describe('chew caption (D15, QA3-02)', () => {
   it('is empty without a stage and outside chew', () => {
     expect(chewCaption(chewing())).toBeNull()
     expect(chewCaption(initialModel('overlay'))).toBeNull()
+  })
+})
+
+describe('paged options ring (D31)', () => {
+  // Real catalog (D30): a PNG drag offers 9 options (PNG itself hidden, ZIP last), more than one ring holds.
+  const g = globalThis as { __ludRingCapacity?: number }
+  afterEach(() => {
+    delete g.__ludRingCapacity
+  })
+  const ids = (m: Model) => currentRing(m).entries.map((e) => e.option.id)
+  const PAGE1 = ['to-jpg', 'to-webp', 'to-pdf', 'remove-bg', 'compress', 'half-size', 'to-avif']
+
+  it('shows the first 7 plus More; HOVER on More then PAGE turns to the rest plus Back', () => {
+    let m = run(initialModel('overlay'), png)
+    expect(ids(m)).toEqual(PAGE1)
+    expect(currentRing(m).nav).toMatchObject({ kind: 'more', count: 2 })
+    m = reducer(m, { type: 'HOVER', optionId: NAV_ID })
+    expect(m.state).toBe('hover')
+    expect(m.hovered).toBe(NAV_ID)
+    m = reducer(m, { type: 'PAGE' })
+    expect(m.page).toBe(1)
+    expect(ids(m)).toEqual(['to-ico', 'zip'])
+    expect(currentRing(m).nav).toMatchObject({ kind: 'back', count: 7 })
+    // Back sits where More was, so the pointer is still on it, latched until it leaves.
+    expect(m.hovered).toBe(NAV_ID)
+    expect(m.navLatched).toBe(true)
+    m = reducer(m, { type: 'HOVER', optionId: NAV_ID })
+    expect(m.navLatched).toBe(true)
+    m = reducer(m, { type: 'HOVER', optionId: 'to-ico' })
+    expect(m.navLatched).toBe(false)
+    expect(m.hovered).toBe('to-ico')
+    // Options of the other page cannot be hovered.
+    expect(reducer(m, { type: 'HOVER', optionId: 'to-jpg' }).hovered).toBeNull()
+    // Back returns to the first page.
+    m = run(m, { type: 'HOVER', optionId: NAV_ID }, { type: 'PAGE' })
+    expect(m.page).toBe(0)
+  })
+
+  it('a drop on a page-2 option converts; a drop on More/Back holds the files on that page', () => {
+    const onPage2 = run(initialModel('overlay'), png, { type: 'HOVER', optionId: NAV_ID }, { type: 'PAGE' })
+    const eat = reducer(onPage2, { type: 'DROP_RESOLVED', items: [item('a.png')], target: 'to-ico', jobId: 'j' })
+    expect(eat.state).toBe('eat')
+    expect(eat.job?.optionId).toBe('to-ico')
+    // The E2E hook drops on an option id whatever page is shown.
+    const fromPage1 = run(initialModel('overlay'), png, { type: 'DROP_RESOLVED', items: [item('a.png')], target: 'zip', jobId: 'j' })
+    expect(fromPage1.job?.optionId).toBe('zip')
+    // useUncleSession maps a drop on More / Back to target null.
+    const held = reducer(onPage2, { type: 'DROP_RESOLVED', items: [item('a.png')], target: null, jobId: 'j' })
+    expect(held.state).toBe('feedMe')
+    expect(held.page).toBe(1)
+    expect(held.navLatched).toBe(false)
+  })
+
+  it('feedMe: PAGE (More clicked) turns the page and CHOOSE works for any page; Esc still closes', () => {
+    let m = run(initialModel('overlay'), png, { type: 'DROP_RESOLVED', items: [item('a.png')], target: 'mouth', jobId: 'j' })
+    expect(m.state).toBe('feedMe')
+    expect(currentRing(m).pageCount).toBe(2)
+    expect(ids(m)).toEqual(PAGE1)
+    m = reducer(m, { type: 'PAGE' })
+    expect(m.state).toBe('feedMe')
+    expect(m.page).toBe(1)
+    expect(ids(m)).toEqual(['to-ico', 'zip'])
+    m = reducer(m, { type: 'PAGE', page: 0 })
+    expect(m.page).toBe(0)
+    expect(reducer(m, { type: 'CHOOSE', optionId: 'zip', jobId: 'k' }).job?.optionId).toBe('zip')
+    expect(reducer(m, { type: 'ESC' }).state).toBe('leave')
+  })
+
+  it('the page resets with every new session; PAGE is ignored without More or outside offering states', () => {
+    const turned = run(initialModel('overlay'), png, { type: 'PAGE' })
+    expect(turned.page).toBe(1)
+    const next = run(turned, { type: 'DISARM' }, { type: 'LEAVE_DONE' }, png)
+    expect(next.session).toBe(turned.session + 1)
+    expect(next.page).toBe(0)
+    expect(next.navLatched).toBe(false)
+    const pdf = run(initialModel('overlay'), { type: 'ENGAGE', probe: { mimeTypes: ['application/pdf'], count: 1 } })
+    expect(currentRing(pdf).nav).toBeNull()
+    expect(reducer(pdf, { type: 'PAGE' })).toBe(pdf)
+    expect(reducer(initialModel('overlay'), { type: 'PAGE' }).page).toBe(0)
+    expect(reducer(turned, { type: 'PAGE', page: 7 }).page).toBe(1)
+  })
+
+  it('video (10 options) pages too; up to 8 options stay on one ring (no More)', () => {
+    const video = run(initialModel('overlay'), { type: 'ENGAGE', probe: { mimeTypes: ['video/mp4'], count: 1 } })
+    expect(currentRing(video).pageCount).toBe(2)
+    const audio = run(initialModel('overlay'), { type: 'ENGAGE', probe: { mimeTypes: ['audio/wav'], count: 1 } })
+    expect(currentRing(audio).pageCount).toBe(1)
+    expect(currentRing(audio).nav).toBeNull()
+  })
+
+  it('a lower ring capacity (dev/test override) pages into three: More, More, Back', () => {
+    g.__ludRingCapacity = 5
+    let m = run(initialModel('overlay'), png)
+    expect(currentRing(m).pageCount).toBe(3)
+    expect(ids(m)).toEqual(['to-jpg', 'to-webp', 'to-pdf', 'remove-bg'])
+    m = reducer(m, { type: 'PAGE' })
+    expect(currentRing(m).nav).toMatchObject({ kind: 'more', to: 2 })
+    m = reducer(m, { type: 'PAGE' })
+    expect(ids(m)).toEqual(['zip'])
+    expect(currentRing(m).nav).toMatchObject({ kind: 'back', to: 0 })
   })
 })

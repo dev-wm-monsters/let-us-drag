@@ -53,7 +53,7 @@ Platform (`src/main/**/*.test.ts`), Frontend (`src/renderer/**/*.test.ts(x)`). Q
 | ID | Area | Preconditions | Steps | Expected | Auto / where |
 |---|---|---|---|---|---|
 | CAT-01 | Ext → category | — | `categoryForExt` for every ext in `EXTENSIONS`, upper/lower case, with/without dot | Category from PLAN §5 table; unknown ext → `unknown` | U `tests/unit/catalog.test.ts` (exists, extend to every ext) |
-| CAT-02 | MIME → category | — | `categoryForMime` for image/*, video/*, audio/*, pdf, docx, md/plain/html, csv/json/yaml/xlsx, zip, exe/dmg/sh, `''`, `image/svg+xml`, `application/octet-stream` | As catalog; empty/svg/octet-stream → `unknown` (→ feedMe) | U |
+| CAT-02 | MIME → category | — | `categoryForMime` for image/*, video/*, audio/*, pdf, docx, md/plain/html, csv/json/yaml/xlsx, zip, exe/dmg/sh, `''`, `image/svg+xml`, `application/octet-stream` | As catalog; empty/svg/octet-stream → `unknown` (→ ZIP guess bubble during the drag, D31) | U |
 | CAT-03 | Max 8 | — | `optionsFor` for every category incl. added ZIP | Never more than 8 options | U |
 | CAT-04 | No-op hiding | — | `optionsFor` for png→ no `to-png`; jpg/jpeg → no `to-jpg`; mp4 → no `to-mp4`; ogg/oga → no `to-ogg`; txt → no `to-txt`; html/htm → no `to-html`; md/markdown → no `to-md`; csv/json/yaml/yml/xlsx → no same-format | Option hidden only when **every** input already has that format | U (exists for png) |
 | CAT-05 | No-op in mixed-ext batch | — | `optionsFor` for [png, jpg] image batch | Both `to-png` and `to-jpg` shown (not every input is already X) | U |
@@ -240,7 +240,7 @@ DOM contract: `[data-testid=overlay-root][data-uncle-state]` ∈ hidden|appear|h
 | UNC-01 | hidden | armed sensor | arm only | `data-uncle-state=hidden`, nothing visible | E2E-10 |
 | UNC-02 | appear | file dragenter | drag file in | Pops in scale 0.6→1 with overshoot, mouth opens, options fan out; `appear` then `hover` or idle | R + E (screenshot) |
 | UNC-03 | hover(option) | appear | dragover an option | Eyes + head lean toward option, bubble enlarges, `hint` label shows | R + M |
-| UNC-04 | feedMe | unknown/mixed MIME, or drop on mouth | drop on mouth | "Feed me!" bubble; after drop, options clickable; window focusable only now | E2E-21, E2E-30 |
+| UNC-04 | feedMe | drop on mouth (unknown/mixed MIME drags show a ZIP bubble first, D31: E2E-16, E2E-95) | drop on mouth | "Feed me!" bubble; after drop, options clickable; window focusable only now | E2E-21, E2E-30 |
 | UNC-05 | eat | drop on option | — | File icon flies to mouth, jaw snaps, gulp sound | E2E-20 (state order) |
 | UNC-06 | chew | job running | — | Chew loop, cheeks bulge, progress ring follows `progress`; ≥ 700 ms (Hungry Mode off) | E2E-20 (≥ 650 ms measured) |
 | UNC-07 | Hungry Mode | `hungryMode=true` | fast job | No minimum chew (chew < 650 ms or skipped) | R (reducer) + E2E-74 |
@@ -519,6 +519,12 @@ The main-process log is attached to every test report (`app-N-log.txt`).
 | E2E-80 | `cancel.spec.ts` › `__ludTest.cancelActive()` during a 30 s 720p → WEBM job: CANCELLED, no partial/temp, no ffmpeg left, Uncle leaves, app converts again | **@needs-p2** (D3 hook missing) |
 | E2E-81 | `cancel.spec.ts` › click `[data-testid=cancel-job]` ("Spit it out"): same expectations | **@needs-p2** (D3 button missing) |
 | E2E-82 | `cancel.spec.ts` › `lud.cancelJob(jobId)` from the overlay (IPC path under the button): same expectations | pass |
+| E2E-90 | `more.spec.ts` › D31 drag mode, real catalog (PNG: 7 + More): synthetic dragover rests on `ring-more` → page 2 (`data-nav=back`, latched), dragover hovers ICO on page 2, `dropFiles(png, 'to-ico')` → done | pass |
+| E2E-91 | `more.spec.ts` › `dropFiles(paths, optionId)` converts an option on the page not shown | pass |
+| E2E-92 | `more.spec.ts` › feedMe: click More, Enter on Back (keyboard), More above the held chip, click a page-2 option (ZIP) → done | pass |
+| E2E-93 | `more.spec.ts` › feedMe on page 2: Esc closes him, no job | pass |
+| E2E-94 | `more.spec.ts` › Feed Window: More / Back by click, page-2 option → done | pass |
+| E2E-95 | `more.spec.ts` › drag of an empty-MIME file (SVG): one ZIP bubble + "Feed me, or ZIP it!" (no More) | pass |
 
 ## 16. MANUAL matrix (QA, macOS + Windows)
 

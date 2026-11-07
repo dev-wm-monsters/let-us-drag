@@ -279,18 +279,24 @@ async function phase4Checks() {
   }
 }
 
-// B-064 (QA-P4-02): the held-files chip never covers an option bubble (1..8 options).
+// B-064 (QA-P4-02): the held-files chip never covers a bubble (1..8 bubbles; D31: a paged ring is
+// 7 options + More / Back, counted as 8).
 async function heldChecks() {
   const HELD_FILES = {
-    'photo (8)': [{ name: 'holiday-photo.png', type: 'image/png' }],
-    '2 photos (8)': [
+    'photo (7 + More)': [{ name: 'holiday-photo.png', type: 'image/png' }],
+    '2 photos (7 + More)': [
       { name: 'a.png', type: 'image/png' },
       { name: 'b.png', type: 'image/png' }
     ],
-    'video (7)': [{ name: 'birthday.mp4', type: 'video/mp4' }],
+    'video (7 + More)': [{ name: 'birthday.mp4', type: 'video/mp4' }],
     'audio (6)': [{ name: 'voice-memo.wav', type: 'audio/wav' }],
     'markdown (5)': [{ name: 'notes.md', type: '' }],
-    'pdf (4)': [{ name: 'contract.pdf', type: 'application/pdf' }],
+    'pdf (6)': [{ name: 'contract.pdf', type: 'application/pdf' }],
+    '2 pdfs (7)': [
+      { name: 'a.pdf', type: 'application/pdf' },
+      { name: 'b.pdf', type: 'application/pdf' }
+    ],
+    'text (4)': [{ name: 'notes.txt', type: 'text/plain' }],
     'archive (1)': [{ name: 'pack.zip', type: 'application/zip' }],
     'mixed (1)': [
       { name: 'a.png', type: 'image/png' },
@@ -325,7 +331,7 @@ async function heldChecks() {
         const held = document.querySelector('[data-testid="held-files"]')
         const hb = held ? held.getBoundingClientRect() : null
         const out = []
-        for (const btn of document.querySelectorAll('[data-option-id]')) {
+        for (const btn of document.querySelectorAll('[data-option-id], [data-testid="ring-more"]')) {
           const b = btn.querySelector('.lud-option-bubble').getBoundingClientRect()
           const cx = (b.left + b.right) / 2
           const cy = (b.top + b.bottom) / 2
@@ -335,7 +341,7 @@ async function heldChecks() {
           const nx = hb ? Math.max(hb.left, Math.min(cx, hb.right)) : cx
           const ny = hb ? Math.max(hb.top, Math.min(cy, hb.bottom)) : cy
           out.push({
-            id: btn.getAttribute('data-option-id'),
+            id: btn.getAttribute('data-option-id') ?? 'ring-more',
             reachable: btn.contains(top),
             by: btn.contains(top) ? null : (top?.getAttribute('data-testid') ?? top?.className ?? null),
             underChip: !!hb && Math.hypot(cx - nx, cy - ny) < rad,
@@ -375,6 +381,13 @@ async function heldChecks() {
       window.__harness.drag('dragover', x, y, f)
     }, [c.x, c.y, png])
     await page.waitForTimeout(700)
+    // D31: ICO is on page 2 of the PNG ring now: rest on More (scaled hit-testing too), then go to ICO.
+    const more = await page.evaluate(() => window.__harness.navPoint())
+    await page.evaluate(([x, y, f]) => window.__harness.drag('dragover', x, y, f), [more.x, more.y, png])
+    await page.waitForTimeout(700)
+    const turned = await page.evaluate(() => window.__harness.ringPage())
+    check('D31 scaled feed: resting on More turns the page', turned?.page === 1, JSON.stringify(turned))
+    await page.waitForTimeout(500)
     const ico = await page.evaluate(() => window.__harness.optionPoint('to-ico'))
     await page.evaluate(([x, y, f]) => window.__harness.drag('dragover', x, y, f), [ico.x, ico.y, png])
     await page.waitForTimeout(60)
