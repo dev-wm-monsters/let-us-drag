@@ -33,6 +33,8 @@ export const MAX_SVG_EXPANDED = 250_000
 export const SVG_MIN_SIDE = 512
 export const SVG_MAX_SIDE = 4096
 export const SVG_DEFAULT_SIDE = 2048
+/** Filters (blur, morphology…) are recomputed per tile by librsvg and get slow fast: cap such SVGs at 2048 px. */
+export const SVG_FILTER_MAX_SIDE = 2048
 /** Vector PDF page when the SVG states no size (CSS px, 8 in). Largest page: 14400 pt = 19200 px. */
 export const SVG_PDF_DEFAULT_SIDE = 768
 export const SVG_PDF_MAX_SIDE = 19_200
@@ -504,10 +506,23 @@ export async function readSvg(path: string): Promise<SafeSvg> {
   return sanitizeSvg(text)
 }
 
+/** True when the sanitized SVG contains a <filter> element anywhere. */
+export function hasFilter(el: XmlElement): boolean {
+  if (el.name === 'filter') return true
+  return el.children.some((c) => typeof c !== 'string' && hasFilter(c))
+}
+
 /** Rasterize with librsvg (sharp, from a buffer: no base URL, so no file or network access). */
 export async function svgToRaster(svg: SafeSvg, format: 'png' | 'jpg', outPath: string): Promise<{ width: number; height: number }> {
   const { rasterizeSvgBuffer } = await import('./sharp-safe')
-  const { width, height } = rasterSize(svg.size)
+  let { width, height } = rasterSize(svg.size)
+  // Filters make large renders very slow (review D30 #8): keep their longest side at 2048 px.
+  const longest = Math.max(width, height)
+  if (longest > SVG_FILTER_MAX_SIDE && hasFilter(svg.root)) {
+    const k = SVG_FILTER_MAX_SIDE / longest
+    width = Math.max(1, Math.round(width * k))
+    height = Math.max(1, Math.round(height * k))
+  }
   await rasterizeSvgBuffer(Buffer.from(renderSvgMarkup(svg, width, height), 'utf8'), format, outPath)
   return { width, height }
 }

@@ -67,7 +67,7 @@ describe('catalog (D30)', () => {
   })
 
   it('video: 720p and Mute; audio: no separate AAC (M4A already is AAC)', () => {
-    expect(ids(['mov'], ['mov'])).toEqual(['to-mp4', 'to-gif', 'to-mp3', 'to-720p', 'mute', 'to-webm', 'to-wav', 'compress', 'zip'])
+    expect(ids(['mov'], ['mov'])).toEqual(['to-mp4', 'compress', 'to-gif', 'to-mp3', 'to-720p', 'mute', 'to-webm', 'to-wav', 'zip'])
     expect(ids(['mp3'], ['mp3'])).not.toContain('to-aac')
   })
 

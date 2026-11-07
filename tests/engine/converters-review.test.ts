@@ -119,3 +119,13 @@ describe('XLSX / CSV → PDF: table HTML stops at the print limit', () => {
     expect(small).toContain('<td class="lud-num">1</td>')
   })
 })
+
+describe('SVG with filters (TPM follow-up to review #8)', () => {
+  it('detects <filter> anywhere in the sanitized tree', async () => {
+    const { sanitizeSvg, hasFilter } = await import('../../src/engine/tools/svg')
+    const plain = sanitizeSvg('<svg xmlns="http://www.w3.org/2000/svg" width="4000" height="4000"><rect width="10" height="10"/></svg>')
+    const blurred = sanitizeSvg('<svg xmlns="http://www.w3.org/2000/svg" width="4000" height="4000"><defs><filter id="b"><feGaussianBlur stdDeviation="2"/></filter></defs><rect width="10" height="10" filter="url(#b)"/></svg>')
+    expect(hasFilter(plain.root)).toBe(false)
+    expect(hasFilter(blurred.root)).toBe(true)
+  })
+})

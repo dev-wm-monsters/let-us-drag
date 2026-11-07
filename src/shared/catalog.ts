@@ -117,8 +117,9 @@ export const OPTIONS: Record<OptionId, ConversionOption> = {
  * behind "More…" (renderer), so a category may list more than 8 options.
  */
 export const CATEGORY_OPTIONS: Record<Category, readonly OptionId[]> = {
-  image: ['to-png', 'to-jpg', 'to-webp', 'to-pdf', 'to-mp4', 'remove-bg', 'compress', 'half-size', 'to-avif', 'to-ico'],
-  video: ['to-mp4', 'to-gif', 'to-mp3', 'to-720p', 'mute', 'to-mov', 'to-webm', 'to-wav', 'compress'],
+  // to-mp4 only shows for GIFs (CATEGORY_OPTION_SOURCE_EXT), so it goes first: for a GIF, MP4 is the likely pick.
+  image: ['to-mp4', 'to-png', 'to-jpg', 'to-webp', 'to-pdf', 'remove-bg', 'compress', 'half-size', 'to-avif', 'to-ico'],
+  video: ['to-mp4', 'compress', 'to-gif', 'to-mp3', 'to-720p', 'mute', 'to-mov', 'to-webm', 'to-wav'],
   audio: ['to-mp3', 'to-wav', 'to-m4a', 'to-ogg', 'to-flac', 'compress'],
   pdf: ['pdf-to-png', 'pdf-to-jpg', 'to-txt', 'pdf-merge', 'pdf-split', 'pdf-rotate'],
   document: ['to-pdf', 'to-html', 'to-md', 'to-txt'],
