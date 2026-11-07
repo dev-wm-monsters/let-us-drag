@@ -13,6 +13,8 @@ export type Category =
   | 'text'
   | 'data'
   | 'archive'
+  /** SVG (vector) pictures: sanitized before anything renders them (TPM D30). */
+  | 'vector'
   | 'blocked'
   | 'unknown'
 
@@ -47,6 +49,12 @@ export type OptionId =
   | 'to-xlsx'
   | 'unzip'
   | 'zip'
+  // ADDITIVE (engine, D30)
+  | 'half-size'
+  | 'to-720p'
+  | 'mute'
+  | 'pdf-split'
+  | 'pdf-rotate'
 
 export interface ConversionOption {
   id: OptionId

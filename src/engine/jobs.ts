@@ -104,6 +104,25 @@ const imageEach: EachHandler = async (ctx, item, progress) => {
   ctx.out.stage(temp, dir, name)
 }
 
+/** Animated GIF → MP4 (D30): sniffed as GIF, pixel-capped and checked for animation before ffmpeg sees it. */
+const gifToMp4Each: EachHandler = async (ctx, item, progress) => {
+  const { openImage } = await import('./tools/image')
+  const { requireImage } = await import('./sniff')
+  const { sharpError } = await import('./tools/sharp-safe')
+  if ((await requireImage(item.path)) !== 'gif') throw invalidInput("This isn't really a GIF, so I can't turn it into a video.")
+  let frames = 1
+  try {
+    frames = (await (await openImage(item.path, item.ext, { signal: ctx.signal, ffmpeg: ctx.ffmpeg }, { animated: true })).metadata()).pages ?? 1
+  } catch (err) {
+    throw sharpError(err)
+  }
+  if (frames < 2) throw invalidInput("This GIF doesn't move (it has a single frame), so there's no video to make.")
+  const { gifToMp4 } = await import('./tools/media')
+  const dir = dirname(item.path)
+  const res = await gifToMp4({ ffmpeg: ctx.ffmpeg(), input: item.path, signal: ctx.signal, progress, tempFile: (e) => ctx.out.tempFile(dir, e) })
+  ctx.out.stage(res.temp, dir, convertedName(item.name, res.ext, { dir }))
+}
+
 async function imagesToPdfJob(ctx: JobContext): Promise<void> {
   const { imagesToPdf } = await import('./tools/image')
   const n = ctx.items.length
@@ -118,18 +137,24 @@ async function imagesToPdfJob(ctx: JobContext): Promise<void> {
 
 // --- video / audio ----------------------------------------------------------------------------
 
+/** Media options whose output keeps the input's name plus a suffix (same or similar format). */
+const MEDIA_SUFFIX: Partial<Record<OptionId, string>> = { compress: '-compressed', 'to-720p': '-720p', mute: '-muted' }
+
 const mediaEach: EachHandler = async (ctx, item, progress) => {
   const { convertMedia } = await import('./tools/media')
   const dir = dirname(item.path)
   const kind = ctx.category === 'video' ? 'video' : 'audio'
-  const { temp, ext } = await convertMedia(ctx.req.optionId, kind, {
+  const { temp, ext, note } = await convertMedia(ctx.req.optionId, kind, {
     ffmpeg: ctx.ffmpeg(),
     input: item.path,
+    inputExt: item.ext,
     signal: ctx.signal,
     progress,
     tempFile: (e) => ctx.out.tempFile(dir, e)
   })
-  const name = ctx.req.optionId === 'compress' ? suffixedName(item.name, '-compressed', ext, { dir }) : convertedName(item.name, ext, { dir })
+  if (note) progress(1, note)
+  const suffix = MEDIA_SUFFIX[ctx.req.optionId]
+  const name = suffix ? suffixedName(item.name, suffix, ext, { dir }) : convertedName(item.name, ext, { dir })
   ctx.out.stage(temp, dir, name)
 }
 
@@ -144,6 +169,12 @@ export function pageFileName(index: number, total: number, ext: string): string 
 const pdfEach: EachHandler = async (ctx, item, progress) => {
   const dir = dirname(item.path)
   const pdf = await import('./tools/pdf')
+  if (ctx.req.optionId === 'pdf-rotate') {
+    progress(-1, 'Turning pages')
+    await stageData(ctx, dir, suffixedName(item.name, '-rotated', 'pdf', { dir }), await pdf.rotatePdf(item.path, ctx.signal))
+    return
+  }
+  if (ctx.req.optionId === 'pdf-split') return splitPdfItem(ctx, item, progress)
   if (ctx.req.optionId === 'to-txt') {
     progress(-1, 'Reading')
     const text = await pdf.pdfToText(item.path, ctx.signal, (p) => progress(p, 'Reading'))
@@ -167,6 +198,36 @@ const pdfEach: EachHandler = async (ctx, item, progress) => {
     ctx.out.stage(lastFile, dir, convertedName(item.name, ext, { dir }))
   } else {
     ctx.out.stage(folder, dir, pagesFolderName(item.name, { dir }), 'dir')
+  }
+}
+
+/**
+ * Split (D30): "<name> (pages)/<name>-p001.pdf …" next to the original, like PDF → PNG pages; a
+ * one-page PDF gives a single "<name>-p001.pdf".
+ */
+async function splitPdfItem(ctx: JobContext, item: DroppedItem, progress: ProgressFn): Promise<void> {
+  const { splitPdf, splitPageSuffix } = await import('./tools/pdf')
+  const { join } = await import('node:path')
+  const { splitName, fitStem, utf8Bytes } = await import('./output')
+  const dir = dirname(item.path)
+  const stem = splitName(item.name).base
+  const folderTemp = await ctx.out.tempDir(dir)
+  // Room inside the folder for "<stem>-p0001.pdf" (stem possibly shortened below).
+  const folderName = pagesFolderName(item.name, { dir, childReserve: Math.min(utf8Bytes(stem), 64) + 12 })
+  let lastFile = ''
+  let lastName = ''
+  const total = await splitPdf(item.path, ctx.signal, async (index, count, bytes) => {
+    const tail = `${splitPageSuffix(index, count)}.pdf`
+    lastName = fitStem(stem, tail, { dir: join(dir, folderName) }, item.name) + tail
+    lastFile = join(folderTemp, lastName)
+    await writeFile(lastFile, bytes)
+    progress(index / count, `Page ${index} of ${count}`)
+  })
+  if (total === 1) {
+    ctx.out.track(lastFile)
+    ctx.out.stage(lastFile, dir, suffixedName(item.name, splitPageSuffix(1, 1), 'pdf', { dir }))
+  } else {
+    ctx.out.stage(folderTemp, dir, folderName, 'dir')
   }
 }
 
@@ -207,6 +268,18 @@ async function docsToPdfJob(ctx: JobContext): Promise<void> {
     await docEach(ctx, first, ctx.progress)
     return
   }
+  await mergeEachToPdf(ctx, async (item) => (await docOrTextToBytes(ctx, item, 'to-pdf')).data as Uint8Array)
+}
+
+/** One PDF per input (all-or-nothing, D7), merged in input order into "<first> (merged).pdf" (or "<name>.pdf" for one input). */
+async function mergeEachToPdf(ctx: JobContext, toPdf: (item: DroppedItem) => Promise<Uint8Array>): Promise<void> {
+  const first = ctx.items[0]!
+  const at = { dir: dirname(first.path) }
+  if (ctx.items.length === 1) {
+    ctx.progress(-1, 'Printing')
+    await stageData(ctx, at.dir, convertedName(first.name, 'pdf', at), await toPdf(first))
+    return
+  }
   const { PDFDocument } = await import('pdf-lib')
   const merged = await PDFDocument.create()
   merged.setProducer("Let's Drag!")
@@ -216,15 +289,45 @@ async function docsToPdfJob(ctx: JobContext): Promise<void> {
     ctx.progress(i / n, 'Printing')
     const item = ctx.items[i]!
     try {
-      const res = await docOrTextToBytes(ctx, item, 'to-pdf')
-      const src = await PDFDocument.load(res.data as Uint8Array)
+      const src = await PDFDocument.load(await toPdf(item))
       const pages = await merged.copyPages(src, src.getPageIndices())
       pages.forEach((p) => merged.addPage(p))
     } catch (err) {
       throw aboutFile(err, item.name)
     }
   }
-  await stageData(ctx, dirname(first.path), mergedName(first.name, 'pdf', { dir: dirname(first.path) }), await merged.save())
+  await stageData(ctx, at.dir, mergedName(first.name, 'pdf', at), await merged.save())
+}
+
+// --- data → PDF, SVG (D30) ----------------------------------------------------------------------
+
+async function tableToPdf(ctx: JobContext, item: DroppedItem): Promise<Uint8Array> {
+  const { readTablesForPdf, tablesToHtml } = await import('./tools/table-pdf')
+  const { renderPdf } = await import('./tools/text')
+  const { splitName } = await import('./output')
+  const title = splitName(item.name).base
+  const tables = await readTablesForPdf(item.path, item.ext, title, ctx.signal)
+  return renderPdf(tablesToHtml(tables), title, (html) => ctx.adapters.htmlToPdf(html))
+}
+
+async function svgToPdf(ctx: JobContext, item: DroppedItem): Promise<Uint8Array> {
+  const { readSvg, svgPdfHtml } = await import('./tools/svg')
+  const { renderPdf } = await import('./tools/text')
+  const { splitName } = await import('./output')
+  return renderPdf(svgPdfHtml(await readSvg(item.path)), splitName(item.name).base, (html) => ctx.adapters.htmlToPdf(html))
+}
+
+const svgEach: EachHandler = async (ctx, item, progress) => {
+  const { readSvg, svgToRaster } = await import('./tools/svg')
+  const dir = dirname(item.path)
+  const ext = ctx.req.optionId === 'to-jpg' ? 'jpg' : ctx.req.optionId === 'to-png' ? 'png' : undefined
+  if (!ext) throw new EngineError('UNSUPPORTED')
+  progress(-1, 'Cleaning the SVG')
+  const svg = await readSvg(item.path)
+  progress(-1, 'Painting')
+  const temp = await ctx.out.tempFile(dir, ext)
+  await svgToRaster(svg, ext, temp)
+  ctx.out.stage(temp, dir, convertedName(item.name, ext, { dir }))
 }
 
 // --- data -------------------------------------------------------------------------------------
@@ -262,7 +365,8 @@ export async function dispatch(ctx: JobContext): Promise<void> {
   if (id === 'zip') return zipJob(ctx)
   switch (ctx.category) {
     case 'image':
-      return id === 'to-pdf' ? imagesToPdfJob(ctx) : forEachItem(ctx, imageEach)
+      if (id === 'to-pdf') return imagesToPdfJob(ctx)
+      return forEachItem(ctx, id === 'to-mp4' ? gifToMp4Each : imageEach)
     case 'video':
     case 'audio':
       return forEachItem(ctx, mediaEach)
@@ -272,7 +376,9 @@ export async function dispatch(ctx: JobContext): Promise<void> {
     case 'text':
       return id === 'to-pdf' ? docsToPdfJob(ctx) : forEachItem(ctx, docEach)
     case 'data':
-      return forEachItem(ctx, dataEach)
+      return id === 'to-pdf' ? mergeEachToPdf(ctx, (item) => tableToPdf(ctx, item)) : forEachItem(ctx, dataEach)
+    case 'vector':
+      return id === 'to-pdf' ? mergeEachToPdf(ctx, (item) => svgToPdf(ctx, item)) : forEachItem(ctx, svgEach)
     case 'archive':
       return forEachItem(ctx, unzipEach)
     default:

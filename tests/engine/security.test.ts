@@ -66,7 +66,15 @@ describe('images: libvips loaders, pixel cap, sniffing', () => {
   })
 
   it('the SVG loader is blocked even when handed straight to the hardened sharp', async () => {
-    await expect(safeSharp(Buffer.from(svg)).metadata()).rejects.toThrow()
+    // D30: safeSharp refuses non-raster buffers before libvips sees them (only the sanitized SVG
+    // path, rasterizeSvgBuffer, may use librsvg's buffer loader) …
+    expect(() => safeSharp(Buffer.from(svg))).toThrow()
+    // … and the SVG FILE loader stays blocked in libvips itself.
+    const d = await sub('svgfile')
+    const f = join(d, 'pic.svg')
+    await writeFile(f, svg)
+    await expect(sharp(f).metadata()).rejects.toThrow()
+    await expect(safeSharp(f).metadata()).rejects.toThrow()
     expect(ALLOWED_LOADERS.some((l) => /svg|pdf|magick|vips(file|source)?$/i.test(l))).toBe(false)
     // the allowed formats still work (buffer variant)
     const png = await sharp({ create: { width: 2, height: 2, channels: 3, background: '#000' } }).png().toBuffer()

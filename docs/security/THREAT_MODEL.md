@@ -137,6 +137,45 @@ Each row gives the threat, the required mitigation, the owner and the checklist 
 - HEIC/HEIF via `heic-decode` → libheif compiled to WASM: read the width and height first and reject above the pixel cap before decoding. (SEC-52)
 - The `remove-bg` pre-processing resizes to the model input size before inference. (SEC-52)
 
+### 5.4a SVG input (TPM D30) — owner: Engine
+
+SVG is XML that can carry `<script>`, `on*` handlers, `<foreignObject>` (HTML), external references
+(`href` / `xlink:href`, CSS `url()`, `@import`, `image-set()`), DOCTYPE entities (XXE, "billion
+laughs") and reference bombs (`<use>` of `<use>` of …). It is accepted as its own category `vector`
+(PNG, JPG, PDF only), never through the image category, and never rendered as the user wrote it.
+
+- **Parse** with our own strict XML parser (`src/engine/tools/svg.ts`): no DTD processing; a DOCTYPE
+  may only declare plain literal internal entities (no `SYSTEM`/`PUBLIC`, no parameter entities, no
+  values with `&` or `<`, ≤ 64 entities, ≤ 1 KiB each, total expansion budget = max(1 M chars,
+  input size)). Malformed XML, duplicate attributes, several roots, a non-`svg` root → `INPUT_INVALID`.
+  Caps: 16 MiB input, 50 000 elements, depth 256, 256 attributes per element. (SEC-160)
+- **Re-serialize through an allow-list**: static drawing elements only (shapes, text, gradients,
+  patterns, clip/mask, markers, filters and fe* primitives, `use`, `image`, `style`); `<a>` becomes
+  `<g>`; `script`, `foreignObject`, every animation element (`set`/`animate*` can rewrite `href`),
+  `metadata`, SVG fonts and every unknown or namespaced element are dropped with their content.
+  Attributes: no `on*`, no `xmlns*`, no namespaced attributes except `xml:space`; `href`/`xlink:href`
+  only `#fragment`, plus inline `data:image/(png|jpeg|gif|webp);base64` on `<image>`/`<feImage>`
+  (no nested `image/svg+xml`); `<use>`/`<image>`/`<feImage>` without a valid href are removed. CSS
+  (style attribute, `<style>`, any attribute value with `url(`): CSS escapes (`\`) refuse the text,
+  `@import`/`@namespace` are removed, `url()` keeps only `#fragment`, `image-set()`, `image()`,
+  `cross-fade()`, `element()`, `src()`, `paint()` become `none`, `expression`/`behavior`/`-moz-binding`
+  are neutralised. (SEC-161)
+- **Reference bombs**: the number of elements drawn after expanding every `#id` reference (href and
+  `url(#id)`) is computed with memoisation and capped at 250 000; reference cycles are refused. (SEC-162)
+- **Rasterize** (PNG/JPG) with librsvg via sharp from a **buffer** of the re-serialized markup with an
+  explicit pixel size (longest side 512–4096 px, 2048 px when the SVG states no size): librsvg
+  resolves no URL without a base file, so nothing on disk or on the network can be read even if a
+  reference slipped through [V: probe with librsvg 2.63.2 — `<image href="file:///…png">`, relative
+  and `http://` hrefs render nothing; engine test feeds raw hostile markup straight to the rasterizer
+  and checks pixels + a beacon]. Only `VipsForeignLoadSvgBuffer` is unblocked; the SVG file/source
+  loaders stay blocked (an SVG renamed `.png` is still refused), and `safeSharp()` refuses any buffer
+  that is not a sniffed raster image, so only `rasterizeSvgBuffer()` reaches librsvg. (SEC-163)
+- **PDF** (vector): the sanitized SVG goes as `<img src="data:image/svg+xml;base64,…">` into the
+  sanitized HTML → htmlToPdf path (§5.7, SEC-82): SVG-as-image mode runs no script and loads no
+  sub-resources, plus the print window's CSP and request filter. [V: E2E-D30-03 with a beacon.] (SEC-164)
+- Chosen over the Chromium path for rasters: librsvg has no JS engine and no network stack, and the
+  Chromium render would need a new host adapter; Chromium is used only where vectors must be kept.
+
 ### 5.5 Video and audio (ffmpeg child process) — owner: Engine; binary provenance — owner: TPM
 
 ffmpeg is a huge C attack surface, and the builds we ship are network-capable (http, https, rtmp, tcp, udp, tls…) [V: `-protocols` on the shipped linux binary].
@@ -148,6 +187,9 @@ ffmpeg is a huge C attack surface, and the builds we ship are network-capable (h
 - **MUST** write to a temp name and then commit without clobbering (§5.10). Pass `-n` so ffmpeg itself never overwrites. (SEC-64)
 - **MUST** kill the process tree on cancel or timeout and clean up the partial output. (SEC-65)
 - Output limits: GIF ≤ 15 fps and ≤ 480 px (already in the plan); cap the output duration to the input duration.
+- GIF → MP4 (D30): the input is sniffed as GIF and pixel-capped (all frames) by the image code first;
+  ffmpeg gets `-format_whitelist gif -f gif` (forced demuxer, no probing) and `-protocol_whitelist file`.
+  720p / Mute use the video whitelists unchanged; Mute only stream-copies the first video stream.
 
 ### 5.6 PDF (pdf.js + @napi-rs/canvas, pdf-lib) — owner: Engine
 
@@ -155,6 +197,8 @@ ffmpeg is a huge C attack surface, and the builds we ship are network-capable (h
 - **MUST** set `maxImageSize` (e.g. 50 000 000 px), `enableXfa: false` (the default), and no `cMapUrl` or `standardFontDataUrl` pointing to the network (bundled files only). Cap the page count (e.g. 500 pages for PNG/JPG export) and the **rendered canvas size** (viewport width × height × scale ≤ e.g. 50 MP; reduce the scale for huge MediaBoxes). (SEC-71)
 - pdf-lib (merge) on hostile PDFs: run in the engine with the job timeout and cap the total input size. pdf-lib 1.17.1 is old (2021) [V: version]; track it as a dependency risk. (SEC-72)
 - `to-txt`: output is plain UTF-8 text. No HTML is produced.
+- Split / Rotate (D30, pdf-lib): signature checked, encrypted or page-tree-less files → `INPUT_INVALID`,
+  Split capped at `MAX_PDF_PAGES` (1000); pages are copied, never re-rendered.
 
 ### 5.7 Documents and rich text (mammoth, marked, docx, htmlToPdf) — owner: Engine + Platform (htmlToPdf adapter)
 
@@ -170,6 +214,10 @@ ffmpeg is a huge C attack surface, and the builds we ship are network-capable (h
 - exceljs reads XLSX = ZIP + XML. Pre-scan the XLSX with yauzl for entry count and total uncompressed size (the same limits as §5.9) **before** handing it to exceljs. Cap rows × columns when exporting. (SEC-91)
 - CSV/XLSX formula injection: a CSV produced from XLSX data can contain cells that start with `=`, `+`, `-`, `@`. This is accepted for v0.1 (fidelity first) and documented for users as an informational item; we never write formulas into XLSX from text input (write values as strings). (SEC-92)
 - JSON: cap the input size before `JSON.parse` (it is loaded into memory). (SEC-41)
+- CSV/XLSX → PDF (D30): every cell is HTML-escaped into a table that goes through the same sanitizer +
+  CSP + htmlToPdf path as documents (D17, SEC-82); formulas print their cached result only (nothing
+  is evaluated); caps 20 000 rows (by row number, so a stray far-away cell cannot blow up memory),
+  50 columns, 500 characters per cell, with a note in the PDF when something was left out.
 
 ### 5.9 Archives (yauzl unzip, yazl zip) — owner: Engine
 

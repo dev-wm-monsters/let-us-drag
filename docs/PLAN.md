@@ -108,23 +108,28 @@ The exact TypeScript lives in `src/shared/*.ts`. Additive changes are allowed by
 - IPC channels + preload API type `LudApi` in `src/shared/api.ts`; engine contract in `src/engine/api.ts`.
 - E2E test hooks + DOM test-id contract in `src/shared/test-hooks.ts`.
 
-## 5. Conversion catalog v0.1 (max 8 options per category)
+## 5. Conversion catalog (order = most common first; rings show the first few, the rest behind "More…")
 
 | Category | Input extensions | Options (output) | Tool |
 |---|---|---|---|
-| image | png jpg jpeg webp avif gif tif tiff bmp ico heic heif | PNG, JPG, WEBP, AVIF, PDF (batch→one PDF), ICO, Remove BG (PNG), Compress (same fmt) | sharp; heic-decode for HEIC/HEIF input; ffmpeg for BMP/ICO in/out where sharp lacks support; pdf-lib for PDF; onnxruntime-node for Remove BG |
-| video | mp4 mov m4v mkv webm avi | MP4 (H.264/AAC), MOV, WEBM (VP9/Opus, realtime preset), GIF (palette, ≤15 fps, ≤480 px), MP3 (audio), WAV (audio), Compress (H.264 CRF 28) | ffmpeg |
+| image | png jpg jpeg webp avif gif tif tiff bmp ico heic heif | PNG, JPG, WEBP, PDF (batch→one PDF), MP4 (animated GIF only: H.264 yuv420p, even size, faststart, transparency on white), Remove BG (PNG), Compress (same fmt), Half size (same fmt, `-half`, EXIF-oriented, animation kept), AVIF, ICO | sharp; heic-decode for HEIC/HEIF input; ffmpeg for BMP/ICO in/out where sharp lacks support and for GIF→MP4; pdf-lib for PDF; onnxruntime-node for Remove BG |
+| vector (D30) | svg | PNG (natural size, longest side 512–4096 px, 2048 when unsized; alpha kept), JPG (on white), PDF (vector, one page per SVG at its size; batch→one PDF) | own sanitizer (`tools/svg.ts`) → librsvg (sharp, buffer only) / htmlToPdf adapter |
+| video | mp4 mov m4v mkv webm avi | MP4 (H.264/AAC), GIF (palette, ≤15 fps, ≤480 px), MP3 (audio), 720p (shorter side 720, never upscaled, H.264/AAC MP4, `-720p`; ≤720p inputs are re-encoded at their size with a note), Mute (video stream copied, audio dropped, same container, `-muted`), MOV, WEBM (VP9/Opus, realtime preset), WAV (audio), Compress (H.264 CRF 28) | ffmpeg |
 | audio | mp3 wav m4a aac ogg oga opus flac | MP3, WAV, M4A, OGG, FLAC, Compress (MP3 128k) | ffmpeg |
-| pdf | pdf | PNG (pages), JPG (pages), TXT, Merge (batch only, ≥2 PDFs) | pdfjs-dist + @napi-rs/canvas; pdf-lib |
+| pdf | pdf | PNG (pages), JPG (pages), TXT, Merge (batch only, ≥2 PDFs), Split (`<name> (pages)/<name>-p001.pdf`…; one page → `<name>-p001.pdf`), Rotate (90° clockwise, every page, `-rotated`) | pdfjs-dist + @napi-rs/canvas; pdf-lib |
 | document | docx | PDF, HTML, Markdown, TXT | mammoth (→HTML) then htmlToPdf adapter; LibreOffice is NOT required |
 | text | md markdown txt html htm | PDF, HTML, DOCX, TXT | marked; docx; htmlToPdf adapter |
-| data | csv json yaml yml xlsx | CSV, JSON, YAML, XLSX (excluding same format) | papaparse, js-yaml, exceljs (first sheet for xlsx→others) |
+| data | csv json yaml yml xlsx | CSV, JSON, YAML, XLSX (excluding same format), PDF (CSV / XLSX only: every visible non-empty sheet as a titled table, header repeated per page, landscape when wide, cached formula results, ≤ 20 000 rows / 50 columns with a note; batch→one PDF) | papaparse, js-yaml, exceljs (first sheet for xlsx→others); htmlToPdf adapter |
 | archive | zip | Unzip | yauzl (zip-slip safe) |
 | any | any file or folder, or mixed batch | ZIP | yazl |
 | blocked | exe msi app dmg pkg bat cmd sh com scr dll | (none: Uncle refuses) | — |
 
 Batch rules: all inputs same category → that category's options (`each` = one output per input,
-`merge` = one output). Mixed categories → ZIP only. Folders → ZIP only.
+`merge` = one output). Mixed categories → ZIP only. Folders → ZIP only. ZIP is always offered last
+(except archives and blocked files). Some options only apply to some extensions of a category
+(D30: image MP4 = GIF only, data PDF = CSV/XLSX only); they appear once every input's extension is
+known (after the drop), not during dragover (MIME types only; `extForMime()` lets the renderer opt in).
+No separate AAC option: M4A already is AAC in an MP4 container.
 
 ## 6. The Uncle — UX & animation states
 

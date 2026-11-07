@@ -310,3 +310,67 @@ export async function mergePdfs(paths: readonly string[], signal: AbortSignal, o
   return out.save()
 }
 
+
+/** Open a PDF with pdf-lib for page edits (signature checked first; encrypted / broken → INPUT_INVALID). */
+async function loadForEdit(path: string, verb: string): Promise<import('pdf-lib').PDFDocument> {
+  const { PDFDocument } = await import('pdf-lib')
+  const bytes = await readPdfBytes(path)
+  try {
+    const doc = await PDFDocument.load(bytes, { updateMetadata: false })
+    doc.getPages() // a file without a usable page tree fails here, not later
+    return doc
+  } catch (err) {
+    if ((err as { name?: string }).name === 'EncryptedPDFError' || /encrypted/i.test(errMessage(err))) {
+      throw invalidInput(`This PDF is password-protected, so I cannot ${verb} it.`, err)
+    }
+    throw invalidInput("I couldn't open this PDF. It may be damaged.", err)
+  }
+}
+
+/** "-p001" … zero-padded to the page count (at least 3 digits). */
+export function splitPageSuffix(index: number, total: number): string {
+  return `-p${String(index).padStart(Math.max(3, String(total).length), '0')}`
+}
+
+/**
+ * One single-page PDF per page (D30), handed to `onPage` in page order. Pages keep their size,
+ * rotation and content (copied with pdf-lib, nothing is re-rendered).
+ */
+export async function splitPdf(
+  path: string,
+  signal: AbortSignal,
+  onPage: (index: number, total: number, bytes: Uint8Array) => Promise<void>
+): Promise<number> {
+  const { PDFDocument } = await import('pdf-lib')
+  const src = await loadForEdit(path, 'split')
+  const total = src.getPageCount()
+  if (total === 0) throw invalidInput('This PDF has no pages.')
+  if (total > MAX_PDF_PAGES) {
+    throw invalidInput(`This PDF has ${total.toLocaleString('en-US')} pages. I can split at most ${MAX_PDF_PAGES.toLocaleString('en-US')} pages at once.`)
+  }
+  for (let i = 0; i < total; i++) {
+    throwIfAborted(signal)
+    const out = await PDFDocument.create()
+    out.setProducer("Let's Drag!")
+    const [page] = await out.copyPages(src, [i]).catch((err: unknown) => {
+      throw invalidInput(`I couldn't copy page ${i + 1} of this PDF. It may be damaged.`, err)
+    })
+    out.addPage(page)
+    await onPage(i + 1, total, await out.save())
+  }
+  return total
+}
+
+/** Turn every page 90° clockwise (adds to each page's existing /Rotate; content is untouched). */
+export async function rotatePdf(path: string, signal: AbortSignal): Promise<Uint8Array> {
+  const { degrees } = await import('pdf-lib')
+  const doc = await loadForEdit(path, 'rotate')
+  const pages = doc.getPages()
+  if (pages.length === 0) throw invalidInput('This PDF has no pages.')
+  for (const page of pages) {
+    throwIfAborted(signal)
+    const current = ((page.getRotation().angle % 360) + 360) % 360
+    page.setRotation(degrees((current + 90) % 360))
+  }
+  return doc.save()
+}

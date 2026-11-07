@@ -128,17 +128,28 @@ export function noAudioError(kind: 'video' | 'audio'): EngineError {
 export interface MediaJobIo {
   ffmpeg: string
   input: string
+  /** Lower-case input extension (Mute keeps the container). */
+  inputExt?: string
   signal: AbortSignal
   progress: ProgressFn
   /** Create a temp file next to the output with the given extension. */
   tempFile(ext: string): Promise<string>
 }
 
+export interface MediaResult {
+  temp: string
+  ext: string
+  /** Optional stage text to show (e.g. "already 720p"). */
+  note?: string
+}
+
 /** Convert one media file. Returns the temp path holding the result and its extension. */
-export async function convertMedia(optionId: OptionId, kind: 'video' | 'audio', io: MediaJobIo): Promise<{ temp: string; ext: string }> {
+export async function convertMedia(optionId: OptionId, kind: 'video' | 'audio', io: MediaJobIo): Promise<MediaResult> {
   io.progress(-1, 'Sniffing the file')
   const info = await probeMedia(io.ffmpeg, io.input, io.signal, kind)
   if (optionId === 'to-gif' && kind === 'video') return convertGif(info, io)
+  if (optionId === 'to-720p' && kind === 'video') return convert720p(info, io)
+  if (optionId === 'mute' && kind === 'video') return convertMute(info, io)
   const target = mediaTarget(optionId, kind, info)
   if (!target) throw new EngineError('UNSUPPORTED')
   if (target.needsAudio && !info.hasAudio) throw noAudioError(kind)
@@ -155,7 +166,7 @@ export async function convertMedia(optionId: OptionId, kind: 'video' | 'audio', 
   return { temp, ext: target.ext }
 }
 
-async function convertGif(info: MediaInfo, io: MediaJobIo): Promise<{ temp: string; ext: string }> {
+async function convertGif(info: MediaInfo, io: MediaJobIo): Promise<MediaResult> {
   if (!info.hasVideo) throw new EngineError('INPUT_INVALID', "I couldn't find any picture in this video.")
   const params = gifParams(info)
   const filter = gifFilter(params)
@@ -184,4 +195,96 @@ async function convertGif(info: MediaInfo, io: MediaJobIo): Promise<{ temp: stri
     }
   )
   return { temp, ext: 'gif' }
+}
+
+// --- 720p, Mute, GIF → MP4 (D30) --------------------------------------------------------------
+
+export const HD_SHORT_SIDE = 720
+
+/**
+ * Shorter side 720 px, aspect kept, never upscaled (the min() inside the filter holds even when
+ * the probe could not read the size; ffmpeg applies rotation metadata first, and the shorter side
+ * does not depend on it), then even dimensions for yuv420p.
+ */
+export const SCALE_720P = `scale=w='if(gte(iw,ih),-2,min(iw,${HD_SHORT_SIDE}))':h='if(gte(iw,ih),min(ih,${HD_SHORT_SIDE}),-2)',${EVEN_SCALE}`
+
+/** True when the video is already 720p or smaller (shorter side ≤ 720): 720p then only re-encodes. */
+export function isAtMost720p(info: Pick<MediaInfo, 'width' | 'height'>): boolean {
+  return info.width !== undefined && info.height !== undefined && Math.min(info.width, info.height) <= HD_SHORT_SIDE
+}
+
+export function hd720Args(info: Pick<MediaInfo, 'hasAudio'>): string[] {
+  const audio = info.hasAudio ? ['-map', '0:a:0', '-c:a', 'aac', '-b:a', '160k'] : []
+  return [
+    '-map', '0:v:0', ...audio,
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p', '-vf', SCALE_720P,
+    '-movflags', '+faststart', '-f', 'mp4'
+  ]
+}
+
+function noPicture(): EngineError {
+  return new EngineError('INPUT_INVALID', "I couldn't find any picture in this video. It may be audio only or damaged.")
+}
+
+async function convert720p(info: MediaInfo, io: MediaJobIo): Promise<MediaResult> {
+  if (!info.hasVideo) throw noPicture()
+  const temp = await io.tempFile('mp4')
+  await runConversion(io.ffmpeg, io.input, hd720Args(info), temp, {
+    signal: io.signal,
+    kind: 'video',
+    durationSec: info.durationSec,
+    onProgress: (p) => io.progress(p, 'Shrinking')
+  })
+  // Never upscaled: a video that is already 720p or smaller keeps its size (re-encoded as H.264 MP4).
+  return isAtMost720p(info) ? { temp, ext: 'mp4', note: 'Already 720p or smaller, kept the size' } : { temp, ext: 'mp4' }
+}
+
+/** Mute keeps the container and copies the picture stream untouched. */
+const MUTE_FORMATS: Readonly<Record<string, string>> = { mp4: 'mp4', m4v: 'mp4', mov: 'mov', mkv: 'matroska', webm: 'webm', avi: 'avi' }
+
+export function muteTarget(inputExt: string): { ext: string; args: string[] } {
+  const known = MUTE_FORMATS[inputExt.toLowerCase()]
+  const ext = known ? inputExt.toLowerCase() : 'mp4'
+  const fmt = known ?? 'mp4'
+  const faststart = fmt === 'mp4' || fmt === 'mov' ? ['-movflags', '+faststart'] : []
+  return { ext, args: ['-map', '0:v:0', '-c:v', 'copy', '-an', '-sn', '-dn', ...faststart, '-f', fmt] }
+}
+
+async function convertMute(info: MediaInfo, io: MediaJobIo): Promise<MediaResult> {
+  if (!info.hasVideo) throw noPicture()
+  const target = muteTarget(io.inputExt ?? 'mp4')
+  const temp = await io.tempFile(target.ext)
+  await runConversion(io.ffmpeg, io.input, target.args, temp, {
+    signal: io.signal,
+    kind: 'video',
+    durationSec: info.durationSec,
+    onProgress: (p) => io.progress(p, 'Shushing')
+  })
+  return info.hasAudio ? { temp, ext: target.ext } : { temp, ext: target.ext, note: 'It had no sound anyway' }
+}
+
+/**
+ * Animated GIF → MP4 (H.264, yuv420p, even dimensions, square pixels, faststart). Transparent
+ * pixels become white (yuv420p has no alpha); the GIF's own frame timing is kept.
+ */
+export const GIF_TO_MP4_FILTER = `[0:v]format=rgba,split[a][b];[a]drawbox=c=white@1:t=fill[bg];[bg][b]overlay=format=auto,${EVEN_SCALE},setsar=1,format=yuv420p[v]`
+
+export function gifToMp4Args(): string[] {
+  return ['-filter_complex', GIF_TO_MP4_FILTER, '-map', '[v]', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-an', '-movflags', '+faststart', '-f', 'mp4']
+}
+
+/** `io.input` must already be sniffed as a GIF: the gif demuxer is forced, nothing else is allowed. */
+export async function gifToMp4(io: MediaJobIo): Promise<MediaResult> {
+  io.progress(-1, 'Sniffing the file')
+  const info = await probeMedia(io.ffmpeg, io.input, io.signal, 'gif', 'gif')
+  if (!info.hasVideo) throw new EngineError('INPUT_INVALID', "I couldn't read the frames of this GIF.")
+  const temp = await io.tempFile('mp4')
+  await runConversion(io.ffmpeg, io.input, gifToMp4Args(), temp, {
+    signal: io.signal,
+    kind: 'gif',
+    format: 'gif',
+    durationSec: info.durationSec,
+    onProgress: (p) => io.progress(p, 'Rolling film')
+  })
+  return { temp, ext: 'mp4' }
 }

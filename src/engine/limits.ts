@@ -20,12 +20,21 @@ export const MAX_INPUT_BYTES: Readonly<Record<Category, number>> = {
   text: 64 * MB,
   data: 128 * MB,
   archive: Number.POSITIVE_INFINITY,
+  vector: 16 * MB, // SVG is parsed fully in memory (see MAX_SVG_BYTES)
   blocked: 0,
   unknown: Number.POSITIVE_INFINITY // only reachable through "zip", which streams
 }
 
 /** HEIC/HEIF (HEVC) is decoded by heic-decode (wasm) from an in-memory copy of the file. */
 export const MAX_HEIC_BYTES = 256 * MB
+
+/** SVG inputs are read, parsed and re-serialized in memory (D30). */
+export const MAX_SVG_BYTES = 16 * MB
+
+/** Data → PDF tables (D30): rows over all sheets, columns per sheet, characters per cell. */
+export const MAX_PDF_TABLE_ROWS = 20_000
+export const MAX_PDF_TABLE_COLS = 50
+export const MAX_PDF_CELL_CHARS = 500
 
 /** BMP / ICO inputs are decoded by ffmpeg into an in-memory PNG. */
 export const MAX_FFMPEG_IMAGE_BYTES = 256 * MB

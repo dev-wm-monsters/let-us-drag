@@ -52,7 +52,8 @@ describe('drag helpers', () => {
   it('options for a probe: known category shows its options, unknown/blocked none', () => {
     const ids = optionsForProbe({ mimeTypes: ['image/png'], count: 1 }).map((o) => o.id)
     expect(ids).toContain('to-png')
-    expect(ids.length).toBeLessThanOrEqual(8)
+    // D30: more than 8 options are allowed now (renderer "More…" bubble); ZIP comes last
+    expect(ids.at(-1)).toBe('zip')
     expect(optionsForProbe({ mimeTypes: [''], count: 1 })).toEqual([])
     expect(optionsForProbe({ mimeTypes: ['application/x-msdownload'], count: 1 })).toEqual([])
   })

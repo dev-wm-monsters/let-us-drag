@@ -3,7 +3,7 @@
 // FFmpeg (forced demuxer, whitelisted, "file:" input), PNG-encoded ICO entries directly, everything
 // else by sharp with only the needed libvips loaders enabled (./sharp-safe).
 // sharp's prebuilt libvips (verified 0.35.5): jpeg/png/webp/tiff/gif/heif(AV1 only) in+out;
-// no bmp/ico/pdf; svg is available in libvips but blocked.
+// no bmp/ico/pdf; svg is available in libvips but blocked here (SVG input has its own sanitized path: ./svg.ts, D30).
 import { copyFile, readFile, stat, writeFile } from 'node:fs/promises'
 import { basename } from 'node:path'
 import type { OptionId } from '../../shared/types'
@@ -169,6 +169,7 @@ export function imageOutputExt(optionId: OptionId, ext: string): string {
     case 'to-ico':
       return 'ico'
     case 'compress':
+    case 'half-size':
       return compressTargetExt(ext)
     default:
       throw new EngineError('UNSUPPORTED')
@@ -229,9 +230,57 @@ export async function encodeImageTo(optionId: OptionId, path: string, ext: strin
       return { ext: outExt }
     case 'compress':
       return compressImageTo(path, ext, deps, outPath)
+    case 'half-size':
+      return halfSizeTo(path, ext, deps, outPath)
     default:
       throw new EngineError('UNSUPPORTED')
   }
+}
+
+/** Encoder for "keep the format" outputs (Half size): good quality, unlike Compress. */
+function sameFormatPipeline(img: Sharp, targetExt: string): Sharp {
+  switch (targetExt) {
+    case 'jpg':
+    case 'jpeg':
+      return img.flatten({ background: '#ffffff' }).jpeg({ quality: 90, mozjpeg: true })
+    case 'png':
+      return img.png()
+    case 'webp':
+      return img.webp({ quality: 90 })
+    case 'avif':
+      return img.avif({ quality: 60, effort: 4 })
+    case 'tif':
+    case 'tiff':
+      return img.tiff({ compression: 'lzw', predictor: 'horizontal' })
+    case 'gif':
+      return img.gif()
+    default:
+      throw new EngineError('UNSUPPORTED')
+  }
+}
+
+/** Half the width and height (rounded, at least 1 px): never upscales; EXIF orientation applied; animation kept. */
+export function halfSize(width: number, height: number): { width: number; height: number } {
+  return { width: Math.max(1, Math.round(width / 2)), height: Math.max(1, Math.round(height / 2)) }
+}
+
+async function halfSizeTo(path: string, ext: string, deps: ImageDeps, outPath: string): Promise<EncodedImage> {
+  const target = compressTargetExt(ext)
+  const animated = target === 'gif' || target === 'webp'
+  const img = await openImage(path, ext, deps, { animated })
+  try {
+    // Oriented size: a small PNG round trip would cost a decode; metadata + orientation is enough.
+    const meta = await img.metadata()
+    const pages = animated ? Math.max(1, meta.pages ?? 1) : 1
+    const rawW = meta.width ?? 1
+    const rawH = pages > 1 ? (meta.pageHeight ?? meta.height ?? 1) : (meta.height ?? 1)
+    const rotated = !animated && (meta.orientation ?? 1) >= 5
+    const { width, height } = halfSize(rotated ? rawH : rawW, rotated ? rawW : rawH)
+    await writePipeline(sameFormatPipeline(img.resize(width, pages > 1 ? undefined : height, { fit: pages > 1 ? 'inside' : 'fill', kernel: 'lanczos3' }), target), outPath)
+  } catch (err) {
+    throw sharpError(err)
+  }
+  return { ext: target, suffix: '-half' }
 }
 
 /** Multi-size ICO (16…256 px, PNG entries). Non-square images are centred on transparency. */

@@ -13,6 +13,7 @@ export const EXTENSIONS: Record<Exclude<Category, 'unknown'>, readonly string[]>
   text: ['md', 'markdown', 'txt', 'html', 'htm'],
   data: ['csv', 'json', 'yaml', 'yml', 'xlsx'],
   archive: ['zip'],
+  vector: ['svg'],
   blocked: ['exe', 'msi', 'app', 'dmg', 'pkg', 'bat', 'cmd', 'sh', 'com', 'scr', 'dll']
 }
 
@@ -38,7 +39,8 @@ export function categoryForMime(mime: string): Category {
   const m = mime.toLowerCase().trim()
   if (!m) return 'unknown'
   if (m === 'application/pdf') return 'pdf'
-  if (m === 'image/svg+xml') return 'unknown'
+  // SVG is markup, not pixels: its own category whose engine path sanitizes it first (D30).
+  if (m === 'image/svg+xml') return 'vector'
   if (m.startsWith('image/')) return 'image'
   if (m.startsWith('video/')) return 'video'
   if (m.startsWith('audio/')) return 'audio'
@@ -102,21 +104,57 @@ export const OPTIONS: Record<OptionId, ConversionOption> = {
   'to-yaml': O('to-yaml', 'YAML', 'Convert to YAML'),
   'to-xlsx': O('to-xlsx', 'XLSX', 'Convert to Excel'),
   unzip: O('unzip', 'Unzip', 'Extract the archive'),
-  zip: O('zip', 'ZIP', 'Pack into a .zip', 'merge')
+  zip: O('zip', 'ZIP', 'Pack into a .zip', 'merge'),
+  'half-size': O('half-size', 'Half size', 'Half the width and height'),
+  'to-720p': O('to-720p', '720p', 'Shrink to 720p (MP4)'),
+  mute: O('mute', 'Mute', 'Remove the sound'),
+  'pdf-split': O('pdf-split', 'Split', 'One PDF per page'),
+  'pdf-rotate': O('pdf-rotate', 'Rotate', 'Turn pages 90° clockwise')
 }
 
-/** Options per category, in display order (max 8). */
+/**
+ * Options per category, most common first. A ring shows the first few directly and the rest
+ * behind "More…" (renderer), so a category may list more than 8 options.
+ */
 export const CATEGORY_OPTIONS: Record<Category, readonly OptionId[]> = {
-  image: ['to-png', 'to-jpg', 'to-webp', 'to-avif', 'to-pdf', 'to-ico', 'remove-bg', 'compress'],
-  video: ['to-mp4', 'to-mov', 'to-webm', 'to-gif', 'to-mp3', 'to-wav', 'compress'],
+  image: ['to-png', 'to-jpg', 'to-webp', 'to-pdf', 'to-mp4', 'remove-bg', 'compress', 'half-size', 'to-avif', 'to-ico'],
+  video: ['to-mp4', 'to-gif', 'to-mp3', 'to-720p', 'mute', 'to-mov', 'to-webm', 'to-wav', 'compress'],
   audio: ['to-mp3', 'to-wav', 'to-m4a', 'to-ogg', 'to-flac', 'compress'],
-  pdf: ['pdf-to-png', 'pdf-to-jpg', 'to-txt', 'pdf-merge'],
+  pdf: ['pdf-to-png', 'pdf-to-jpg', 'to-txt', 'pdf-merge', 'pdf-split', 'pdf-rotate'],
   document: ['to-pdf', 'to-html', 'to-md', 'to-txt'],
   text: ['to-pdf', 'to-html', 'to-docx', 'to-txt'],
-  data: ['to-csv', 'to-json', 'to-yaml', 'to-xlsx'],
+  data: ['to-csv', 'to-json', 'to-yaml', 'to-xlsx', 'to-pdf'],
   archive: ['unzip'],
+  vector: ['to-png', 'to-jpg', 'to-pdf'],
   blocked: [],
   unknown: ['zip']
+}
+
+/**
+ * Options of a category that only work for some of its input extensions (D30): offered only when
+ * EVERY input extension is known and listed. During dragover the extensions are not known yet
+ * (MIME types only), so these options appear after the drop (feedMe) unless the caller passes
+ * extensions derived from MIME types (see extForMime).
+ */
+const CATEGORY_OPTION_SOURCE_EXT: Partial<Record<Category, Partial<Record<OptionId, readonly string[]>>>> = {
+  image: { 'to-mp4': ['gif'] }, // animated GIF → MP4
+  data: { 'to-pdf': ['csv', 'xlsx'] } // tables only (JSON/YAML may be any shape)
+}
+
+const MIME_TO_EXT: Readonly<Record<string, string>> = {
+  'image/gif': 'gif',
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'image/svg+xml': 'svg',
+  'text/csv': 'csv',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+  'application/pdf': 'pdf'
+}
+
+/** A file extension for a dragover MIME type when it is unambiguous ('' otherwise). Optional helper for the renderer. */
+export function extForMime(mime: string): string {
+  return MIME_TO_EXT[mime.toLowerCase().trim()] ?? ''
 }
 
 /** Output extension produced by an option for a given input extension (used to hide no-op options). */
@@ -170,10 +208,12 @@ export function optionsFor(q: OptionQuery): ConversionOption[] {
     const targets = OPTION_TARGET_EXT[id]
     // Hide "convert to X" when every input is already X.
     if (targets && exts.length > 0 && exts.every((e) => targets.includes(e))) return false
+    const sources = CATEGORY_OPTION_SOURCE_EXT[cat]?.[id]
+    if (sources && (exts.length === 0 || exts.length < q.count || !exts.every((e) => sources.includes(e)))) return false
     return true
   })
-  // ZIP is always available for any known non-blocked set except archives (Unzip instead).
-  if (cat !== 'unknown' && cat !== 'blocked' && cat !== 'archive' && ids.length < 8 && !ids.includes('zip')) {
+  // ZIP is always available (last) for any known non-blocked set except archives (Unzip instead).
+  if (cat !== 'unknown' && cat !== 'blocked' && cat !== 'archive' && !ids.includes('zip')) {
     ids.push('zip')
   }
   return ids.map((id) => OPTIONS[id])

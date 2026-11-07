@@ -14,14 +14,16 @@ describe('catalog', () => {
     expect(categoryForMime('image/png')).toBe('image')
     expect(categoryForMime('application/pdf')).toBe('pdf')
     expect(categoryForMime('')).toBe('unknown')
-    expect(categoryForMime('image/svg+xml')).toBe('unknown')
+    // D30: SVG is its own (sanitized) category
+    expect(categoryForMime('image/svg+xml')).toBe('vector')
   })
 
   it('hides no-op conversions', () => {
     const ids = optionsFor({ categories: ['image'], exts: ['png'], count: 1, hasDirectory: false }).map((o) => o.id)
     expect(ids).not.toContain('to-png')
     expect(ids).toContain('to-jpg')
-    expect(ids.length).toBeLessThanOrEqual(8)
+    // D30: rings may hold more than 8 options (the renderer shows the rest behind "More…"); ZIP is last
+    expect(ids.at(-1)).toBe('zip')
   })
 
   it('mixed or folder inputs only offer ZIP', () => {

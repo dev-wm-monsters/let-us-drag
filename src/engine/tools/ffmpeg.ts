@@ -196,7 +196,9 @@ export function spawnFfmpeg(ffmpeg: string, args: readonly string[], opts: RunOp
 export const FORMAT_WHITELIST = {
   video: ['mov', 'mp4', 'm4a', '3gp', '3g2', 'mj2', 'matroska', 'webm', 'avi'],
   audio: ['mp3', 'wav', 'ogg', 'flac', 'aac', 'mov', 'mp4', 'm4a', '3gp', '3g2', 'mj2'],
-  image: ['bmp_pipe', 'ico', 'png_pipe']
+  image: ['bmp_pipe', 'ico', 'png_pipe'],
+  /** Animated GIF → MP4 (D30): the input was sniffed as GIF first and the demuxer is forced. */
+  gif: ['gif']
 } as const satisfies Record<string, readonly string[]>
 
 export type FfmpegInputKind = keyof typeof FORMAT_WHITELIST
@@ -245,8 +247,8 @@ export function classifyFfmpegFailure(err: unknown): unknown {
 }
 
 /** Probe an input with `ffmpeg -i` (it exits non-zero by design: "no output file"). */
-export async function probeMedia(ffmpeg: string, input: string, signal: AbortSignal, kind: FfmpegInputKind = 'video'): Promise<MediaInfo> {
-  const res = await spawnFfmpeg(ffmpeg, ['-hide_banner', '-nostdin', ...ffmpegInput(input, kind)], { signal, anyExitCode: true })
+export async function probeMedia(ffmpeg: string, input: string, signal: AbortSignal, kind: FfmpegInputKind = 'video', format?: string): Promise<MediaInfo> {
+  const res = await spawnFfmpeg(ffmpeg, ['-hide_banner', '-nostdin', ...ffmpegInput(input, kind, format)], { signal, anyExitCode: true })
   const info = parseProbeOutput(res.stderr)
   if (!info.hasAudio && !info.hasVideo) {
     throw new EngineError('INPUT_INVALID', "I couldn't find any audio or video in this file. It may be damaged, or it isn't what its name says.", res.stderr.slice(-500))
@@ -255,8 +257,8 @@ export async function probeMedia(ffmpeg: string, input: string, signal: AbortSig
 }
 
 /** Common leading args for conversions: quiet, machine-readable progress on stdout, hardened input. */
-export function baseArgs(input: string, kind: FfmpegInputKind = 'video'): string[] {
-  return ['-hide_banner', '-nostdin', '-loglevel', 'error', '-progress', 'pipe:1', '-nostats', ...ffmpegInput(input, kind)]
+export function baseArgs(input: string, kind: FfmpegInputKind = 'video', format?: string): string[] {
+  return ['-hide_banner', '-nostdin', '-loglevel', 'error', '-progress', 'pipe:1', '-nostats', ...ffmpegInput(input, kind, format)]
 }
 
 export interface ExtraInput {
@@ -278,6 +280,8 @@ export async function runConversion(
   opts: {
     signal: AbortSignal
     kind?: FfmpegInputKind
+    /** Forced demuxer for the main input (must be in the kind's whitelist). */
+    format?: string
     durationSec?: number | undefined
     onProgress?: ProgressFn | undefined
     extraInputs?: readonly ExtraInput[]
@@ -285,7 +289,7 @@ export async function runConversion(
 ): Promise<void> {
   const extra = (opts.extraInputs ?? []).flatMap((x) => ffmpegInput(x.path, x.kind, x.format))
   try {
-    await spawnFfmpeg(ffmpeg, [...baseArgs(input, opts.kind ?? 'video'), ...extra, ...outputArgs, '-y', ffmpegOutput(tempOutput)], {
+    await spawnFfmpeg(ffmpeg, [...baseArgs(input, opts.kind ?? 'video', opts.format), ...extra, ...outputArgs, '-y', ffmpegOutput(tempOutput)], {
       signal: opts.signal,
       durationSec: opts.durationSec,
       onProgress: opts.onProgress

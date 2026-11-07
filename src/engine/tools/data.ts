@@ -113,7 +113,7 @@ export function excelCell(v: unknown): string | number | boolean | null {
 // ---------------------------------------------------------------------------------------------
 // Reading
 
-async function readXlsx(path: string, signal: AbortSignal): Promise<Table> {
+export async function openWorkbook(path: string, signal: AbortSignal): Promise<import('exceljs').Workbook> {
   // SEC-91: entry count and real uncompressed size are checked before exceljs (JSZip) loads it all.
   const { names } = await scanZipContainer(path, 'Excel file', signal)
   if (!names.has('xl/workbook.xml')) throw invalidInput("This isn't a real Excel (.xlsx) file, so I can't read it.")
@@ -124,6 +124,11 @@ async function readXlsx(path: string, signal: AbortSignal): Promise<Table> {
   } catch (err) {
     throw invalidInput("I couldn't open this Excel file. It may be damaged or password-protected.", err)
   }
+  return wb
+}
+
+async function readXlsx(path: string, signal: AbortSignal): Promise<Table> {
+  const wb = await openWorkbook(path, signal)
   const ws = wb.worksheets[0]
   if (!ws) throw invalidInput('This Excel file has no sheets.')
   const matrix: Row[] = []
@@ -244,7 +249,7 @@ export async function convertData(
   }
 }
 
-async function loadPapa(): Promise<typeof import('papaparse')> {
+export async function loadPapa(): Promise<typeof import('papaparse')> {
   const mod = (await import('papaparse')) as typeof import('papaparse') & { default?: typeof import('papaparse') }
   return mod.default ?? mod
 }
