@@ -102,3 +102,20 @@ describe('PDF Split: output size is capped', () => {
     expect((await readdir(d)).sort()).toEqual(['small (pages)', 'small.pdf'])
   })
 })
+
+describe('XLSX / CSV → PDF: table HTML stops at the print limit', () => {
+  it('a table at the row / column / cell caps fails fast with INPUT_INVALID instead of building gigabytes of HTML', async () => {
+    const { tablesToHtml } = await import('../../src/engine/tools/table-pdf')
+    // One shared string in every cell is all a tiny XLSX needs for this; "&" escapes to 5 characters.
+    const cell = { text: '&'.repeat(500), numeric: false }
+    const row = Array.from({ length: 50 }, () => cell)
+    const tables = { sheets: [{ title: 't', rows: Array.from({ length: 20_000 }, () => row), columns: 50, droppedColumns: 0 }], truncatedRows: false }
+    const t0 = Date.now()
+    expect(() => tablesToHtml(tables)).toThrowError(expect.objectContaining({ code: 'INPUT_INVALID' }))
+    expect(Date.now() - t0).toBeLessThan(5_000)
+    // A normal table still prints (header row in <thead>, cells escaped).
+    const small = tablesToHtml({ sheets: [{ title: 't', rows: [[{ text: 'a<b', numeric: false }], [{ text: '1', numeric: true }]], columns: 1, droppedColumns: 0 }], truncatedRows: false })
+    expect(small).toContain('<thead><tr><th>a&lt;b</th></tr></thead>')
+    expect(small).toContain('<td class="lud-num">1</td>')
+  })
+})

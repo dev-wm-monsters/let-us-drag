@@ -3,7 +3,7 @@
 // no-network CSP as every other PDF, D17). Every cell is HTML-escaped. Formulas show their cached
 // result (exceljs `result`); nothing is ever recalculated. Rows / columns / cell text are capped.
 import { EngineError, invalidInput } from '../errors'
-import { MAX_PDF_CELL_CHARS, MAX_PDF_TABLE_COLS, MAX_PDF_TABLE_ROWS } from '../limits'
+import { MAX_HTML_BYTES, MAX_PDF_CELL_CHARS, MAX_PDF_TABLE_COLS, MAX_PDF_TABLE_ROWS, formatBytes } from '../limits'
 import { loadPapa, openWorkbook, parseCsv } from './data'
 import { escapeHtml } from './html'
 import { readText } from './text'
@@ -184,9 +184,14 @@ function cellHtml(tag: 'th' | 'td', c: PdfCell): string {
   return c.numeric && tag === 'td' ? `<td class="lud-num">${escapeHtml(c.text)}</td>` : `<${tag}>${escapeHtml(c.text)}</${tag}>`
 }
 
+function tooBigToPrint(): EngineError {
+  return invalidInput(`This table is too big to print (more than ${formatBytes(MAX_HTML_BYTES)} of text).`)
+}
+
 /** Body HTML for text.renderPdf: one titled section per sheet, the header row repeated on every page. */
 export function tablesToHtml(tables: PdfTables): string {
   const parts = [`<style>\n${TABLE_CSS}\n</style>`]
+  let size = 0
   tables.sheets.forEach((sheet, i) => {
     const last = i === tables.sheets.length - 1
     const [head, ...body] = sheet.rows
@@ -195,10 +200,20 @@ export function tablesToHtml(tables: PdfTables): string {
       const n = sheet.droppedColumns
       parts.push(`<p class="lud-note">${n} more column${n === 1 ? '' : 's'} left out (at most ${MAX_PDF_TABLE_COLS} columns are printed).</p>`)
     }
+    // Stop as soon as the HTML outgrows what renderPdf accepts: at the caps (20 000 × 50 cells of
+    // 500 characters, which a tiny XLSX reaching one shared string from every cell can ask for) the
+    // whole table would be 0.5–2.5 G characters, gigabytes of memory or a V8 "Invalid string length".
+    const rows: string[] = []
+    for (const r of [head!, ...body]) {
+      const tr = `<tr>${r.map((c) => cellHtml(rows.length === 0 ? 'th' : 'td', c)).join('')}</tr>`
+      size += tr.length + 1
+      if (size > MAX_HTML_BYTES) throw tooBigToPrint()
+      rows.push(tr)
+    }
     parts.push(
       `<table class="lud-grid${sheet.columns > 14 ? ' lud-dense' : ''}">`,
-      `<thead><tr>${head!.map((c) => cellHtml('th', c)).join('')}</tr></thead>`,
-      `<tbody>\n${body.map((r) => `<tr>${r.map((c) => cellHtml('td', c)).join('')}</tr>`).join('\n')}\n</tbody>`,
+      `<thead>${rows[0]}</thead>`,
+      `<tbody>\n${rows.slice(1).join('\n')}\n</tbody>`,
       '</table>'
     )
     if (tables.truncatedRows && last) {
